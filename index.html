@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.17 (Override persistente)</title>
+<title>AZUOS Paralegal - Sistema v5.7.18 (FieldPath isolado)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4589,6 +4589,55 @@ function abrirBaselineDialog() {
   setTimeout(aplicarOverride, 2000);
   setTimeout(aplicarOverride, 6000);
   console.log('[v5.7.17] override via setInterval ativo');
+})();
+
+
+/* ===== v5.7.18 — _fsWriteDebounced sem race condition ===== */
+(function fixFsWriteSemRace(){
+  var timerFs = null;
+  function novoFsWriteDebounced(){
+    clearTimeout(timerFs);
+    timerFs = setTimeout(function(){
+      try {
+        if (!firebase || !firebase.firestore || !state.sessao) return;
+        var emailUsr = state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
+        if (!emailUsr) return;
+        var db = firebase.firestore();
+        var doc = db.collection('azuos').doc('shared');
+        var updates = {};
+        // Atualizar APENAS as ciências do usuário atual via FieldPath
+        try {
+          var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', emailUsr);
+          if (state.ciencias_por_usuario && Array.isArray(state.ciencias_por_usuario[emailUsr])) {
+            doc.update(fp, JSON.parse(JSON.stringify(state.ciencias_por_usuario[emailUsr])))
+              .catch(function(e){ console.warn('[v5.7.18 ciencias]', e.message); });
+          }
+        } catch(e){}
+        // Atualizar metadados (último a modificar)
+        doc.update({
+          last_modified_by: emailUsr,
+          last_modified_at: firebase.firestore.FieldValue.serverTimestamp(),
+        }).catch(function(e){ console.warn('[v5.7.18 meta]', e.message); });
+        console.log('[v5.7.18] fs_write seguro (só sub-campo de ' + emailUsr + ')');
+      } catch(e) { console.warn('[v5.7.18 fsWrite]', e); }
+    }, 1500);
+  }
+  // Substituir _fsWriteDebounced via setInterval (cuidado: pode ser global ou window)
+  function aplicar() {
+    try {
+      if (typeof window._fsWriteDebounced === 'function') {
+        var sig = window._fsWriteDebounced.toString();
+        if (sig.indexOf('v5.7.18') < 0) {
+          // Marcar com comentario pra detectar
+          window._fsWriteDebounced = function v5_7_18(){ return novoFsWriteDebounced(); };
+        }
+      }
+    } catch(e){}
+  }
+  setInterval(aplicar, 2000);
+  setTimeout(aplicar, 2000);
+  setTimeout(aplicar, 5000);
+  console.log('[v5.7.18] _fsWriteDebounced override ativo');
 })();
 
 </script>
