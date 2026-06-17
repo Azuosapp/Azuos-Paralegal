@@ -535,7 +535,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function renderLayout(content){
   const ehAdmin = state.sessao && state.sessao.cargo === 'Administrador';
   // Contar empresas novas para o usuário ATUAL — apenas ATIVO
-  const usrSes = state.sessao ? state.sessao.nome : '';
+  const usrSes = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   const cienciasUsrAtual = (state.ciencias_por_usuario && state.ciencias_por_usuario[usrSes]) || [];
   const conhecidasKeys = cienciasUsrAtual.map(c => c.key);
   const novas = (state.empresas || []).filter(e => (e.status||'').toUpperCase() === 'ATIVO' && !conhecidasKeys.includes(empresaKey(e)));
@@ -543,7 +543,7 @@ function renderLayout(content){
   // Calcula badge do resumo (pendências do dia) — paralegal vê só do dele; admin vê tudo
   const hojeStr = new Date(); hojeStr.setHours(0,0,0,0);
   const ehAdminBadge = state.sessao && state.sessao.cargo === 'Administrador';
-  const meuNomeBadge = state.sessao ? state.sessao.nome : '';
+  const meuNomeBadge = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   const pendDia = (state.alvaras||[]).filter(a => {
     if (!a.vencimento) return false;
     if (!ehAdminBadge && (a.responsavel||'') !== meuNomeBadge) return false;
@@ -1888,7 +1888,7 @@ function salvarAlvara(id, empresaId){
     // Marca como editado manualmente para o sync NÃO sobrescrever
     _editado_manualmente: true,
     _editado_em: new Date().toISOString(),
-    _editado_por: state.sessao ? state.sessao.nome : ''
+    _editado_por: state.sessao ? (state.sessao.email || state.sessao.nome) : ''
   };
   if (id) {
     state.alvaras = state.alvaras.map(x => x.id == id ? {...x, ...data} : x);
@@ -2569,7 +2569,7 @@ function toggleRevisaoAtual(marcado) {
   if (!alv) return;
   if (marcado) {
     alv.revisado = true;
-    alv.revisado_por = state.sessao ? state.sessao.nome : '';
+    alv.revisado_por = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
     alv.revisado_em = new Date().toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     log('Marcou alvará como revisado', alv.tipo + ' - ' + alv.empresa);
     toast('✅ Alvará marcado como revisado!', 'emerald');
@@ -2618,7 +2618,7 @@ function toggleRevisaoAnterior(idAnterior, marcado) {
   if (!alv) return;
   if (marcado) {
     alv.revisado = true;
-    alv.revisado_por = state.sessao ? state.sessao.nome : '';
+    alv.revisado_por = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
     alv.revisado_em = new Date().toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
     log('Marcou como revisado', alv.tipo + ' - ' + alv.empresa + ' (venc. ' + (alv.vencimento||'sem data') + ')');
     toast('✓ Marcado como revisado', 'emerald');
@@ -3046,7 +3046,7 @@ function renderNovasEmpresas() {
   // Apenas empresas com status ATIVO entram no fluxo
   const empresasAtivo = state.empresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
   // Inicializa estrutura se ainda não existir para o usuário
-  const usr = state.sessao ? state.sessao.nome : '';
+  const usr = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   state.ciencias_por_usuario = state.ciencias_por_usuario || {};
   if (state.ciencias_por_usuario[usr] === undefined) {
     state.ciencias_por_usuario[usr] = [];
@@ -3146,7 +3146,7 @@ function exportarConfig() {
   const dadosUsuario = {
     versao: 'v5.7',
     exportado_em: new Date().toISOString(),
-    exportado_por: state.sessao ? state.sessao.nome : '?',
+    exportado_por: state.sessao ? (state.sessao.email || state.sessao.nome) : '?',
     empresas_conhecidas: state.empresas_conhecidas || [],
     historico: state.historico || [],
     // Para cada alvará, salva por (empresa+tipo) o que o usuário adicionou
@@ -3240,7 +3240,7 @@ function renderResumoDia() {
   // Filtra apenas alvarás de empresas ATIVO + status pendente
   // PARALEGAL vê só o que é dele. ADMIN vê tudo.
   const ehAdmin = state.sessao && state.sessao.cargo === 'Administrador';
-  const meuNome = state.sessao ? state.sessao.nome : '';
+  const meuNome = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   const empresasAtivoIds = new Set(state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO').map(e => e.id));
   // Mapa empresa_id → responsável da empresa
   const empresaRespMap2 = {};
@@ -3289,7 +3289,7 @@ function renderResumoDia() {
   });
   const rankPend = Object.entries(pendPorResp).sort((a,b) => b[1]-a[1]).slice(0, 6);
 
-  const nome = state.sessao ? state.sessao.nome : '';
+  const nome = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
 
   return `
     <div class="p-6 max-w-4xl mx-auto">
@@ -3478,7 +3478,7 @@ let _execFiltroData = ''; // YYYY-MM-DD
 function renderEmExecucao() {
   migrarConhecidasParaCiencia();
   const ehAdmin = state.sessao && state.sessao.cargo === 'Administrador';
-  const meuNome = state.sessao ? state.sessao.nome : '';
+  const meuNome = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   // Coleta ciências de todos os usuários e indexa por (usuario, key)
   const todosUsuarios = Object.keys(state.ciencias_por_usuario || {});
   const cienciaPorKey = {}; // key -> array de {ciencia_por, ciencia_em}
@@ -3802,7 +3802,7 @@ function darCienciaResumo() {
 // ============ Cadastro manual de empresa (v7.8) ============
 function openModalEmpresaManual() {
   const respOpts = state.usuarios.filter(u => u.ativo && u.cargo === 'Paralegal').map(u => u.nome);
-  const usrAtual = state.sessao ? state.sessao.nome : '';
+  const usrAtual = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   showModal(`
     <div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
       <h3 class="text-lg font-semibold">➕ Cadastrar empresa manualmente</h3>
@@ -3858,7 +3858,7 @@ function salvarEmpresaManual() {
     atualizacao: '',
     _manual: true,
     _criada_em: new Date().toISOString(),
-    _criada_por: state.sessao ? state.sessao.nome : ''
+    _criada_por: state.sessao ? (state.sessao.email || state.sessao.nome) : ''
   };
   // Adiciona em state.empresas
   state.empresas.push(novaEmp);
@@ -3924,7 +3924,7 @@ function definirBaselineQuantidade(qtdNovasManter) {
 
 function abrirBaselineDialog() {
   const empresasAtivo = state.empresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
-  const usr = state.sessao ? state.sessao.nome : '';
+  const usr = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   const minhas = (state.ciencias_por_usuario && state.ciencias_por_usuario[usr]) || [];
   const minhasKeys = new Set(minhas.map(c => c.key));
   const minhasNovas = empresasAtivo.filter(e => !minhasKeys.has(empresaKey(e))).length;
@@ -4058,6 +4058,82 @@ function abrirBaselineDialog() {
   }
   setInterval(adicionarBotao, 1500);
   console.log('[v5.7.11] modulo de alterar senha ativo');
+})();
+
+
+/* ===== v5.7.12 — FIX DEFINITIVO ciências + usuários ===== */
+(function fixDefinitivoPatch(){
+  function _idDoEmail(email){
+    var s = String(email||'').toLowerCase().trim();
+    var h = 0;
+    for (var i=0; i<s.length; i++){ h = ((h<<5)-h) + s.charCodeAt(i); h = h & 0xFFFFFFFF; }
+    return 'u_' + Math.abs(h).toString(36);
+  }
+  function migrarCiencias(){
+    try {
+      if (!state || !state.ciencias_por_usuario || !Array.isArray(state.usuarios)) return;
+      var nomesParaEmails = {};
+      state.usuarios.forEach(function(u){
+        if (u && u.nome && u.email) nomesParaEmails[u.nome] = String(u.email).toLowerCase().trim();
+      });
+      var migrou = 0;
+      Object.keys(state.ciencias_por_usuario).forEach(function(chave){
+        if (chave.indexOf('@') === -1 && nomesParaEmails[chave]) {
+          var dest = nomesParaEmails[chave];
+          if (!state.ciencias_por_usuario[dest]) {
+            state.ciencias_por_usuario[dest] = state.ciencias_por_usuario[chave];
+            migrou++;
+          } else if (Array.isArray(state.ciencias_por_usuario[chave])) {
+            var existentes = new Set(state.ciencias_por_usuario[dest] || []);
+            state.ciencias_por_usuario[chave].forEach(function(c){ existentes.add(c); });
+            state.ciencias_por_usuario[dest] = Array.from(existentes);
+            migrou++;
+          }
+        }
+      });
+      if (migrou > 0) {
+        console.log('[v5.7.12] migradas ' + migrou + ' entradas de ciencia');
+        try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+        try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+      }
+    } catch(e){ console.warn('[v5.7.12] migrar:', e); }
+  }
+  function garantirUsuario(user){
+    try {
+      if (!user || !user.email || !state || !Array.isArray(state.usuarios)) return;
+      var email = String(user.email).toLowerCase().trim();
+      var idEstavel = _idDoEmail(email);
+      var existente = state.usuarios.find(function(u){
+        return u && String(u.email||'').toLowerCase() === email;
+      });
+      if (existente) {
+        if (existente.id && existente.id !== idEstavel && state.ciencias_por_usuario && state.ciencias_por_usuario[existente.id]) {
+          if (!state.ciencias_por_usuario[email]) state.ciencias_por_usuario[email] = state.ciencias_por_usuario[existente.id];
+        }
+        return;
+      }
+      var nome = user.displayName || email.split('@')[0].replace(/[._-]/g,' ');
+      nome = nome.split(' ').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+      state.usuarios.push({
+        id: idEstavel, nome: nome, email: email, cargo: 'Paralegal',
+        foto: '', criadoEm: new Date().toISOString(), autoCriado: true
+      });
+      console.log('[v5.7.12] usuario auto-criado:', email);
+      try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+      try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+    } catch(e){ console.warn('[v5.7.12] garantir:', e); }
+  }
+  function tudo(user){
+    [3000, 8000, 15000].forEach(function(d){
+      setTimeout(function(){ garantirUsuario(user); migrarCiencias(); }, d);
+    });
+  }
+  function setup(){
+    if (!window.firebase || !firebase.auth) { setTimeout(setup, 500); return; }
+    console.log('[v5.7.12] hook ativo');
+    firebase.auth().onAuthStateChanged(function(u){ if (u) tudo(u); });
+  }
+  setup();
 })();
 
 </script>
