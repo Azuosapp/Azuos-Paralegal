@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.2 (Acentos corrigidos)</title>
+<title>AZUOS Paralegal - Sistema v5.7.3 (Auto-cadastro de usuários)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3935,6 +3935,57 @@ function abrirBaselineDialog() {
   if (!confirm(`Manter apenas as ${n} empresas mais recentes como novas? Outras ${Math.max(0, minhasNovas-n)} serão marcadas como vistas para Admin + todos os Paralegais.`)) return;
   definirBaselineQuantidade(n);
 }
+
+
+/* ===== v5.7.3 — Auto-cadastro de usuários ao logar ===== */
+(function autoCadastroUsuarioPatch(){
+  function _garantirUsuarioPorEmail(email, displayName){
+    try{
+      if (!email || typeof state === 'undefined') return null;
+      email = String(email).toLowerCase().trim();
+      if (!state.usuarios) state.usuarios = {};
+      const existente = Object.values(state.usuarios).find(u => u && String(u.email||'').toLowerCase() === email);
+      if (existente) return existente;
+      const id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+      const nome = displayName || email.split('@')[0].replace(/[._-]/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+      const novo = {
+        id: id,
+        nome: nome,
+        email: email,
+        cargo: 'Paralegal',
+        foto: '',
+        criadoEm: new Date().toISOString(),
+        autoCriado: true
+      };
+      state.usuarios[id] = novo;
+      try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+      try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+      console.log('[auto-cadastro] Criado usuário:', email);
+      return novo;
+    }catch(e){
+      console.warn('[auto-cadastro] erro:', e);
+      return null;
+    }
+  }
+  window._garantirUsuarioPorEmail = _garantirUsuarioPorEmail;
+
+  // Hook no Firebase Auth
+  function setupHook(){
+    if (!window.firebase || !firebase.auth) {
+      setTimeout(setupHook, 500);
+      return;
+    }
+    firebase.auth().onAuthStateChanged(function(user){
+      if (user && user.email) {
+        // Esperar Firestore estar pronto (state.usuarios carregado)
+        setTimeout(function(){
+          _garantirUsuarioPorEmail(user.email, user.displayName);
+        }, 1500);
+      }
+    });
+  }
+  setupHook();
+})();
 
 </script>
 </body>
