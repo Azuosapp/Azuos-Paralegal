@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7 (Foto do usuário)</title>
+<title>AZUOS Paralegal - Sistema v5.7.1 (Foto na sidebar)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -565,6 +565,7 @@ function renderLayout(content){
     {key:'usuarios', label:'UsuÃÂÃÂ¡rios', icon:'ÃÂ°ÃÂÃÂÃÂ¥'},
   ];
   const initialsUser = (state.sessao.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
+  const _fotoSes = (()=>{try{const e=state.sessao&&state.sessao.email;if(!e||!state.usuarios)return null;const us=Object.values(state.usuarios);const u=us.find(x=>x&&(x.email||'').toLowerCase()===(e||'').toLowerCase());return (u&&u.foto)||null;}catch(_){return null}})();
   return `
     <div class="min-h-screen flex">
       <aside class="w-64 bg-gradient-azuos text-slate-200 flex flex-col shadow-2xl">
@@ -586,7 +587,7 @@ function renderLayout(content){
         </nav>
         <div class="p-4 border-t border-white/10">
           <div class="flex items-center gap-3 mb-3 px-2">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0">${esc(initialsUser)}</div>
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0">${_fotoSes?'<img src="'+_fotoSes+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-semibold text-white truncate">${esc(state.sessao.nome)}</div>
               <div class="text-[10px] text-blue-300 uppercase tracking-wider">${esc(state.sessao.cargo)}</div>
