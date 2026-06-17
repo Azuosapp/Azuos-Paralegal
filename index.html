@@ -4136,6 +4136,40 @@ function abrirBaselineDialog() {
   setup();
 })();
 
+
+/* ===== v5.7.13 — Botão Resetar cache local ===== */
+(function botaoResetarCachePatch(){
+  function resetarCache(){
+    var ok = confirm('🔄 Resetar cache local?\n\nIsso vai limpar dados locais e recarregar a pagina. Todos os dados do Firestore (alvaras, empresas, ciencias) sao preservados.\n\nVoce precisara fazer login novamente.');
+    if (!ok) return;
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch(e){}
+    location.reload();
+  }
+  window.resetarCacheLocal = resetarCache;
+
+  function adicionarBotao(){
+    try {
+      if (document.getElementById('btn-resetar-cache')) return;
+      var botoes = document.querySelectorAll('button');
+      var btnSair = null;
+      botoes.forEach(function(b){ if ((b.textContent||'').trim() === 'Sair') btnSair = b; });
+      if (!btnSair) return;
+      var btn = document.createElement('button');
+      btn.id = 'btn-resetar-cache';
+      btn.textContent = '🔄 Resetar cache';
+      btn.className = btnSair.className;
+      btn.title = 'Limpa dados locais sem afetar Firestore';
+      btn.onclick = function(e){ e.preventDefault(); resetarCache(); };
+      btnSair.parentNode.insertBefore(btn, btnSair);
+    } catch(e){ console.warn('[v5.7.13]:', e); }
+  }
+  setInterval(adicionarBotao, 1500);
+  console.log('[v5.7.13] resetar cache disponivel');
+})();
+
 </script>
 </body>
 </html>
