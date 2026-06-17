@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.4 (Auto-cadastro corrigido)</title>
+<title>AZUOS Paralegal - Sistema v5.7.5 (Sem auto-cadastro - investigando)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3937,73 +3937,7 @@ function abrirBaselineDialog() {
 }
 
 
-/* ===== v5.7.4 — Auto-cadastro de usuários (Array fix) ===== */
-(function autoCadastroUsuarioPatch(){
-  function _garantirUsuarioPorEmail(email, displayName){
-    try{
-      if (!email || typeof state === 'undefined') {
-        console.log('[auto-cadastro] state nao pronto, ignorando');
-        return null;
-      }
-      email = String(email).toLowerCase().trim();
-      if (!Array.isArray(state.usuarios)) state.usuarios = [];
-      var existente = state.usuarios.find(function(u){ return u && String(u.email||'').toLowerCase() === email; });
-      if (existente) {
-        console.log('[auto-cadastro] usuario ja existe:', email);
-        return existente;
-      }
-      var id = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
-      var nome = displayName;
-      if (!nome) {
-        nome = email.split('@')[0].replace(/[._-]/g,' ');
-        nome = nome.split(' ').map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
-      }
-      var novo = {
-        id: id,
-        nome: nome,
-        email: email,
-        cargo: 'Paralegal',
-        foto: '',
-        criadoEm: new Date().toISOString(),
-        autoCriado: true
-      };
-      state.usuarios.push(novo);
-      console.log('[auto-cadastro] CRIADO:', email, '(' + nome + ')');
-      try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
-      try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
-      try { if (typeof salvar === 'function') salvar(); } catch(e){}
-      return novo;
-    }catch(e){
-      console.warn('[auto-cadastro] erro:', e);
-      return null;
-    }
-  }
-  window._garantirUsuarioPorEmail = _garantirUsuarioPorEmail;
 
-  function tentarGarantir(user){
-    if (!user || !user.email) return;
-    // Tentar varias vezes pra pegar antes/depois do Firestore sync
-    [500, 2000, 5000, 10000].forEach(function(delay){
-      setTimeout(function(){ _garantirUsuarioPorEmail(user.email, user.displayName); }, delay);
-    });
-  }
-
-  function setupHook(){
-    if (!window.firebase || !firebase.auth) {
-      setTimeout(setupHook, 500);
-      return;
-    }
-    console.log('[auto-cadastro] hook registrado v5.7.4');
-    firebase.auth().onAuthStateChanged(function(user){
-      console.log('[auto-cadastro] onAuthStateChanged:', user ? user.email : 'logout');
-      if (user) tentarGarantir(user);
-    });
-    // Também: se já tem user autenticado quando script roda
-    var current = firebase.auth().currentUser;
-    if (current) tentarGarantir(current);
-  }
-  setupHook();
-})();
 
 </script>
 </body>
