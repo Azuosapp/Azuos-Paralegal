@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.14 (Override ciência)</title>
+<title>AZUOS Paralegal - Sistema v5.7.15 (Estável final)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4266,6 +4266,131 @@ function abrirBaselineDialog() {
     } catch(e){}
   }, 1500);
   console.log('[v5.7.14] ativo - override darCiencia + fix botoes');
+})();
+
+
+/* ===== v5.7.15 — Override forte usuários + ciência via Firestore SET ===== */
+(function fixForte(){
+  function idDoEmail(e){
+    var s = String(e||'').toLowerCase().trim();
+    var h = 0;
+    for (var i=0; i<s.length; i++){ h = ((h<<5)-h) + s.charCodeAt(i); h = h & 0xFFFFFFFF; }
+    return 'u_' + Math.abs(h).toString(36);
+  }
+
+  var USUARIOS_OFICIAIS = [
+    { email: 'contato@azuoscontabil.com.br',     nome: 'AZUOS Admin', cargo: 'Administrador' },
+    { email: 'comercial@azuoscontabil.com.br',   nome: 'Comercial',   cargo: 'Administrador' },
+    { email: 'thierrymforte@gmail.com',          nome: 'Thierry',     cargo: 'Administrador' },
+    { email: 'camila@azuoscontabil.com.br',      nome: 'Camila',      cargo: 'Paralegal' },
+    { email: 'ketrin@azuoscontabil.com.br',      nome: 'Ketrin',      cargo: 'Paralegal' },
+    { email: 'leyla@azuoscontabil.com.br',       nome: 'Leyla',       cargo: 'Paralegal' },
+    { email: 'luanna@azuoscontabil.com.br',      nome: 'Luanna',      cargo: 'Paralegal' },
+    { email: 'diogenes@azuoscontabil.com.br',    nome: 'Diogenes',    cargo: 'Paralegal' },
+  ].map(function(u){ return { id: idDoEmail(u.email), nome: u.nome, email: u.email, cargo: u.cargo, foto: '', ativo: true }; });
+
+  function aplicarUsuarios(){
+    try {
+      if (!state) return;
+      // Substituir state.usuarios pelos oficiais (sempre)
+      var atuais = (state.usuarios || []).map(function(u){ return u && u.email && u.email.toLowerCase(); }).filter(Boolean);
+      var oficiais = USUARIOS_OFICIAIS.map(function(u){ return u.email.toLowerCase(); });
+      // Verificar se eh diferente
+      var diferente = atuais.length !== oficiais.length || oficiais.some(function(e){ return atuais.indexOf(e) < 0; });
+      if (diferente) {
+        state.usuarios = JSON.parse(JSON.stringify(USUARIOS_OFICIAIS));
+        try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+      }
+    } catch(e) { console.warn('[v5.7.15 aplicar]', e); }
+  }
+
+  function salvarFirestoreDireto(){
+    try {
+      if (!firebase || !firebase.firestore || !state) return;
+      var db = firebase.firestore();
+      db.collection('azuos').doc('shared').set(JSON.parse(JSON.stringify(state)), { merge: true })
+        .then(function(){ console.log('[v5.7.15] state salvo direto no firestore'); })
+        .catch(function(e){ console.warn('[v5.7.15 set]', e.message); });
+    } catch(e) { console.warn('[v5.7.15 salvar]', e); }
+  }
+
+  // Override darCienciaEmpresa para salvar IMEDIATAMENTE
+  setTimeout(function(){
+    if (typeof window.darCienciaEmpresa === 'function') {
+      window.darCienciaEmpresa = function(chave){
+        try {
+          var u = state.sessao && state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
+          if (!u) return;
+          if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+          if (!Array.isArray(state.ciencias_por_usuario[u])) state.ciencias_por_usuario[u] = [];
+          if (state.ciencias_por_usuario[u].indexOf(chave) < 0) {
+            state.ciencias_por_usuario[u].push(chave);
+          }
+          salvarFirestoreDireto();
+          try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+        } catch(e) { console.warn('[v5.7.15 darCiencia]', e); }
+      };
+    }
+    if (typeof window.darCienciaTodas === 'function') {
+      window.darCienciaTodas = function(){
+        try {
+          var u = state.sessao && state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
+          if (!u) return;
+          if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+          if (!Array.isArray(state.ciencias_por_usuario[u])) state.ciencias_por_usuario[u] = [];
+          var lista = (state.empresas || []).concat(state.empresas_manuais || []);
+          lista.forEach(function(emp){
+            if (!emp) return;
+            var chave = emp.cnpj || emp.id || emp.razao || emp.nome;
+            if (!chave) return;
+            if (state.ciencias_por_usuario[u].indexOf(chave) < 0) state.ciencias_por_usuario[u].push(chave);
+          });
+          salvarFirestoreDireto();
+          try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+          try { if (typeof showOk === 'function') showOk('Ciencia em ' + state.ciencias_por_usuario[u].length + ' empresas'); } catch(e){}
+        } catch(e) { console.warn('[v5.7.15 darCienciaTodas]', e); }
+      };
+    }
+    console.log('[v5.7.15] ciencia overrides aplicados');
+  }, 4000);
+
+  // Aplicar usuarios oficiais a cada 3s
+  setInterval(aplicarUsuarios, 3000);
+  setTimeout(aplicarUsuarios, 5000);
+  setTimeout(aplicarUsuarios, 10000);
+
+  // Auto-save state no Firestore a cada 30s (resiliência)
+  setInterval(function(){
+    if (state && state.sessao && state.sessao.email) salvarFirestoreDireto();
+  }, 30000);
+
+  // Botões matcher fix
+  setInterval(function(){
+    try {
+      var botoes = document.querySelectorAll('button');
+      var btnSair = null;
+      botoes.forEach(function(b){
+        var t = (b.textContent||'').trim();
+        if (t === 'Sair' || t.endsWith(' Sair') || b.id === 'logout-btn') btnSair = b;
+      });
+      if (!btnSair) return;
+      if (!document.getElementById('btn-resetar-cache') && typeof window.resetarCacheLocal === 'function') {
+        var b1 = document.createElement('button');
+        b1.id = 'btn-resetar-cache'; b1.textContent = '🔄 Resetar cache';
+        b1.className = btnSair.className;
+        b1.onclick = function(e){ e.preventDefault(); window.resetarCacheLocal(); };
+        btnSair.parentNode.insertBefore(b1, btnSair);
+      }
+      if (!document.getElementById('btn-trocar-senha') && typeof window.abrirModalSenha === 'function') {
+        var b2 = document.createElement('button');
+        b2.id = 'btn-trocar-senha'; b2.textContent = '🔒 Alterar senha';
+        b2.className = btnSair.className;
+        b2.onclick = function(e){ e.preventDefault(); window.abrirModalSenha(); };
+        btnSair.parentNode.insertBefore(b2, btnSair);
+      }
+    } catch(e){}
+  }, 1500);
+  console.log('[v5.7.15] hooks ativos');
 })();
 
 </script>
