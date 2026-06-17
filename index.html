@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.11 (Alterar senha)</title>
+<title>AZUOS Paralegal - Sistema v5.7.14 (Override ciência)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4168,6 +4168,104 @@ function abrirBaselineDialog() {
   }
   setInterval(adicionarBotao, 1500);
   console.log('[v5.7.13] resetar cache disponivel');
+})();
+
+
+/* ===== v5.7.14 — OVERRIDE darCiencia + matcher botao ===== */
+(function fixCienciaSair(){
+  function getUsrSes(){
+    try {
+      if (state && state.sessao && state.sessao.email) return String(state.sessao.email).toLowerCase().trim();
+      if (state && state.sessao && state.sessao.nome) return state.sessao.nome;
+      return '';
+    } catch(e) { return ''; }
+  }
+  function ensureArray(){
+    if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+    var u = getUsrSes();
+    if (!u) return null;
+    if (!Array.isArray(state.ciencias_por_usuario[u])) state.ciencias_por_usuario[u] = [];
+    return u;
+  }
+  // Override darCienciaEmpresa
+  setTimeout(function(){
+    try {
+      if (typeof window.darCienciaEmpresa === 'function') {
+        var originalDarCiencia = window.darCienciaEmpresa;
+        window.darCienciaEmpresa = function(chave){
+          try {
+            var u = ensureArray();
+            if (!u) return;
+            if (state.ciencias_por_usuario[u].indexOf(chave) < 0) {
+              state.ciencias_por_usuario[u].push(chave);
+            }
+            try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+            try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+          } catch(e) {
+            console.warn('[v5.7.14 darCiencia]', e);
+            // fallback original
+            try { return originalDarCiencia.apply(this, arguments); } catch(e){}
+          }
+        };
+        console.log('[v5.7.14] darCienciaEmpresa override OK');
+      }
+      if (typeof window.darCienciaTodas === 'function') {
+        var origTodas = window.darCienciaTodas;
+        window.darCienciaTodas = function(){
+          try {
+            var u = ensureArray();
+            if (!u) return;
+            var lista = (state.empresas || []).concat(state.empresas_manuais || []);
+            lista.forEach(function(emp){
+              if (!emp) return;
+              var chave = emp.cnpj || emp.id || emp.razao || emp.nome;
+              if (!chave) return;
+              if (state.ciencias_por_usuario[u].indexOf(chave) < 0) state.ciencias_por_usuario[u].push(chave);
+            });
+            try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+            try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+            try { if (typeof showOk === 'function') showOk('Ciencia dada em ' + state.ciencias_por_usuario[u].length + ' empresas'); } catch(e){}
+          } catch(e) {
+            console.warn('[v5.7.14 darCienciaTodas]', e);
+            try { return origTodas.apply(this, arguments); } catch(e){}
+          }
+        };
+        console.log('[v5.7.14] darCienciaTodas override OK');
+      }
+    } catch(e) { console.warn('[v5.7.14 override]', e); }
+  }, 5000);
+
+  // Fix matcher do botao Sair - incluir emoji
+  setInterval(function(){
+    try {
+      var botoes = document.querySelectorAll('button');
+      var btnSair = null;
+      botoes.forEach(function(b){
+        var t = (b.textContent||'').trim();
+        if (t === 'Sair' || t.endsWith(' Sair') || t === '⏻ Sair' || (b.id === 'logout-btn')) btnSair = b;
+      });
+      if (!btnSair) return;
+      // Adicionar btn-resetar-cache se nao existir
+      if (!document.getElementById('btn-resetar-cache') && typeof window.resetarCacheLocal === 'function') {
+        var b1 = document.createElement('button');
+        b1.id = 'btn-resetar-cache';
+        b1.textContent = '🔄 Resetar cache';
+        b1.className = btnSair.className;
+        b1.onclick = function(e){ e.preventDefault(); window.resetarCacheLocal(); };
+        btnSair.parentNode.insertBefore(b1, btnSair);
+      }
+      // Adicionar btn-trocar-senha se nao existir
+      if (!document.getElementById('btn-trocar-senha') && typeof window.abrirModalSenha === 'function') {
+        var b2 = document.createElement('button');
+        b2.id = 'btn-trocar-senha';
+        b2.textContent = '🔒 Alterar senha';
+        b2.className = btnSair.className;
+        b2.onclick = function(e){ e.preventDefault(); window.abrirModalSenha(); };
+        btnSair.parentNode.insertBefore(b2, btnSair);
+      }
+    } catch(e){}
+  }, 1500);
+  console.log('[v5.7.14] ativo - override darCiencia + fix botoes');
 })();
 
 </script>
