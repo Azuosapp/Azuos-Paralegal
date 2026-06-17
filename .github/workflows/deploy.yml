@@ -1,20 +1,20 @@
-name: Deploy to Netlify
+name: Deploy to Firebase Hosting on merge
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
 jobs:
-  deploy:
+  build_and_deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3.0
+
+      - name: Deploy to Firebase Hosting (live channel)
+        uses: FirebaseExtended/action-hosting-deploy@v0
         with:
-          publish-dir: '.'
-          production-branch: main
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: ${{ github.event.head_commit.message }}
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: 0cabbe7e-85bf-4a0b-bcda-14c918df70ff
-        timeout-minutes: 2
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+          channelId: live
+          projectId: azuos-paralegal
