@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.7 (Sem auto-cadastro - estável)</title>
+<title>AZUOS Paralegal - Sistema v5.7.8 (Rodapé limpo)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3941,6 +3941,44 @@ function abrirBaselineDialog() {
 
 
 
+
+
+/* ===== v5.7.8 — Ocultar elementos legados (Reset demo, v7.12, baseline, configs) ===== */
+(function ocultarElementosLegadosPatch(){
+  var KEYWORDS_OCULTAR = [
+    'reset demo',
+    'v7.12',
+    'baseline rapido',
+    'baseline rápido',
+    'exportar config',
+    'importar config'
+  ];
+  function ehLegado(texto){
+    if (!texto) return false;
+    var t = texto.toLowerCase().trim();
+    return KEYWORDS_OCULTAR.some(function(k){ return t.indexOf(k) !== -1; });
+  }
+  function ocultar(){
+    try {
+      var alvos = document.querySelectorAll('button, .badge, .version-badge, [class*="rodape"], [class*="footer"]');
+      alvos.forEach(function(el){
+        var txt = (el.textContent || '').trim();
+        if (txt && txt.length < 60 && ehLegado(txt)) {
+          el.style.display = 'none';
+          el.setAttribute('data-legado-oculto', '1');
+        }
+      });
+    } catch(e){ console.warn('[v5.7.8] ocultar erro:', e); }
+  }
+  // Esconder ao carregar e periodicamente
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ocultar);
+  } else {
+    ocultar();
+  }
+  setInterval(ocultar, 1500);
+  console.log('[v5.7.8] ocultador de elementos legados ativo');
+})();
 
 </script>
 </body>
