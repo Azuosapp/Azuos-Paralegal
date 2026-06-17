@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.5 (Sem auto-cadastro - investigando)</title>
+<title>AZUOS Paralegal - Sistema v5.7.6 (Auto-cadastro estável)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3938,6 +3938,97 @@ function abrirBaselineDialog() {
 
 
 
+
+
+/* ===== v5.7.6 — Auto-cadastro ROBUSTO (ID derivado do email) ===== */
+(function autoCadastroSeguroPatch(){
+  // ID determinístico: mesmo email -> mesmo ID, sempre
+  function _idDoEmail(email){
+    var s = String(email||'').toLowerCase().trim();
+    var hash = 0;
+    for (var i = 0; i < s.length; i++) {
+      hash = ((hash << 5) - hash) + s.charCodeAt(i);
+      hash = hash & 0xFFFFFFFF;
+    }
+    return 'u_' + Math.abs(hash).toString(36);
+  }
+
+  function _garantirUsuarioPorEmail(email, displayName){
+    try{
+      if (!email || typeof state === 'undefined' || !state) return null;
+      // SEGURANCA CRITICA: nunca criar state.usuarios. So usar se ja for Array carregado.
+      if (!Array.isArray(state.usuarios)) {
+        console.log('[v5.7.6] state.usuarios nao pronto, aguardando Firestore...');
+        return null;
+      }
+      email = String(email).toLowerCase().trim();
+      // 1. Procurar por EMAIL primeiro
+      var existente = state.usuarios.find(function(u){
+        return u && String(u.email||'').toLowerCase() === email;
+      });
+      if (existente) {
+        console.log('[v5.7.6] usuario ja existe (por email):', email);
+        return existente;
+      }
+      // 2. Criar ID deterministico
+      var id = _idDoEmail(email);
+      // 3. Verificar se ja existe entrada com esse ID (legado)
+      var porId = state.usuarios.find(function(u){ return u && u.id === id; });
+      if (porId) {
+        if (!porId.email) porId.email = email;
+        console.log('[v5.7.6] usuario ja existe (por id):', id);
+        return porId;
+      }
+      // 4. Criar novo
+      var nome = displayName;
+      if (!nome) {
+        var parts = email.split('@')[0].replace(/[._-]/g,' ').split(' ');
+        nome = parts.map(function(w){ return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+      }
+      var novo = {
+        id: id,
+        nome: nome,
+        email: email,
+        cargo: 'Paralegal',
+        foto: '',
+        criadoEm: new Date().toISOString(),
+        autoCriado: true
+      };
+      state.usuarios.push(novo);
+      console.log('[v5.7.6] CRIADO:', email, '->', id);
+      try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+      try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+      return novo;
+    }catch(e){
+      console.warn('[v5.7.6] erro:', e);
+      return null;
+    }
+  }
+
+  window._garantirUsuarioPorEmail = _garantirUsuarioPorEmail;
+  window._idDoEmail = _idDoEmail;
+
+  function tentarGarantir(user){
+    if (!user || !user.email) return;
+    // Tentativas espacadas pra pegar antes E depois do Firestore sync
+    [2000, 5000, 10000, 20000].forEach(function(delay){
+      setTimeout(function(){ _garantirUsuarioPorEmail(user.email, user.displayName); }, delay);
+    });
+  }
+
+  function setupHook(){
+    if (!window.firebase || !firebase.auth) {
+      setTimeout(setupHook, 500);
+      return;
+    }
+    console.log('[v5.7.6] hook registrado');
+    firebase.auth().onAuthStateChanged(function(user){
+      console.log('[v5.7.6] onAuthStateChanged:', user ? user.email : 'logout');
+      if (user) tentarGarantir(user);
+    });
+  }
+  setupHook();
+})();
 
 </script>
 </body>
