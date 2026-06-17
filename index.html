@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.16 (Definitivo)</title>
+<title>AZUOS Paralegal - Sistema v5.7.17 (Override persistente)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4532,6 +4532,63 @@ function abrirBaselineDialog() {
     } catch(e){}
   }, 1500);
   console.log('[v5.7.16] hooks ativos');
+})();
+
+
+/* ===== v5.7.17 — Override via setInterval (persistente) ===== */
+(function fixPersistente(){
+  function novaDarCienciaEmpresa(chave){
+    try {
+      var emailUsr = state.sessao && state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
+      if (!emailUsr) return;
+      if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+      if (!Array.isArray(state.ciencias_por_usuario[emailUsr])) state.ciencias_por_usuario[emailUsr] = [];
+      if (state.ciencias_por_usuario[emailUsr].indexOf(chave) < 0) {
+        state.ciencias_por_usuario[emailUsr].push(chave);
+      }
+      if (typeof window._salvarCienciaFirestore === 'function') window._salvarCienciaFirestore();
+      try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+    } catch(e) { console.warn('[v5.7.17 darCiencia]', e); }
+  }
+  function novaDarCienciaTodas(){
+    try {
+      var emailUsr = state.sessao && state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
+      if (!emailUsr) return;
+      if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+      if (!Array.isArray(state.ciencias_por_usuario[emailUsr])) state.ciencias_por_usuario[emailUsr] = [];
+      var lista = (state.empresas || []).concat(state.empresas_manuais || []);
+      lista.forEach(function(emp){
+        if (!emp) return;
+        var chave = emp.cnpj || emp.id || emp.razao || emp.nome;
+        if (!chave) return;
+        if (state.ciencias_por_usuario[emailUsr].indexOf(chave) < 0) state.ciencias_por_usuario[emailUsr].push(chave);
+      });
+      if (typeof window._salvarCienciaFirestore === 'function') window._salvarCienciaFirestore();
+      try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+      try { if (typeof showOk === 'function') showOk('Ciencia em ' + state.ciencias_por_usuario[emailUsr].length + ' empresas'); } catch(e){}
+    } catch(e) { console.warn('[v5.7.17 darCienciaTodas]', e); }
+  }
+  // Aplicar override e checar a cada 2s
+  function aplicarOverride(){
+    try {
+      if (typeof window.darCienciaEmpresa === 'function') {
+        var sig = window.darCienciaEmpresa.toString();
+        if (sig.indexOf('_salvarCienciaFirestore') < 0) {
+          window.darCienciaEmpresa = novaDarCienciaEmpresa;
+        }
+      }
+      if (typeof window.darCienciaTodas === 'function') {
+        var sig2 = window.darCienciaTodas.toString();
+        if (sig2.indexOf('_salvarCienciaFirestore') < 0) {
+          window.darCienciaTodas = novaDarCienciaTodas;
+        }
+      }
+    } catch(e) { console.warn('[v5.7.17 aplicar]', e); }
+  }
+  setInterval(aplicarOverride, 2000);
+  setTimeout(aplicarOverride, 2000);
+  setTimeout(aplicarOverride, 6000);
+  console.log('[v5.7.17] override via setInterval ativo');
 })();
 
 </script>
