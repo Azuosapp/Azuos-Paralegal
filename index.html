@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.18 (FieldPath isolado)</title>
+<title>AZUOS Paralegal - Sistema v5.7.19 (Multi-user OK)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4638,6 +4638,52 @@ function abrirBaselineDialog() {
   setTimeout(aplicar, 2000);
   setTimeout(aplicar, 5000);
   console.log('[v5.7.18] _fsWriteDebounced override ativo');
+})();
+
+
+/* ===== v5.7.19 — Version check + force reload ===== */
+(function versionCheck(){
+  var SYSTEM_VERSION = 'v5.7.19';
+  function checkVersion(){
+    try {
+      if (!firebase || !firebase.firestore) return;
+      var db = firebase.firestore();
+      // Salvar versao deste browser no Firestore
+      db.collection('azuos').doc('_version').get().then(function(doc){
+        var serverVersion = doc.exists ? doc.data().version : null;
+        if (!serverVersion) {
+          // Primeira execucao - salvar
+          db.collection('azuos').doc('_version').set({version: SYSTEM_VERSION, ts: Date.now()});
+        } else if (serverVersion !== SYSTEM_VERSION) {
+          // Versões diferentes - ALERTAR usuário e recarregar
+          console.warn('[v5.7.19] versão deste browser:', SYSTEM_VERSION, 'servidor:', serverVersion);
+          if (compararVersao(serverVersion, SYSTEM_VERSION) > 0) {
+            // Server tem versão MAIS NOVA - recarregar
+            if (confirm('🔄 Nova versão disponível ('+serverVersion+'). Atualizar agora?')) {
+              try { localStorage.clear(); } catch(e){}
+              location.reload(true);
+            }
+          } else {
+            // Nosso browser tem versão mais nova - atualizar Firestore
+            db.collection('azuos').doc('_version').set({version: SYSTEM_VERSION, ts: Date.now()});
+          }
+        }
+      }).catch(function(e){ console.warn('[v5.7.19 check]', e.message); });
+    } catch(e) { console.warn('[v5.7.19]', e); }
+  }
+  function compararVersao(a, b){
+    var pa = String(a).replace(/[^0-9.]/g, '').split('.').map(Number);
+    var pb = String(b).replace(/[^0-9.]/g, '').split('.').map(Number);
+    for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+      var na = pa[i] || 0, nb = pb[i] || 0;
+      if (na > nb) return 1;
+      if (na < nb) return -1;
+    }
+    return 0;
+  }
+  setTimeout(checkVersion, 8000);
+  setInterval(checkVersion, 60000); // a cada minuto
+  console.log('[v5.7.19] version check ativo - SYSTEM_VERSION=' + SYSTEM_VERSION);
 })();
 
 </script>
