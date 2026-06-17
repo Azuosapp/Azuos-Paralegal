@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.3 (Busca instantânea)</title>
+<title>AZUOS Paralegal - Sistema v5.4 (Refinamento visual)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -29,29 +29,39 @@
   window.fbDB = firebase.firestore();
 </script>
 <style>
-  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; background: #f1f5f9; }
-  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
-  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  /* === REFINAMENTO VISUAL v5.4 === */
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background: #f8fafc; color: #0f172a; letter-spacing: -0.011em; line-height: 1.5; }
+  h1, h2, h3, h4 { letter-spacing: -0.022em; font-weight: 700; }
+  h1 { letter-spacing: -0.025em; }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; border: 2px solid #f8fafc; }
   .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 8px; }
+  ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
   .hidden-class-safelist { display: none; }
-  /* Animações suaves */
-  * { transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease; }
-  /* Card hover effect */
-  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -8px rgba(0,0,0,0.12); }
-  /* Botão moderno */
-  .btn-modern { box-shadow: 0 2px 6px rgba(59,130,246,0.20); }
-  .btn-modern:hover { box-shadow: 0 6px 12px rgba(59,130,246,0.30); transform: translateY(-1px); }
-  /* Sidebar glow */
-  .nav-btn-active { box-shadow: inset 4px 0 0 0 #60a5fa; }
-  /* Pulse para badges */
-  @keyframes pulse-soft { 0%,100% { opacity: 1 } 50% { opacity: 0.8 } }
-  .pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
-  /* Gradientes */
-  .bg-gradient-azuos { background: linear-gradient(135deg, #1e3a8a 0%, #312e81 50%, #1e1b4b 100%); }
-  .bg-gradient-card { background: linear-gradient(135deg, rgba(255,255,255,1) 0%, rgba(248,250,252,1) 100%); }
-  /* Toast slide */
-  @keyframes slide-in { from { transform: translateX(120%) } to { transform: translateX(0) } }
-  .toast-slide { animation: slide-in 0.3s ease-out; }
+  * { transition: background-color 0.2s cubic-bezier(0.4,0,0.2,1), color 0.2s cubic-bezier(0.4,0,0.2,1), border-color 0.2s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s cubic-bezier(0.4,0,0.2,1), transform 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease; }
+  input, select, textarea { font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,0.12); border-color: #3b82f6 !important; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 16px 32px -12px rgba(15,23,42,0.10), 0 4px 8px -2px rgba(15,23,42,0.04); }
+  .btn-modern { box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 4px 12px -2px rgba(59,130,246,0.25); position: relative; }
+  .btn-modern:hover { box-shadow: 0 2px 4px rgba(15,23,42,0.06), 0 8px 20px -4px rgba(59,130,246,0.35); transform: translateY(-1px); }
+  .btn-modern:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 2px 6px rgba(59,130,246,0.20); }
+  .nav-btn-active { box-shadow: inset 3px 0 0 0 #60a5fa, 0 1px 0 rgba(255,255,255,0.05) inset; background: linear-gradient(90deg, rgba(96,165,250,0.12) 0%, transparent 100%); transition: all 0.25s cubic-bezier(0.4,0,0.2,1); }
+  @keyframes pulse-soft { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.75; transform: scale(0.96); } }
+  .pulse-soft { animation: pulse-soft 2.5s cubic-bezier(0.4,0,0.2,1) infinite; }
+  .bg-gradient-azuos { background: linear-gradient(135deg, #1e3a8a 0%, #312e81 45%, #1e1b4b 100%); }
+  .bg-gradient-card { background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); }
+  @keyframes slide-in { from { transform: translateX(120%) scale(0.95); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
+  .toast-slide { animation: slide-in 0.35s cubic-bezier(0.16,1,0.3,1); }
+  tbody tr.empresa-row:hover { background-color: #eff6ff !important; box-shadow: inset 3px 0 0 #3b82f6; }
+  tbody tr { transition: background-color 0.12s ease; }
+  ::selection { background: rgba(59,130,246,0.25); color: #0f172a; }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  main > div { animation: fade-in 0.3s ease-out; }
+  th { letter-spacing: 0.05em; font-size: 10.5px; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -381,7 +391,7 @@ function renderLogin(){
             Apenas e-mails @azuoscontabil.com.br podem se cadastrar. Após criar, você já estará logado.
           </p>
           `}
-          <p class="text-center text-xs text-slate-400 mt-2">v5.3 · Busca instantânea</p>
+          <p class="text-center text-xs text-slate-400 mt-2">v5.4 · Refinamento visual</p>
         </form>
       </div>
     </div>
