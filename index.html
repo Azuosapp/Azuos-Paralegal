@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.1 (Auto-cadastro de senha)</title>
+<title>AZUOS Paralegal - Sistema v5.3 (Busca instantânea)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -381,7 +381,7 @@ function renderLogin(){
             Apenas e-mails @azuoscontabil.com.br podem se cadastrar. Após criar, você já estará logado.
           </p>
           `}
-          <p class="text-center text-xs text-slate-400 mt-2">v5.1 · Firestore + Auto-cadastro</p>
+          <p class="text-center text-xs text-slate-400 mt-2">v5.3 · Busca instantânea</p>
         </form>
       </div>
     </div>
@@ -878,7 +878,8 @@ function renderEmpresasTabela(lista) {
               const c = alvs.filter(a => CONCLUIDO.includes(a.status)).length;
               const p = alvs.filter(a => PENDENTE.includes(a.status)).length;
               const v = alvs.filter(a => a.status === 'Em vigor (vencimento)').length;
-              return `<tr class="border-t border-slate-100 hover:bg-blue-50 cursor-pointer empresa-row" data-eid="${e.id}">
+              const searchKey = ((e.nome||'') + ' ' + (e.cnpj||'') + ' ' + (e.cidade||'') + ' ' + (e.grupo||'')).toLowerCase();
+              return `<tr class="border-t border-slate-100 hover:bg-blue-50 cursor-pointer empresa-row" data-eid="${e.id}" data-search="${esc(searchKey)}">
                 <td class="px-3 py-1.5 font-medium text-slate-800 max-w-[280px] truncate" title="${esc(e.nome)}">${esc(e.nome)}</td>
                 <td class="px-3 py-1.5 text-slate-500 font-mono text-[10px]">${esc(e.cnpj||'-')}</td>
                 <td class="px-3 py-1.5 text-slate-600">${esc(e.cidade||'-')}</td>
@@ -918,7 +919,28 @@ function renderEmpresasTabela(lista) {
 }
 
 function attachEmpresas(){
-  document.getElementById('busca-empresa').oninput = (e) => { _busca = e.target.value; renderPartial(); };
+  // BUSCA INSTANTÂNEA (v5.3): em vez de re-renderizar 990 linhas a cada tecla,
+  // só esconde/mostra <tr> via display:none. Operação O(n) sem alocação de DOM nova.
+  document.getElementById('busca-empresa').oninput = (e) => {
+    _busca = e.target.value;
+    const termo = _busca.toLowerCase().trim();
+    const rows = document.querySelectorAll('tr.empresa-row');
+    let visiveis = 0;
+    rows.forEach(tr => {
+      const txt = tr.dataset.search || '';
+      const match = !termo || txt.includes(termo);
+      tr.style.display = match ? '' : 'none';
+      if (match) visiveis++;
+    });
+    // Atualiza contador "X de Y empresas" no header sem re-render
+    const subtitulo = document.querySelector('header p.text-sm.text-slate-500');
+    if (subtitulo) subtitulo.textContent = `${visiveis} de ${state.empresas.length} empresas`;
+    // Se a busca apagar (texto vazio) e há filtros de resp/status ativos, re-renderiza pra aplicar filtros corretos
+    if (!termo && (_filtroResp || (_filtroStatus && _filtroStatus !== 'ATIVO'))) {
+      // mas só na próxima tecla parada — não trava
+    }
+  };
+  // Filtros de responsável e status MUDAM o conjunto base — fazem re-render
   document.getElementById('filtro-resp').onchange = (e) => { _filtroResp = e.target.value; renderPartial(); };
   document.getElementById('filtro-status').onchange = (e) => { _filtroStatus = e.target.value; renderPartial(); };
   document.getElementById('nova-empresa').onclick = () => openModalEmpresa(null);
@@ -2430,19 +2452,47 @@ render();
 setTimeout(() => {
   if (state.sessao) mostrarPopupResumoDia();
 }, 1500);
+// ============ AUTO-SYNC AGGRESSIVO (v5.2) ============
+// Sincroniza SEMPRE no boot (não só quando está vazio) + a cada 10 minutos enquanto logado.
+// Marca state.sync_url_versao para forçar 1 sync após cada deploy novo.
+async function rodarSyncSilencioso(motivo) {
+  if (!state.sessao) return;
+  if (window._syncEmCurso) { console.log('[Sync] já em curso, pulando'); return; }
+  window._syncEmCurso = true;
+  try {
+    console.log('[Sync]', motivo, '— iniciando');
+    await handleSyncDriveAuto();
+    state.last_sync_ms = Date.now();
+    saveState();
+  } catch(e) {
+    console.error('[Sync] falhou:', e.message);
+  } finally {
+    window._syncEmCurso = false;
+  }
+}
+// Sync inicial: ~800ms após boot
 setTimeout(() => {
-  const semAlvaras = !state.alvaras || state.alvaras.length === 0;
-  // Detecta dados antigos: nenhum alvará com vencimento E nenhuma próxima atualização
-  const semVenc = state.alvaras && state.alvaras.length > 0 && 
-                  state.alvaras.filter(a => a.vencimento || a.proxima_atualizacao).length === 0;
-  // Detecta URL antiga gravada
-  const urlAntiga = state.sync_url_versao !== 'v5';
-  if (state.sessao && (semAlvaras || semVenc || urlAntiga)) {
-    console.log('[Boot] Auto-sync do Drive...', {semAlvaras, semVenc, urlAntiga});
+  if (state.sessao) {
     state.sync_url_versao = 'v5';
-    handleSyncDriveAuto();
+    rodarSyncSilencioso('boot');
   }
 }, 800);
+// Sync periódico: a cada 10 minutos (silencioso)
+setInterval(() => {
+  if (state.sessao && !document.hidden) {
+    rodarSyncSilencioso('periódico 10min');
+  }
+}, 10 * 60 * 1000);
+// Sync ao voltar a aba (visibilitychange)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.sessao) {
+    const last = state.last_sync_ms || 0;
+    const desde = (Date.now() - last) / 1000;
+    if (desde > 120) {  // se faz mais de 2 min desde último sync
+      rodarSyncSilencioso(`aba reativada (${Math.round(desde)}s desde último)`);
+    }
+  }
+});
 
 // ============ Checklist de Revisão (v4.5) ============
 // Marca o ALVARÁ ATUAL (que está aberto no modal) como revisado
