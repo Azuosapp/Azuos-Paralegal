@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.20 (Editar funcional)</title>
+<title>AZUOS Paralegal - Sistema v5.7.21 (Contador email)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4733,6 +4733,74 @@ function abrirBaselineDialog() {
   setTimeout(aplicarUsuariosOficiais, 5000);
   setTimeout(aplicarUsuariosOficiais, 12000);
   console.log('[v5.7.20] IDs numericos aplicados');
+})();
+
+
+/* ===== v5.7.21 — Fix cienciasDoUsuarioAtual + esconder badge v7.12 ===== */
+(function fixContadorNovas(){
+  function getEmailUsr(){
+    try {
+      if (state.sessao && state.sessao.email) return String(state.sessao.email).toLowerCase().trim();
+    } catch(e){}
+    return null;
+  }
+
+  function novaCienciasDoUsuarioAtual(){
+    try {
+      var email = getEmailUsr();
+      var nome = state.sessao && state.sessao.nome;
+      var id = state.sessao && state.sessao.id;
+      if (!state.ciencias_por_usuario) return {};
+      // Tentar em ordem: email, nome, id - merge tudo
+      var resultado = {};
+      [email, nome, id].forEach(function(k){
+        if (!k) return;
+        var arr = state.ciencias_por_usuario[k];
+        if (Array.isArray(arr)) {
+          arr.forEach(function(c){ resultado[c] = true; });
+        } else if (arr && typeof arr === 'object') {
+          Object.keys(arr).forEach(function(k2){ resultado[k2] = arr[k2]; });
+        }
+      });
+      return resultado;
+    } catch(e) { console.warn('[v5.7.21 cu]', e); return {}; }
+  }
+
+  function aplicarOverride(){
+    try {
+      if (typeof window.cienciasDoUsuarioAtual === 'function') {
+        var sig = window.cienciasDoUsuarioAtual.toString();
+        if (sig.indexOf('v5.7.21') < 0) {
+          window.cienciasDoUsuarioAtual = function v5_7_21(){ return novaCienciasDoUsuarioAtual(); };
+        }
+      }
+    } catch(e){}
+  }
+  setInterval(aplicarOverride, 2000);
+  setTimeout(aplicarOverride, 1500);
+  setTimeout(aplicarOverride, 4000);
+
+  // Esconder badge v7.12 (e similares) com seletor MUITO AMPLO
+  function esconderLegados(){
+    try {
+      var alvos = document.querySelectorAll('div, span, button, p, small, a, label');
+      alvos.forEach(function(el){
+        if (!el.children || el.children.length > 2) return;
+        var txt = (el.textContent || '').trim().toLowerCase();
+        if (!txt || txt.length > 80) return;
+        if (txt.indexOf('v7.12') >= 0 || txt.indexOf('baseline rapido') >= 0 || txt.indexOf('baseline rápido') >= 0 || txt === 'checklists') {
+          el.style.display = 'none';
+        }
+      });
+    } catch(e){}
+  }
+  setInterval(esconderLegados, 1500);
+  setTimeout(esconderLegados, 500);
+
+  // Forçar re-render apos override
+  setTimeout(function(){ try { if (typeof renderApp === 'function') renderApp(); } catch(e){} }, 6000);
+
+  console.log('[v5.7.21] ativo - cienciasDoUsuarioAtual por email + esconder legados');
 })();
 
 </script>
