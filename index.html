@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.22 (Sessao email)</title>
+<title>AZUOS Paralegal - Sistema v5.7.23 (Formato correto)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4917,6 +4917,93 @@ function abrirBaselineDialog() {
   }, 4000);
 
   console.log('[v5.7.22] hooks ativos - sessao.email + override ciencias');
+})();
+
+
+/* ===== v5.7.23 — Formato correto ciencia {key, ciencia_em} + renderNovasEmpresas ===== */
+(function fixFormatoCiencia(){
+  function getEmailUsr(){
+    try { return state.sessao && state.sessao.email && String(state.sessao.email).toLowerCase().trim(); } catch(e){ return null; }
+  }
+  function fazerChave(empresa){
+    if (!empresa) return null;
+    return (empresa.nome || '') + '|' + (empresa.cnpj || '');
+  }
+  function getEmpresaByChave(chave){
+    if (!chave) return null;
+    return (state.empresas || []).find(function(e){ return fazerChave(e) === chave; });
+  }
+  function novoDarCienciaEmpresa(chave_ou_id){
+    try {
+      var email = getEmailUsr();
+      if (!email) return;
+      var empresa = null;
+      if (typeof chave_ou_id === 'number') {
+        empresa = (state.empresas || []).find(function(e){ return e.id === chave_ou_id; });
+      } else if (typeof chave_ou_id === 'string' && chave_ou_id.indexOf('|') >= 0) {
+        empresa = getEmpresaByChave(chave_ou_id);
+      } else {
+        empresa = (state.empresas || []).find(function(e){ return e.id === chave_ou_id || e.cnpj === chave_ou_id || e.nome === chave_ou_id; });
+      }
+      if (!empresa) return;
+      var chave = fazerChave(empresa);
+      if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+      if (!Array.isArray(state.ciencias_por_usuario[email])) state.ciencias_por_usuario[email] = [];
+      var ja = state.ciencias_por_usuario[email].some(function(c){ return c && c.key === chave; });
+      if (!ja) {
+        state.ciencias_por_usuario[email].push({key: chave, ciencia_em: new Date().toISOString()});
+      }
+      try {
+        if (firebase && firebase.firestore) {
+          var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', email);
+          firebase.firestore().collection('azuos').doc('shared').update(fp, JSON.parse(JSON.stringify(state.ciencias_por_usuario[email]))).catch(function(e){});
+        }
+      } catch(e){}
+      try { if (typeof renderNovasEmpresas === 'function') renderNovasEmpresas(); } catch(e){}
+      try { if (typeof attachNovasEmpresas === 'function') attachNovasEmpresas(); } catch(e){}
+      try { if (typeof render === 'function') render(); } catch(e){}
+    } catch(e) { console.warn('[v5.7.23 dC]', e); }
+  }
+  function novoDarCienciaEmTodasNovas(){
+    try {
+      var email = getEmailUsr();
+      if (!email) return;
+      if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
+      if (!Array.isArray(state.ciencias_por_usuario[email])) state.ciencias_por_usuario[email] = [];
+      var chavesJa = new Set();
+      state.ciencias_por_usuario[email].forEach(function(c){ if (c && c.key) chavesJa.add(c.key); });
+      var agora = new Date().toISOString();
+      var novas = 0;
+      (state.empresas || []).forEach(function(emp){
+        var k = fazerChave(emp);
+        if (!chavesJa.has(k)) {
+          state.ciencias_por_usuario[email].push({key: k, ciencia_em: agora});
+          chavesJa.add(k);
+          novas++;
+        }
+      });
+      try {
+        var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', email);
+        firebase.firestore().collection('azuos').doc('shared').update(fp, JSON.parse(JSON.stringify(state.ciencias_por_usuario[email]))).catch(function(e){});
+      } catch(e){}
+      try { if (typeof renderNovasEmpresas === 'function') renderNovasEmpresas(); } catch(e){}
+      try { if (typeof attachNovasEmpresas === 'function') attachNovasEmpresas(); } catch(e){}
+      try { if (typeof render === 'function') render(); } catch(e){}
+      try { if (typeof showOk === 'function' && novas > 0) showOk('Ciência em ' + novas + ' empresa(s)'); } catch(e){}
+    } catch(e) { console.warn('[v5.7.23 dCN]', e); }
+  }
+  function aplicar(){
+    if (typeof window.darCienciaEmpresa === 'function' && window.darCienciaEmpresa.toString().indexOf('v5_7_23') < 0) {
+      window.darCienciaEmpresa = function v5_7_23_dC(x){ return novoDarCienciaEmpresa(x); };
+    }
+    if (typeof window.darCienciaEmTodasNovas === 'function' && window.darCienciaEmTodasNovas.toString().indexOf('v5_7_23') < 0) {
+      window.darCienciaEmTodasNovas = function v5_7_23_dCN(){ return novoDarCienciaEmTodasNovas(); };
+    }
+  }
+  setInterval(aplicar, 2000);
+  setTimeout(aplicar, 1500);
+  setTimeout(aplicar, 4000);
+  console.log('[v5.7.23] formato correto ciencia ativo');
 })();
 
 </script>
