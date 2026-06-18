@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.19 (Multi-user OK)</title>
+<title>AZUOS Paralegal - Sistema v5.7.20 (Editar funcional)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4684,6 +4684,55 @@ function abrirBaselineDialog() {
   setTimeout(checkVersion, 8000);
   setInterval(checkVersion, 60000); // a cada minuto
   console.log('[v5.7.19] version check ativo - SYSTEM_VERSION=' + SYSTEM_VERSION);
+})();
+
+
+/* ===== v5.7.20 — IDs numericos para botoes onclick funcionarem ===== */
+(function fixEditarBotao(){
+  var USUARIOS_OFICIAIS = [
+    { id: 1, email: 'contato@azuoscontabil.com.br',   nome: 'AZUOS Admin', cargo: 'Administrador' },
+    { id: 2, email: 'comercial@azuoscontabil.com.br', nome: 'Comercial',   cargo: 'Administrador' },
+    { id: 3, email: 'thierrymforte@gmail.com',        nome: 'Thierry',     cargo: 'Administrador' },
+    { id: 4, email: 'camila@azuoscontabil.com.br',    nome: 'Camila',      cargo: 'Paralegal' },
+    { id: 5, email: 'ketrin@azuoscontabil.com.br',    nome: 'Ketrin',      cargo: 'Paralegal' },
+    { id: 6, email: 'leyla@azuoscontabil.com.br',     nome: 'Leyla',       cargo: 'Paralegal' },
+    { id: 7, email: 'luanna@azuoscontabil.com.br',    nome: 'Luanna',      cargo: 'Paralegal' },
+    { id: 8, email: 'diogenes@azuoscontabil.com.br',  nome: 'Diogenes',    cargo: 'Paralegal' },
+  ].map(function(u){ return Object.assign(u, { foto: '', ativo: true }); });
+
+  function aplicarUsuariosOficiais(){
+    try {
+      if (!state || !Array.isArray(state.usuarios)) return;
+      var atuais = state.usuarios.map(function(u){return u && u.email && u.email.toLowerCase();}).filter(Boolean);
+      var oficiais = USUARIOS_OFICIAIS.map(function(u){return u.email.toLowerCase();});
+      var idsDiferentes = false;
+      // Comparar IDs também
+      state.usuarios.forEach(function(u){
+        var ofi = USUARIOS_OFICIAIS.find(function(o){ return o.email === u.email; });
+        if (ofi && u.id !== ofi.id) idsDiferentes = true;
+      });
+      var falta = oficiais.some(function(e){return atuais.indexOf(e)<0;});
+      var sobra = atuais.some(function(e){return oficiais.indexOf(e)<0;});
+      if (falta || sobra || idsDiferentes) {
+        state.usuarios = JSON.parse(JSON.stringify(USUARIOS_OFICIAIS));
+        try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+        // Salvar no Firestore
+        try {
+          if (firebase && firebase.firestore && state.sessao && state.sessao.email) {
+            firebase.firestore().collection('azuos').doc('shared').update({
+              usuarios: JSON.parse(JSON.stringify(USUARIOS_OFICIAIS)),
+              last_modified_by: state.sessao.email.toLowerCase().trim(),
+              last_modified_at: firebase.firestore.FieldValue.serverTimestamp(),
+            }).catch(function(e){ console.warn('[v5.7.20 fs]', e.message); });
+          }
+        } catch(e){}
+      }
+    } catch(e) { console.warn('[v5.7.20]', e); }
+  }
+  setInterval(aplicarUsuariosOficiais, 3000);
+  setTimeout(aplicarUsuariosOficiais, 5000);
+  setTimeout(aplicarUsuariosOficiais, 12000);
+  console.log('[v5.7.20] IDs numericos aplicados');
 })();
 
 </script>
