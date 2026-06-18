@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.25 (Botões fixos)</title>
+<title>AZUOS Paralegal - Sistema v5.7.26 (Ordenação)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5134,6 +5134,81 @@ function abrirBaselineDialog() {
   setTimeout(adicionarBotoes, 5000);
 
   console.log('[v5.7.25] botoes fixos no rodape ativo');
+})();
+
+
+/* ===== v5.7.26 — Headers clicáveis para ordenar Empresas ===== */
+(function ordenacaoEmpresas(){
+  if (!window._ordEmpresas) window._ordEmpresas = { coluna: null, asc: true };
+  function calcAndamento(emp){
+    try {
+      var alvaras = (state.alvaras || []).filter(function(a){ return a && (a.empresa_id === emp.id || a.cnpj === emp.cnpj); });
+      if (alvaras.length === 0) return 0;
+      var concl = alvaras.filter(function(a){ var s = (a.status||'').toLowerCase(); return s.indexOf('conclu') >= 0 || s.indexOf('formaliz') >= 0; }).length;
+      return Math.round((concl / alvaras.length) * 100);
+    } catch(e){ return 0; }
+  }
+  function ordenar(coluna){
+    if (!Array.isArray(state.empresas)) return;
+    if (window._ordEmpresas.coluna === coluna) window._ordEmpresas.asc = !window._ordEmpresas.asc;
+    else { window._ordEmpresas.coluna = coluna; window._ordEmpresas.asc = true; }
+    var asc = window._ordEmpresas.asc ? 1 : -1;
+    state.empresas.sort(function(a,b){
+      var va, vb;
+      if (coluna === 'nome') { va = (a.nome||'').toLowerCase(); vb = (b.nome||'').toLowerCase(); }
+      else if (coluna === 'andamento') { va = calcAndamento(a); vb = calcAndamento(b); }
+      else if (coluna === 'cnpj') { va = (a.cnpj||''); vb = (b.cnpj||''); }
+      else if (coluna === 'cidade') { va = (a.cidade||'').toLowerCase(); vb = (b.cidade||'').toLowerCase(); }
+      else if (coluna === 'responsavel') { va = (a.responsavel||'').toLowerCase(); vb = (b.responsavel||'').toLowerCase(); }
+      else return 0;
+      if (va < vb) return -1 * asc;
+      if (va > vb) return 1 * asc;
+      return 0;
+    });
+    try { if (typeof renderEmpresas === 'function') renderEmpresas(); } catch(e){}
+    try { if (typeof render === 'function') render(); } catch(e){}
+  }
+  window._ordenarEmpresas = ordenar;
+  function tornarHeadersClicaveis(){
+    try {
+      var thList = document.querySelectorAll('table th');
+      if (thList.length === 0) return;
+      thList.forEach(function(th){
+        if (th.dataset.ordAplicado) return;
+        var txt = (th.textContent||'').trim().toLowerCase();
+        var coluna = null;
+        if (txt === 'empresa') coluna = 'nome';
+        else if (txt === 'andamento') coluna = 'andamento';
+        else if (txt === 'cnpj') coluna = 'cnpj';
+        else if (txt === 'cidade') coluna = 'cidade';
+        else if (txt === 'responsável' || txt === 'responsavel') coluna = 'responsavel';
+        if (!coluna) return;
+        th.dataset.ordAplicado = '1';
+        th.style.cursor = 'pointer';
+        th.style.userSelect = 'none';
+        th.title = 'Clique para ordenar';
+        var span = document.createElement('span');
+        span.style.marginLeft = '4px';
+        span.style.opacity = '0.6';
+        span.style.fontSize = '11px';
+        span.dataset.ordIndicator = coluna;
+        span.textContent = '⇅';
+        th.appendChild(span);
+        th.addEventListener('click', function(){
+          ordenar(coluna);
+          document.querySelectorAll('[data-ord-indicator]').forEach(function(s){
+            if (s.dataset.ordIndicator === coluna) { s.textContent = window._ordEmpresas.asc ? '▲' : '▼'; s.style.opacity = '1'; }
+            else { s.textContent = '⇅'; s.style.opacity = '0.4'; }
+          });
+        });
+      });
+    } catch(e){}
+  }
+  var observer = new MutationObserver(function(){ tornarHeadersClicaveis(); });
+  observer.observe(document.body, { childList: true, subtree: true });
+  setTimeout(tornarHeadersClicaveis, 1000);
+  setTimeout(tornarHeadersClicaveis, 3000);
+  console.log('[v5.7.26] ordenacao por colunas ativa');
 })();
 
 </script>
