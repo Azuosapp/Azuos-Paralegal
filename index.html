@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.24 (Anti-flicker)</title>
+<title>AZUOS Paralegal - Sistema v5.7.25 (Botões fixos)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5058,6 +5058,82 @@ function abrirBaselineDialog() {
   setTimeout(esconderLegadosUmaVez, 2000);
 
   console.log('[v5.7.24] anti-flicker ativo (observer-based)');
+})();
+
+
+/* ===== v5.7.25 — Fixar botoes no rodape da sidebar em todas as abas ===== */
+(function fixarBotoesPatch(){
+  // CSS pra garantir que footer da sidebar fica preso embaixo
+  var css = `
+    aside.bg-gradient-azuos > div.border-t {
+      margin-top: auto !important;
+      position: sticky !important;
+      bottom: 0 !important;
+      background: rgba(0,0,0,0.15);
+      backdrop-filter: blur(8px);
+    }
+    #btn-resetar-cache, #btn-trocar-senha, #logout-btn {
+      display: flex !important;
+    }
+  `;
+  var style = document.createElement('style');
+  style.id = 'v5_7_25_style';
+  style.textContent = css;
+  document.head.appendChild(style);
+
+  function adicionarBotoes(){
+    try {
+      var btnSair = document.getElementById('logout-btn');
+      if (!btnSair) return;
+      var container = btnSair.parentElement;
+      if (!container) return;
+
+      // Resetar cache
+      if (!document.getElementById('btn-resetar-cache') && typeof window.resetarCacheLocal === 'function') {
+        var b1 = document.createElement('button');
+        b1.id = 'btn-resetar-cache';
+        b1.innerHTML = '🔄 Resetar cache';
+        b1.className = btnSair.className;
+        b1.onclick = function(e){ e.preventDefault(); window.resetarCacheLocal(); };
+        container.insertBefore(b1, btnSair);
+      }
+      // Alterar senha
+      if (!document.getElementById('btn-trocar-senha') && typeof window.abrirModalSenha === 'function') {
+        var b2 = document.createElement('button');
+        b2.id = 'btn-trocar-senha';
+        b2.innerHTML = '🔒 Alterar senha';
+        b2.className = btnSair.className;
+        b2.onclick = function(e){ e.preventDefault(); window.abrirModalSenha(); };
+        container.insertBefore(b2, btnSair);
+      }
+    } catch(e){}
+  }
+
+  // Observer pra re-injetar quando DOM muda (ex: troca de aba)
+  var observer = new MutationObserver(function(){
+    adicionarBotoes();
+  });
+
+  function ativar(){
+    var aside = document.querySelector('aside.bg-gradient-azuos');
+    if (aside) {
+      observer.observe(aside, { childList: true, subtree: true });
+    } else {
+      // Fallback: observar todo body
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+    adicionarBotoes();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ativar);
+  } else {
+    ativar();
+  }
+  setTimeout(adicionarBotoes, 2000);
+  setTimeout(adicionarBotoes, 5000);
+
+  console.log('[v5.7.25] botoes fixos no rodape ativo');
 })();
 
 </script>
