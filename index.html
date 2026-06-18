@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.23 (Formato correto)</title>
+<title>AZUOS Paralegal - Sistema v5.7.24 (Anti-flicker)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5004,6 +5004,60 @@ function abrirBaselineDialog() {
   setTimeout(aplicar, 1500);
   setTimeout(aplicar, 4000);
   console.log('[v5.7.23] formato correto ciencia ativo');
+})();
+
+
+/* ===== v5.7.24 — Esconder legados via CSS + aplicar uma vez ===== */
+(function antiFlickerPatch(){
+  // CSS pra esconder badges legados (sem JS)
+  var css = `
+    /* v7.12, baseline rapido badges */
+    .version-badge:has-text("v7.12"), .badge:has-text("v7.12") { display: none !important; }
+  `;
+  var style = document.createElement('style');
+  style.id = 'v5_7_24_style';
+  style.textContent = css;
+  document.head.appendChild(style);
+
+  // Esconder via JS UMA VEZ no boot (em DOMContentLoaded ou já carregado)
+  var esconderFeito = false;
+  function esconderLegadosUmaVez(){
+    if (esconderFeito) return;
+    try {
+      document.querySelectorAll('div, span, button, p, small, a, label').forEach(function(el){
+        if (!el.children || el.children.length > 2) return;
+        var txt = (el.textContent || '').trim().toLowerCase();
+        if (!txt || txt.length > 80) return;
+        if (txt.indexOf('v7.12') >= 0 || txt.indexOf('baseline rapido') >= 0 || txt.indexOf('baseline rápido') >= 0) {
+          el.style.display = 'none';
+        }
+      });
+      esconderFeito = true;
+    } catch(e){}
+  }
+
+  // MutationObserver: detecta novos elementos (não usa setInterval)
+  var observer = new MutationObserver(function(mutations){
+    var temNovos = false;
+    mutations.forEach(function(m){
+      if (m.addedNodes && m.addedNodes.length > 0) temNovos = true;
+    });
+    if (temNovos) {
+      esconderFeito = false;
+      esconderLegadosUmaVez();
+    }
+  });
+  observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+
+  // Esconder agora
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', esconderLegadosUmaVez);
+  } else {
+    esconderLegadosUmaVez();
+  }
+  setTimeout(esconderLegadosUmaVez, 2000);
+
+  console.log('[v5.7.24] anti-flicker ativo (observer-based)');
 })();
 
 </script>
