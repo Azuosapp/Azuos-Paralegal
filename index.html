@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.48 (Visual original + drill)</title>
+<title>AZUOS Paralegal - Sistema v5.7.49 (Botao flutuante TV)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6037,6 +6037,34 @@ function abrir(){var ja=document.getElementById('dashboard-tv-modal'); if(ja) ja
 window.abrirDashboardTV=abrir;
 console.log('[v5.7.48] OK');
 }catch(e){console.warn('[v5.7.48]',e);}
+})();
+
+
+/* ===== v5.7.49 — Botão flutuante Dashboard TV ===== */
+(function btnFlutuante(){
+try{
+function criar(){
+  if(document.getElementById('btn-tv-flutuante')) return;
+  if(!window.abrirDashboardTV) return;
+  var b=document.createElement('button');
+  b.id='btn-tv-flutuante';
+  b.innerHTML='📺 Dashboard TV';
+  b.style.cssText='position:fixed;bottom:20px;right:20px;z-index:9999;background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:white;border:none;padding:14px 24px;border-radius:12px;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(59,130,246,0.4);user-select:none;transition:transform 0.15s;';
+  b.onmouseover=function(){this.style.transform='scale(1.05)';};
+  b.onmouseout=function(){this.style.transform='scale(1)';};
+  b.onclick=function(){if(window.abrirDashboardTV) window.abrirDashboardTV();};
+  document.body.appendChild(b);
+}
+// Tenta criar a cada 2s até funcionar
+var iv=setInterval(function(){
+  if(document.body && window.abrirDashboardTV){
+    criar();
+    if(document.getElementById('btn-tv-flutuante')) clearInterval(iv);
+  }
+},2000);
+setTimeout(function(){clearInterval(iv);},60000);
+console.log('[v5.7.49] btn flutuante OK');
+}catch(e){console.warn('[v5.7.49]',e);}
 })();
 
 </script>
