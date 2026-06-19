@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.53 (Hook direto validado)</title>
+<title>AZUOS Paralegal - Sistema v5.7.54 (Hook + sanitiza)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6125,62 +6125,76 @@ console.log('[v5.7.50] OK');
 })();
 
 
-/* ===== v5.7.53 — Hook DIRETO validado ===== */
-window._CAMPOS_HOOK = ['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
-window._sigAlv = function(a){var o={};window._CAMPOS_HOOK.forEach(function(c){o[c]=a[c]===undefined||a[c]===null?'':String(a[c]);});return JSON.stringify(o);};
-window._emailLogado = function(){return (state.sessao&&state.sessao.email)||(firebase.auth().currentUser&&firebase.auth().currentUser.email)||(state.sessao&&state.sessao.nome)||'desconhecido';};
-window._cacheSigAlvs = null;
+/* ===== v5.7.54 — Hook validado: sanitiza undefined + so envia edicoes_alvaras ===== */
+window._CAMPOS_HOOK_54 = ['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
+window._sigAlv54 = function(a){var o={};window._CAMPOS_HOOK_54.forEach(function(c){o[c]=a[c]==null?'':String(a[c]);});return JSON.stringify(o);};
+window._emailLogado54 = function(){return (state.sessao&&state.sessao.email)||(firebase.auth().currentUser&&firebase.auth().currentUser.email)||(state.sessao&&state.sessao.nome)||'desconhecido';};
+window._sanitizar54 = function(obj){
+  if(obj===undefined||obj===null) return '';
+  if(typeof obj!=='object') return obj;
+  if(Array.isArray(obj)) return obj.map(window._sanitizar54);
+  var o={};
+  for(var k in obj){
+    var v=obj[k];
+    if(v===undefined) o[k]='';
+    else if(typeof v==='object'&&v!==null) o[k]=window._sanitizar54(v);
+    else o[k]=v;
+  }
+  return o;
+};
+window._cacheSigAlvs54 = null;
 
-window._initHookEdit = function(){
+window._initHookEdit54 = function(){
   if(!state||!state.alvaras||state.alvaras.length===0) return false;
-  if(window._cacheSigAlvs) return false;
-  window._cacheSigAlvs = {};
-  state.alvaras.forEach(function(a){if(a&&a.id) window._cacheSigAlvs[a.id]=window._sigAlv(a);});
-  console.log('[v5.7.53] Snapshot inicial:',Object.keys(window._cacheSigAlvs).length,'alvaras');
+  if(window._cacheSigAlvs54) return false;
+  window._cacheSigAlvs54 = {};
+  state.alvaras.forEach(function(a){if(a&&a.id) window._cacheSigAlvs54[a.id]=window._sigAlv54(a);});
+  console.log('[v5.7.54] snapshot inicial:',Object.keys(window._cacheSigAlvs54).length,'alvaras');
   return true;
 };
 
-window._detectarESalvarEdicoes = async function(){
+window._detectarESalvarEdicoes54 = async function(){
   try{
-    if(!window._cacheSigAlvs||!state||!state.alvaras) return;
-    var email = window._emailLogado();
-    var agora = new Date().toISOString();
-    var mudancas = [];
+    if(!window._cacheSigAlvs54||!state||!state.alvaras) return;
+    var email=window._emailLogado54();
+    var agora=new Date().toISOString();
+    var mudancas=[];
     state.alvaras.forEach(function(a){
       if(!a||!a.id) return;
-      var sNow = window._sigAlv(a);
-      var sAnt = window._cacheSigAlvs[a.id];
-      if(sAnt!==undefined && sAnt!==sNow){
-        window._cacheSigAlvs[a.id] = sNow;
-        if(!state.edicoes_alvaras) state.edicoes_alvaras = {};
-        state.edicoes_alvaras[a.id] = Object.assign({}, state.edicoes_alvaras[a.id]||{}, {
-          _editado_por: email, _editado_em: agora, _editado_manualmente: true,
-          empresa: a.empresa, empresa_id: a.empresa_id, tipo: a.tipo,
-          status: a.status, observacao: a.observacao, proxima_atualizacao: a.proxima_atualizacao,
-          responsavel: a.responsavel, cidade: a.cidade, vencimento: a.vencimento
+      var sNow=window._sigAlv54(a);
+      var sAnt=window._cacheSigAlvs54[a.id];
+      if(sAnt!==undefined&&sAnt!==sNow){
+        window._cacheSigAlvs54[a.id]=sNow;
+        if(!state.edicoes_alvaras) state.edicoes_alvaras={};
+        state.edicoes_alvaras[a.id]=Object.assign({},state.edicoes_alvaras[a.id]||{},{
+          _editado_por:email,_editado_em:agora,_editado_manualmente:true,
+          empresa:a.empresa||'',empresa_id:a.empresa_id||0,tipo:a.tipo||'',
+          status:a.status||'',observacao:a.observacao||'',proxima_atualizacao:a.proxima_atualizacao||'',
+          responsavel:a.responsavel||'',cidade:a.cidade||'',vencimento:a.vencimento||''
         });
         mudancas.push(a.id);
       }
     });
     if(mudancas.length>0){
-      console.log('[v5.7.53] '+mudancas.length+' edicoes capturadas por '+email+'. Salvando Firestore...');
-      var upd = {edicoes_alvaras: state.edicoes_alvaras, alvaras: state.alvaras};
-      await firebase.firestore().collection('azuos').doc('shared').update(upd);
-      console.log('[v5.7.53] SALVO no Firestore!');
+      console.log('[v5.7.54] '+mudancas.length+' edicoes capturadas por '+email);
+      var sanit = window._sanitizar54(state.edicoes_alvaras);
+      await firebase.firestore().collection('azuos').doc('shared').update({
+        edicoes_alvaras: sanit
+      });
+      console.log('[v5.7.54] SALVO no Firestore!',mudancas.length,'mudancas');
     }
-  }catch(e){console.error('[v5.7.53 erro]',e);}
+  }catch(e){console.error('[v5.7.54 erro]',e.code,e.message);}
 };
 
-// Boot: espera state carregar e inicia
-var _bootIv = setInterval(function(){
-  if(window._initHookEdit()){
-    clearInterval(_bootIv);
-    // Roda detector a cada 4s
-    setInterval(window._detectarESalvarEdicoes, 4000);
-    console.log('[v5.7.53] HOOK ATIVO - detector rodando a cada 4s');
+// Boot
+var _bootIv54=setInterval(function(){
+  if(window._initHookEdit54()){
+    clearInterval(_bootIv54);
+    setInterval(window._detectarESalvarEdicoes54, 4000);
+    console.log('[v5.7.54] HOOK ATIVO');
   }
-}, 1000);
-setTimeout(function(){clearInterval(_bootIv);}, 120000);
+},1000);
+setTimeout(function(){clearInterval(_bootIv54);},120000);
 
 </script>
 </body>
