@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.50 (Andamento crescente)</title>
+<title>AZUOS Paralegal - Sistema v5.7.51 (Hook universal alvara)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6122,6 +6122,75 @@ document.addEventListener('click', function(e){
 }, true);
 console.log('[v5.7.50] OK');
 }catch(e){console.warn('[v5.7.50]',e);}
+})();
+
+
+/* ===== v5.7.51 — Hook universal: captura TODA mudanca em alvara ===== */
+(function hook51(){
+try{
+var CAMPOS_RASTREADOS=['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
+function snap(alv){var o={};CAMPOS_RASTREADOS.forEach(function(c){o[c]=alv[c]||'';});return JSON.stringify(o);}
+function getEmail(){
+  return (state.sessao&&state.sessao.email) ||
+         (firebase&&firebase.auth&&firebase.auth().currentUser&&firebase.auth().currentUser.email) ||
+         (state.sessao&&state.sessao.nome) ||
+         'desconhecido';
+}
+var snapshotsAnteriores={};
+function inicializar(){
+  if(!state||!state.alvaras) return;
+  state.alvaras.forEach(function(a){snapshotsAnteriores[a.id]=snap(a);});
+  console.log('[v5.7.51] snapshot inicial: '+Object.keys(snapshotsAnteriores).length+' alvaras');
+}
+function detectarMudancas(){
+  if(!state||!state.alvaras) return;
+  var email=getEmail();
+  var agora=new Date().toISOString();
+  var detectadas=0;
+  state.alvaras.forEach(function(a){
+    var atual=snap(a);
+    var anterior=snapshotsAnteriores[a.id];
+    if(anterior!==undefined && anterior!==atual){
+      // Mudança detectada!
+      if(!state.edicoes_alvaras) state.edicoes_alvaras={};
+      var existente=state.edicoes_alvaras[a.id]||{};
+      state.edicoes_alvaras[a.id]={
+        ...existente,
+        _editado_por:email,
+        _editado_em:agora,
+        _editado_manualmente:true,
+        empresa:a.empresa,
+        empresa_id:a.empresa_id,
+        tipo:a.tipo,
+        status:a.status,
+        observacao:a.observacao,
+        proxima_atualizacao:a.proxima_atualizacao,
+        responsavel:a.responsavel,
+        cidade:a.cidade,
+        vencimento:a.vencimento
+      };
+      detectadas++;
+    }
+    snapshotsAnteriores[a.id]=atual;
+  });
+  if(detectadas>0){
+    console.log('[v5.7.51] '+detectadas+' mudancas registradas em edicoes_alvaras');
+    // Salva no Firestore se função existe
+    if(window._fsWriteDebounced) try{window._fsWriteDebounced();}catch(e){}
+  }
+}
+// Esperar state.alvaras carregar
+var ivInit=setInterval(function(){
+  if(state&&state.alvaras&&state.alvaras.length>0){
+    inicializar();
+    clearInterval(ivInit);
+    // Inicia monitor
+    setInterval(detectarMudancas, 3000);
+  }
+},1000);
+setTimeout(function(){clearInterval(ivInit);},60000);
+console.log('[v5.7.51] hook universal armado');
+}catch(e){console.warn('[v5.7.51]',e);}
 })();
 
 </script>
