@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.52 (Auto-recuperacao)</title>
+<title>AZUOS Paralegal - Sistema v5.7.53 (Hook direto validado)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6125,195 +6125,62 @@ console.log('[v5.7.50] OK');
 })();
 
 
-/* ===== v5.7.51 — Hook universal: captura TODA mudanca em alvara ===== */
-(function hook51(){
-try{
-var CAMPOS_RASTREADOS=['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
-function snap(alv){var o={};CAMPOS_RASTREADOS.forEach(function(c){o[c]=alv[c]||'';});return JSON.stringify(o);}
-function getEmail(){
-  return (state.sessao&&state.sessao.email) ||
-         (firebase&&firebase.auth&&firebase.auth().currentUser&&firebase.auth().currentUser.email) ||
-         (state.sessao&&state.sessao.nome) ||
-         'desconhecido';
-}
-var snapshotsAnteriores={};
-function inicializar(){
-  if(!state||!state.alvaras) return;
-  state.alvaras.forEach(function(a){snapshotsAnteriores[a.id]=snap(a);});
-  console.log('[v5.7.51] snapshot inicial: '+Object.keys(snapshotsAnteriores).length+' alvaras');
-}
-function detectarMudancas(){
-  if(!state||!state.alvaras) return;
-  var email=getEmail();
-  var agora=new Date().toISOString();
-  var detectadas=0;
-  state.alvaras.forEach(function(a){
-    var atual=snap(a);
-    var anterior=snapshotsAnteriores[a.id];
-    if(anterior!==undefined && anterior!==atual){
-      // Mudança detectada!
-      if(!state.edicoes_alvaras) state.edicoes_alvaras={};
-      var existente=state.edicoes_alvaras[a.id]||{};
-      state.edicoes_alvaras[a.id]={
-        ...existente,
-        _editado_por:email,
-        _editado_em:agora,
-        _editado_manualmente:true,
-        empresa:a.empresa,
-        empresa_id:a.empresa_id,
-        tipo:a.tipo,
-        status:a.status,
-        observacao:a.observacao,
-        proxima_atualizacao:a.proxima_atualizacao,
-        responsavel:a.responsavel,
-        cidade:a.cidade,
-        vencimento:a.vencimento
-      };
-      detectadas++;
-    }
-    snapshotsAnteriores[a.id]=atual;
-  });
-  if(detectadas>0){
-    console.log('[v5.7.51] '+detectadas+' mudancas registradas em edicoes_alvaras');
-    // Salva no Firestore se função existe
-    if(window._fsWriteDebounced) try{window._fsWriteDebounced();}catch(e){}
-  }
-}
-// Esperar state.alvaras carregar
-var ivInit=setInterval(function(){
-  if(state&&state.alvaras&&state.alvaras.length>0){
-    inicializar();
-    clearInterval(ivInit);
-    // Inicia monitor
-    setInterval(detectarMudancas, 3000);
-  }
-},1000);
-setTimeout(function(){clearInterval(ivInit);},60000);
-console.log('[v5.7.51] hook universal armado');
-}catch(e){console.warn('[v5.7.51]',e);}
-})();
+/* ===== v5.7.53 — Hook DIRETO validado ===== */
+window._CAMPOS_HOOK = ['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
+window._sigAlv = function(a){var o={};window._CAMPOS_HOOK.forEach(function(c){o[c]=a[c]===undefined||a[c]===null?'':String(a[c]);});return JSON.stringify(o);};
+window._emailLogado = function(){return (state.sessao&&state.sessao.email)||(firebase.auth().currentUser&&firebase.auth().currentUser.email)||(state.sessao&&state.sessao.nome)||'desconhecido';};
+window._cacheSigAlvs = null;
 
+window._initHookEdit = function(){
+  if(!state||!state.alvaras||state.alvaras.length===0) return false;
+  if(window._cacheSigAlvs) return false;
+  window._cacheSigAlvs = {};
+  state.alvaras.forEach(function(a){if(a&&a.id) window._cacheSigAlvs[a.id]=window._sigAlv(a);});
+  console.log('[v5.7.53] Snapshot inicial:',Object.keys(window._cacheSigAlvs).length,'alvaras');
+  return true;
+};
 
-/* ===== v5.7.52 — Auto-recuperacao + hook universal robusto ===== */
-(function recup52(){
-try{
-var CAMPOS=['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade','anexos','conversas'];
-function sig(a){var o={};CAMPOS.forEach(function(c){o[c]=a[c]===undefined||a[c]===null?'':typeof a[c]==='object'?JSON.stringify(a[c]):String(a[c]);});return JSON.stringify(o);}
-function getEmail(){return (state.sessao&&state.sessao.email)||(firebase.auth().currentUser&&firebase.auth().currentUser.email)||(state.sessao&&state.sessao.nome)||'desconhecido';}
-
-// MAIS IMPORTANTE: ao boot, compara state.alvaras LOCAL com Firestore.
-// Se LOCAL tem coisa que FIRESTORE nao tem -> capturar como edicao + salvar
-async function autoRecuperar(){
+window._detectarESalvarEdicoes = async function(){
   try{
-    if(!state||!state.alvaras||state.alvaras.length===0) return;
-    if(!firebase||!firebase.firestore) return;
-    var db=firebase.firestore();
-    var email=getEmail();
-    console.log('[v5.7.52] iniciando auto-recuperacao para',email,'com',state.alvaras.length,'alvaras locais');
-
-    // Pega versao server-side
-    var snap=await db.collection('azuos').doc('shared').get({source:'server'});
-    var srv=snap.data()||{};
-    var srvAlvs=srv.alvaras||[];
-    var srvMap={};
-    srvAlvs.forEach(function(a){if(a&&a.id) srvMap[a.id]=a;});
-
-    var divergencias=[];
-    state.alvaras.forEach(function(local){
-      if(!local||!local.id) return;
-      var server=srvMap[local.id];
-      if(!server){divergencias.push({alv:local,motivo:'novo'});return;}
-      if(sig(local)!==sig(server)){divergencias.push({alv:local,motivo:'diff'});}
-    });
-
-    if(divergencias.length===0){console.log('[v5.7.52] sem divergencias');return;}
-    console.warn('[v5.7.52] DETECTADAS',divergencias.length,'edicoes locais nao sincronizadas. Recuperando...');
-
-    var agora=new Date().toISOString();
-    var updates={};
-    divergencias.forEach(function(d){
-      var a=d.alv;
-      // Registra edicao com email do paralegal e timestamp de agora (preserva o trabalho)
-      updates['edicoes_alvaras.'+a.id]={
-        _editado_por:email,
-        _editado_em:agora,
-        _editado_manualmente:true,
-        _auto_recuperado:true,
-        _motivo:d.motivo,
-        empresa:a.empresa||'',
-        empresa_id:a.empresa_id||0,
-        tipo:a.tipo||'',
-        status:a.status||'',
-        observacao:a.observacao||'',
-        proxima_atualizacao:a.proxima_atualizacao||'',
-        responsavel:a.responsavel||'',
-        cidade:a.cidade||'',
-        vencimento:a.vencimento||''
-      };
-    });
-    // Tambem atualiza alvaras com versao local (preserva os campos editados)
-    updates['alvaras']=state.alvaras;
-
-    await db.collection('azuos').doc('shared').update(updates);
-    console.warn('[v5.7.52] RECUPERADAS',divergencias.length,'edicoes! Atribuidas a',email);
-    if(window._azuosTV) window._azuosTV.edicoes=[]; // forca refresh
-  }catch(e){console.error('[v5.7.52 erro]',e);}
-}
-
-// HOOK ATIVO: a cada save no alvara (any change), garante registro
-function hookAtivo(){
-  setInterval(function(){
-    try{
-      if(!state||!state.alvaras||!state.edicoes_alvaras) return;
-      var email=getEmail();
-      var agora=new Date().toISOString();
-      var atualizados=0;
-      state.alvaras.forEach(function(a){
-        if(!a||!a.id) return;
-        if(!window._sigCache) window._sigCache={};
-        var sigAtual=sig(a);
-        var sigAnt=window._sigCache[a.id];
-        if(sigAnt===undefined){window._sigCache[a.id]=sigAtual;return;}
-        if(sigAnt!==sigAtual){
-          window._sigCache[a.id]=sigAtual;
-          state.edicoes_alvaras[a.id]={
-            ...state.edicoes_alvaras[a.id],
-            _editado_por:email,
-            _editado_em:agora,
-            _editado_manualmente:true,
-            empresa:a.empresa,empresa_id:a.empresa_id,tipo:a.tipo,
-            status:a.status,observacao:a.observacao,proxima_atualizacao:a.proxima_atualizacao,
-            responsavel:a.responsavel,cidade:a.cidade,vencimento:a.vencimento
-          };
-          atualizados++;
-        }
-      });
-      if(atualizados>0){
-        console.log('[v5.7.52] '+atualizados+' edicoes capturadas. Salvando...');
-        // Forca write
-        if(firebase&&firebase.firestore){
-          firebase.firestore().collection('azuos').doc('shared').update({
-            edicoes_alvaras:state.edicoes_alvaras,
-            alvaras:state.alvaras
-          }).catch(function(e){console.error('[v5.7.52 write erro]',e);});
-        }
+    if(!window._cacheSigAlvs||!state||!state.alvaras) return;
+    var email = window._emailLogado();
+    var agora = new Date().toISOString();
+    var mudancas = [];
+    state.alvaras.forEach(function(a){
+      if(!a||!a.id) return;
+      var sNow = window._sigAlv(a);
+      var sAnt = window._cacheSigAlvs[a.id];
+      if(sAnt!==undefined && sAnt!==sNow){
+        window._cacheSigAlvs[a.id] = sNow;
+        if(!state.edicoes_alvaras) state.edicoes_alvaras = {};
+        state.edicoes_alvaras[a.id] = Object.assign({}, state.edicoes_alvaras[a.id]||{}, {
+          _editado_por: email, _editado_em: agora, _editado_manualmente: true,
+          empresa: a.empresa, empresa_id: a.empresa_id, tipo: a.tipo,
+          status: a.status, observacao: a.observacao, proxima_atualizacao: a.proxima_atualizacao,
+          responsavel: a.responsavel, cidade: a.cidade, vencimento: a.vencimento
+        });
+        mudancas.push(a.id);
       }
-    }catch(e){console.warn('[v5.7.52 hook]',e);}
-  },4000);
-}
+    });
+    if(mudancas.length>0){
+      console.log('[v5.7.53] '+mudancas.length+' edicoes capturadas por '+email+'. Salvando Firestore...');
+      var upd = {edicoes_alvaras: state.edicoes_alvaras, alvaras: state.alvaras};
+      await firebase.firestore().collection('azuos').doc('shared').update(upd);
+      console.log('[v5.7.53] SALVO no Firestore!');
+    }
+  }catch(e){console.error('[v5.7.53 erro]',e);}
+};
 
-// Espera state carregar
-var ivW=setInterval(function(){
-  if(state&&state.alvaras&&state.alvaras.length>0&&firebase&&firebase.firestore){
-    clearInterval(ivW);
-    setTimeout(autoRecuperar,3000); // 3s pra estabilizar
-    setTimeout(hookAtivo,8000); // 8s depois ativa hook
+// Boot: espera state carregar e inicia
+var _bootIv = setInterval(function(){
+  if(window._initHookEdit()){
+    clearInterval(_bootIv);
+    // Roda detector a cada 4s
+    setInterval(window._detectarESalvarEdicoes, 4000);
+    console.log('[v5.7.53] HOOK ATIVO - detector rodando a cada 4s');
   }
-},1000);
-setTimeout(function(){clearInterval(ivW);},60000);
-console.log('[v5.7.52] armado');
-}catch(e){console.warn('[v5.7.52]',e);}
-})();
+}, 1000);
+setTimeout(function(){clearInterval(_bootIv);}, 120000);
 
 </script>
 </body>
