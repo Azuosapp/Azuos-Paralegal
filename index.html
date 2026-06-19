@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.37 (+ Isento)</title>
+<title>AZUOS Paralegal - Sistema v5.7.38 (Reorder fix)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5858,6 +5858,130 @@ console.log('[v5.7.28] features complementares carregadas');
     };
     console.log('[v5.7.37] isento conta');
   } catch(e){}
+})();
+
+
+/* ===== v5.7.38 — Reorder robusto com matching exato ===== */
+(function reorderRobusto(){
+  try {
+    if (!window._ordEmpresas) window._ordEmpresas = { coluna: null, asc: true };
+
+    function calcAnd(emp){
+      try {
+        if (!emp || emp.id === undefined) return 0;
+        var alvaras = (state.alvaras || []).filter(function(a){ return a && a.empresa_id === emp.id; });
+        if (alvaras.length === 0) return 0;
+        var validos = alvaras.filter(function(a){ return ((a.status||'').trim().length > 0); });
+        if (validos.length === 0) return 0;
+        var concl = validos.filter(function(a){
+          var s = (a.status||'').toLowerCase();
+          return s.indexOf('conclu') >= 0 || s.indexOf('formaliz') >= 0 || s.indexOf('arquivado') >= 0 || s.indexOf('sem obrigat') >= 0 || s.indexOf('isento') >= 0;
+        }).length;
+        return Math.round((concl / validos.length) * 100);
+      } catch(e){ return 0; }
+    }
+    window._calcAndamentoCorreto = calcAnd;
+
+    function getValor(emp, coluna){
+      if (coluna === 'nome') return (emp.nome||'').toLowerCase();
+      if (coluna === 'andamento') return calcAnd(emp);
+      if (coluna === 'cnpj') return (emp.cnpj||'');
+      if (coluna === 'cidade') return (emp.cidade||'').toLowerCase();
+      if (coluna === 'responsavel') return (emp.responsavel||'').toLowerCase();
+      return '';
+    }
+
+    // Match exato: tenta encontrar empresa pela primeira coluna E segunda coluna (CNPJ) pra unicidade
+    function acharEmpresaPorLinha(tr){
+      try {
+        var tds = tr.querySelectorAll('td');
+        if (tds.length < 2) return null;
+        var nomeVis = (tds[0].textContent||'').trim();
+        var cnpjVis = (tds[1].textContent||'').trim();
+        // Primeira tentativa: por CNPJ (único)
+        if (cnpjVis && cnpjVis !== '-') {
+          var byCnpj = state.empresas.find(function(e){ return (e.cnpj||'').trim() === cnpjVis; });
+          if (byCnpj) return byCnpj;
+        }
+        // Segunda: nome exato
+        var byNome = state.empresas.find(function(e){ return (e.nome||'').trim() === nomeVis; });
+        if (byNome) return byNome;
+        // Terceira: nome começa com (truncado com ...)
+        var nomeBase = nomeVis.replace(/\.\.\.$/, '').trim();
+        if (nomeBase.length > 8) {
+          var byPrefix = state.empresas.find(function(e){ return (e.nome||'').trim().indexOf(nomeBase) === 0; });
+          if (byPrefix) return byPrefix;
+        }
+        return null;
+      } catch(e){ return null; }
+    }
+
+    function reordenar(){
+      try {
+        if (!window._ordEmpresas.coluna) return;
+        var coluna = window._ordEmpresas.coluna;
+        var asc = window._ordEmpresas.asc ? 1 : -1;
+        var tbody = document.querySelector('table tbody');
+        if (!tbody) return;
+        var linhas = Array.from(tbody.querySelectorAll('tr'));
+        if (linhas.length === 0) return;
+
+        var pares = linhas.map(function(tr){ return { tr: tr, emp: acharEmpresaPorLinha(tr) }; });
+
+        // Os que não acharam empresa vão pro final
+        pares.sort(function(a, b){
+          if (!a.emp && !b.emp) return 0;
+          if (!a.emp) return 1;
+          if (!b.emp) return -1;
+          var va = getValor(a.emp, coluna);
+          var vb = getValor(b.emp, coluna);
+          if (va < vb) return -1 * asc;
+          if (va > vb) return 1 * asc;
+          return 0;
+        });
+
+        pares.forEach(function(p){ tbody.appendChild(p.tr); });
+      } catch(e){ console.warn('[v5.7.38 reord]', e); }
+    }
+
+    window._ordenarTabelaEmpresas = function(coluna){
+      if (window._ordEmpresas.coluna === coluna) window._ordEmpresas.asc = !window._ordEmpresas.asc;
+      else { window._ordEmpresas.coluna = coluna; window._ordEmpresas.asc = true; }
+      reordenar();
+      document.querySelectorAll('[data-ord-indicator]').forEach(function(s){
+        if (s.dataset.ordIndicator === coluna) { s.textContent = window._ordEmpresas.asc ? '▲' : '▼'; s.style.opacity = '1'; }
+        else { s.textContent = '⇅'; s.style.opacity = '0.4'; }
+      });
+    };
+
+    function rebindHeaders(){
+      try {
+        document.querySelectorAll('table th').forEach(function(th){
+          if (th.dataset.v5738) return;
+          var txt = (th.textContent||'').trim().toLowerCase().replace(/[⇅▲▼]/g,'').trim();
+          var coluna = null;
+          if (txt === 'empresa') coluna = 'nome';
+          else if (txt === 'andamento') coluna = 'andamento';
+          else if (txt === 'cnpj') coluna = 'cnpj';
+          else if (txt === 'cidade') coluna = 'cidade';
+          else if (txt === 'responsável' || txt === 'responsavel') coluna = 'responsavel';
+          if (!coluna) return;
+          th.dataset.v5738 = '1';
+          th.style.cursor = 'pointer';
+          // Capture phase pra rodar antes dos listeners antigos
+          th.addEventListener('click', function(e){ e.stopPropagation(); window._ordenarTabelaEmpresas(coluna); }, true);
+        });
+      } catch(e){}
+    }
+
+    new MutationObserver(function(){
+      rebindHeaders();
+      if (window._ordEmpresas.coluna) setTimeout(reordenar, 150);
+    }).observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(rebindHeaders, 2000);
+    console.log('[v5.7.38] reorder robusto ativo');
+  } catch(e){ console.warn('[v5.7.38]', e); }
 })();
 
 </script>
