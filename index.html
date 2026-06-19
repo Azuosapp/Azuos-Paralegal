@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.54 (Hook + sanitiza)</title>
+<title>AZUOS Paralegal - Sistema v5.7.55 (Backup duplo + verifica)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6195,6 +6195,67 @@ var _bootIv54=setInterval(function(){
   }
 },1000);
 setTimeout(function(){clearInterval(_bootIv54);},120000);
+
+
+/* ===== v5.7.55 — Backup duplo + verificacao pos-save ===== */
+window._azuosBackupSafe = async function(motivo){
+  try{
+    if(!firebase||!firebase.firestore) return false;
+    var db=firebase.firestore();
+    var snap=await db.collection('azuos').doc('shared').get({source:'server'});
+    var dadosAtuais=snap.data()||{};
+    // Backup COMPLETO incluindo usuarios
+    var backup={
+      created_at: new Date().toISOString(),
+      created_by: (state.sessao&&state.sessao.email)||'sistema',
+      motivo: motivo||'manual',
+      versao_sistema: 'v5.7.55',
+      state: {
+        empresas: dadosAtuais.empresas||state.empresas||[],
+        alvaras: dadosAtuais.alvaras||state.alvaras||[],
+        usuarios: dadosAtuais.usuarios||state.usuarios||[],
+        edicoes_alvaras: dadosAtuais.edicoes_alvaras||state.edicoes_alvaras||{},
+        ciencias_por_usuario: dadosAtuais.ciencias_por_usuario||state.ciencias_por_usuario||{}
+      }
+    };
+    await db.collection('backups').add(backup);
+    // Espelho separado em outro doc
+    await db.collection('azuos').doc('shared_mirror').set({
+      ...dadosAtuais,
+      _espelhado_em: new Date().toISOString()
+    },{merge:true});
+    console.log('[v5.7.55] backup duplo OK ('+motivo+')');
+    return true;
+  }catch(e){console.error('[v5.7.55 backup erro]',e);return false;}
+};
+
+window._verificarSave = async function(campos){
+  try{
+    if(!firebase||!firebase.firestore) return false;
+    await new Promise(r=>setTimeout(r,1500));
+    var snap=await firebase.firestore().collection('azuos').doc('shared').get({source:'server'});
+    var d=snap.data()||{};
+    var validacao={};
+    if(campos.includes('usuarios')){
+      var lOk=(d.usuarios||[]).length===(state.usuarios||[]).length;
+      validacao.usuariosCount=lOk?'OK':'DIFFER';
+      var ulFotos=(state.usuarios||[]).filter(function(u){return u.foto&&u.foto.length>50;}).length;
+      var ufFotos=(d.usuarios||[]).filter(function(u){return u.foto&&u.foto.length>50;}).length;
+      validacao.fotosPreservadas=ulFotos===ufFotos?'OK':'DIFFER '+ulFotos+'->'+ufFotos;
+    }
+    if(campos.includes('alvaras')){
+      validacao.alvarasCount=(d.alvaras||[]).length===(state.alvaras||[]).length?'OK':'DIFFER';
+    }
+    console.log('[v5.7.55 verificacao]',validacao);
+    return validacao;
+  }catch(e){console.error('[v5.7.55 verificacao erro]',e);return false;}
+};
+
+// Backup automatico a cada 30min
+setInterval(function(){window._azuosBackupSafe('auto-30min');},30*60*1000);
+// Backup ao carregar (uma vez)
+setTimeout(function(){window._azuosBackupSafe('boot-v55');},5000);
+console.log('[v5.7.55] sistema backup duplo armado');
 
 </script>
 </body>
