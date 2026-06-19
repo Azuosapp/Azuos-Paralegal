@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.28 (Produtividade)</title>
+<title>AZUOS Paralegal - Sistema v5.7.29 (Seguro)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5426,6 +5426,100 @@ console.log('[v5.7.27] todas as melhorias modulares carregadas');
 })();
 
 console.log('[v5.7.28] features complementares carregadas');
+
+
+/* ===== v5.7.29 — Corrigir filtros persistentes (escopo restrito) ===== */
+(function fixFiltros(){
+  try {
+    // Limpar todas localStorage keys de filtros antigas pra não confundir
+    Object.keys(localStorage).forEach(function(k){
+      if (k.indexOf('azuos_filtros_') === 0) {
+        try {
+          var data = JSON.parse(localStorage.getItem(k));
+          // Limpar valores que podem confundir (senhas, emails de cadastro, etc)
+          if (data && typeof data === 'object') {
+            Object.keys(data).forEach(function(field){
+              // Manter apenas se for filtro óbvio
+              var v = data[field];
+              if (!v || typeof v !== 'string') return;
+              var lc = field.toLowerCase();
+              // Remover se NÃO for filtro
+              if (lc.includes('senha') || lc.includes('password') || lc.includes('email') || lc.includes('cnpj') || lc.includes('nome')) {
+                delete data[field];
+              }
+            });
+            localStorage.setItem(k, JSON.stringify(data));
+          }
+        } catch(e){}
+      }
+    });
+
+    // Substituir comportamento do filtro: só salva inputs com placeholder de busca + selects com opção ATIVO/INATIVO/responsável
+    function ehFiltro(el){
+      if (!el) return false;
+      var ph = ((el.placeholder || '') + '').toLowerCase();
+      if (ph.includes('busca') || ph.includes('pesquis') || ph.includes('filtro')) return true;
+      // Selects com opções de responsável ou ativo/inativo
+      if (el.tagName === 'SELECT') {
+        var opts = el.querySelectorAll('option');
+        for (var i = 0; i < opts.length; i++) {
+          var t = (opts[i].textContent || '').trim().toLowerCase();
+          if (t === 'ativo' || t === 'inativo' || t.includes('todos os respons')) return true;
+        }
+      }
+      // Inputs em modal NÃO são filtro
+      var el2 = el;
+      while (el2 && el2 !== document.body) {
+        if (el2.id && el2.id.toLowerCase().includes('modal')) return false;
+        if (el2.getAttribute && el2.getAttribute('role') === 'dialog') return false;
+        if (el2.style && el2.style.position === 'fixed' && el2.style.zIndex > 1000) return false;
+        el2 = el2.parentElement;
+      }
+      return false;
+    }
+
+    function getKey(){ var u = state && state.sessao && state.sessao.email; return 'azuos_filtros_' + (u || 'anon'); }
+
+    function salvarSeguro(){
+      try {
+        var f = {};
+        document.querySelectorAll('input, select').forEach(function(el){
+          if (!ehFiltro(el)) return;
+          var key = el.id || el.name || (el.placeholder || '').substring(0,30);
+          if (key && el.value) f[key] = el.value;
+        });
+        if (Object.keys(f).length > 0) localStorage.setItem(getKey(), JSON.stringify(f));
+      } catch(e){}
+    }
+
+    function restaurarSeguro(){
+      try {
+        var raw = localStorage.getItem(getKey());
+        if (!raw) return;
+        var f = JSON.parse(raw);
+        document.querySelectorAll('input, select').forEach(function(el){
+          if (!ehFiltro(el)) return;
+          var key = el.id || el.name || (el.placeholder || '').substring(0,30);
+          if (key && f[key] && !el.value) {
+            el.value = f[key];
+            el.dispatchEvent(new Event('change', {bubbles:true}));
+            el.dispatchEvent(new Event('input', {bubbles:true}));
+          }
+        });
+      } catch(e){}
+    }
+
+    // Substituir handlers anteriores (não posso desabilitar do v5.7.27, mas o novo sobrepõe)
+    document.addEventListener('change', function(e){
+      if (e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') && ehFiltro(e.target)) {
+        salvarSeguro();
+      }
+    }, true);
+
+    setTimeout(restaurarSeguro, 3500);
+    console.log('[v5.7.29] filtros seguros ativados');
+  } catch(e){ console.warn('[v5.7.29]', e); }
+})();
 
 </script>
 </body>
