@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.42 (TV compacta)</title>
+<title>AZUOS Paralegal - Sistema v5.7.43 (Ultra-compacta)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6674,6 +6674,139 @@ console.log('[v5.7.28] features complementares carregadas');
     window.abrirDashboardTV = abrirDashboardTV;
     console.log('[v5.7.42] dashboard compacto + scroll ok');
   } catch(e){ console.warn('[v5.7.42]', e); }
+})();
+
+
+/* ===== v5.7.43 — Dashboard TV ultra-compacto + click garantido ===== */
+(function dashboardUltra(){
+  try {
+    var STATUS_CONCLUIDOS = ['conclu','formaliz','arquivado','sem obrigat','isento'];
+    function getEdicoes(){ return Object.values(state.edicoes_alvaras||{}).filter(function(e){return e&&e._editado_por&&e._editado_em;}); }
+    function ehConcluido(s){ s=(s||'').toLowerCase(); return STATUS_CONCLUIDOS.some(function(k){return s.indexOf(k)>=0;}); }
+    function filtrarPorDias(ed,d){ if(!d) return ed; var l=Date.now()-d*86400000; return ed.filter(function(e){return new Date(e._editado_em).getTime()>=l;}); }
+    function rankear(ed){
+      var at={}, cn={};
+      ed.forEach(function(e){var u=e._editado_por; if(!u) return; at[u]=(at[u]||0)+1; if(ehConcluido(e.status)) cn[u]=(cn[u]||0)+1;});
+      return {rankAtual:Object.keys(at).map(function(u){return{nome:u,total:at[u]};}).sort(function(a,b){return b.total-a.total;}),
+              rankConcl:Object.keys(cn).map(function(u){return{nome:u,total:cn[u]};}).sort(function(a,b){return b.total-a.total;})};
+    }
+    function empresasDe(ed,u,so){ var l=ed.filter(function(e){if(e._editado_por!==u) return false; if(so&&!ehConcluido(e.status)) return false; return true;}); l.sort(function(a,b){return new Date(b._editado_em).getTime()-new Date(a._editado_em).getTime();}); return l; }
+
+    function podio(r){
+      var m=['🥇','🥈','🥉'], c=['#fbbf24','#94a3b8','#d97706'];
+      var h='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.6vw;margin-bottom:0.5vh;">';
+      for(var i=0;i<3;i++){
+        var it=r[i];
+        if(!it){h+='<div style="background:rgba(255,255,255,0.05);border-radius:0.5vw;padding:0.6vw;text-align:center;border:0.15vh dashed rgba(255,255,255,0.1);"><div style="font-size:clamp(1rem,2vw,1.8rem);opacity:0.3;">—</div></div>';continue;}
+        h+='<div style="background:linear-gradient(135deg,'+c[i]+'30,'+c[i]+'10);border:0.2vh solid '+c[i]+';border-radius:0.5vw;padding:0.6vw;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0.1vh;">';
+        h+='<div style="font-size:clamp(1.2rem,2.2vw,2.2rem);line-height:1;">'+m[i]+'</div>';
+        h+='<div style="font-size:clamp(0.8rem,1.1vw,1.1rem);font-weight:700;color:white;word-break:break-word;">'+it.nome+'</div>';
+        h+='<div style="font-size:clamp(1.2rem,2.2vw,2.2rem);font-weight:900;color:'+c[i]+';line-height:1;">'+it.total+'</div>';
+        h+='<div style="font-size:clamp(0.5rem,0.7vw,0.7rem);color:#cbd5e1;text-transform:uppercase;">atualizações</div>';
+        h+='</div>';
+      }
+      return h+'</div>';
+    }
+    function listaRank(r,tit,cor,so){
+      var tipo=so?'conclusoes':'atualizacoes';
+      var h='<div style="background:rgba(15,23,42,0.6);border-radius:0.5vw;padding:0.6vw;overflow:auto;">';
+      h+='<h3 style="font-size:clamp(0.75rem,1.05vw,1.05rem);font-weight:800;color:white;margin:0 0 0.4vh 0;">'+tit+'</h3>';
+      if(r.length===0){h+='<div style="color:#64748b;text-align:center;padding:0.5vw;font-size:clamp(0.65rem,0.85vw,0.85rem);">Sem registros</div>';}
+      else{
+        h+='<div style="display:flex;flex-direction:column;gap:0.25vh;">';
+        r.forEach(function(it,i){
+          var bg=i<3?cor+'20':'rgba(255,255,255,0.03)';
+          h+='<div class="rank-item" data-usuario="'+it.nome+'" data-tipo="'+tipo+'" style="display:flex;align-items:center;gap:0.6vw;padding:0.4vh 0.6vw;background:'+bg+';border-radius:0.3vw;cursor:pointer;">';
+          h+='<div style="font-size:clamp(0.7rem,0.9vw,0.9rem);font-weight:800;color:#94a3b8;min-width:1.8vw;">'+(i+1)+'°</div>';
+          h+='<div style="flex:1;font-size:clamp(0.75rem,0.95vw,0.95rem);font-weight:600;color:white;">'+it.nome+'</div>';
+          h+='<div style="font-size:clamp(0.85rem,1.2vw,1.2rem);font-weight:900;color:'+cor+';">'+it.total+'</div>';
+          h+='<div style="font-size:clamp(0.6rem,0.8vw,0.8rem);color:'+cor+';opacity:0.6;">▶</div>';
+          h+='</div>';
+        });
+        h+='</div>';
+      }
+      return h+'</div>';
+    }
+    function painelDrill(u,t,ed){
+      var so=t==='conclusoes', lista=empresasDe(ed,u,so), cor=so?'#3b82f6':'#10b981';
+      var tit=so?'✅ Conclusões de '+u:'📝 Atualizações de '+u;
+      var h='<div id="drill-panel" style="background:rgba(15,23,42,0.85);border:0.2vh solid '+cor+';border-radius:0.5vw;padding:0.8vw;margin-top:0.6vh;">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4vh;">';
+      h+='<h3 style="font-size:clamp(0.8rem,1.1vw,1.1rem);font-weight:800;color:'+cor+';margin:0;">'+tit+' · <span style="color:white;">'+lista.length+' empresa(s)</span></h3>';
+      h+='<button onclick="document.getElementById(\'drill-panel\').remove()" style="padding:0.3vh 0.6vw;background:rgba(255,255,255,0.1);color:white;border:none;border-radius:0.3vw;font-size:clamp(0.6rem,0.85vw,0.85rem);cursor:pointer;">✕</button>';
+      h+='</div>';
+      if(lista.length===0){h+='<div style="color:#64748b;text-align:center;padding:0.5vw;">Nenhum encontrado</div>';}
+      else{
+        h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(26vw,320px),1fr));gap:0.3vh;max-height:38vh;overflow:auto;">';
+        lista.slice(0,150).forEach(function(e){
+          var d=new Date(e._editado_em), ds=d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          h+='<div style="background:rgba(255,255,255,0.05);padding:0.4vh 0.6vw;border-radius:0.3vw;border-left:0.2vh solid '+cor+';">';
+          h+='<div style="font-size:clamp(0.7rem,0.9vw,0.9rem);font-weight:600;color:white;word-break:break-word;">'+(e.empresa||'?')+'</div>';
+          h+='<div style="font-size:clamp(0.55rem,0.7vw,0.7rem);color:#94a3b8;margin-top:0.1vh;display:flex;justify-content:space-between;gap:0.4vw;">';
+          h+='<span>'+(e.tipo||'')+' · <span style="color:'+(ehConcluido(e.status)?'#22c55e':'#f59e0b')+';">'+(e.status||'?')+'</span></span>';
+          h+='<span>'+ds+'</span>';
+          h+='</div></div>';
+        });
+        h+='</div>';
+      }
+      return h+'</div>';
+    }
+    function filtroBtns(a){
+      return [{d:1,l:'Hoje'},{d:7,l:'7d'},{d:30,l:'30d'},{d:60,l:'60d'}].map(function(o){
+        var at=o.d===a, bg=at?'#3b82f6':'rgba(255,255,255,0.1)', co=at?'white':'#cbd5e1';
+        return '<button data-filtro-dias="'+o.d+'" style="padding:0.4vh 0.7vw;background:'+bg+';color:'+co+';border:none;border-radius:0.3vw;font-size:clamp(0.7rem,0.85vw,0.85rem);font-weight:600;cursor:pointer;">'+o.l+'</button>';
+      }).join('');
+    }
+    function abrirDashboardTV(){
+      var ja=document.getElementById('dashboard-tv-modal'); if(ja) ja.remove();
+      var modal=document.createElement('div');
+      modal.id='dashboard-tv-modal';
+      modal.style.cssText='position:fixed;inset:0;background:linear-gradient(135deg,#0f172a,#1e293b);z-index:99999;overflow:auto;padding:0.6vh 0.8vw;display:flex;flex-direction:column;';
+      var diasFiltro=parseInt(localStorage.getItem('azuos_tv_filtro')||'1');
+      var drillAtivo=null;
+      function renderTV(){
+        var ed=getEdicoes(), f=filtrarPorDias(ed,diasFiltro), r=rankear(f);
+        var totEd=f.length, totCn=f.filter(function(e){return ehConcluido(e.status);}).length, hoje=new Date().toLocaleDateString('pt-BR');
+        modal.innerHTML=''+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5vh;flex-shrink:0;">'+
+            '<div>'+
+              '<h1 style="font-size:clamp(0.9rem,1.6vw,1.6rem);font-weight:900;color:white;margin:0;">🏆 Ranking AZUOS Paralegal</h1>'+
+              '<div style="color:#94a3b8;font-size:clamp(0.65rem,0.85vw,0.85rem);">'+hoje+' · <strong style="color:#10b981;">'+totEd+'</strong> atualizações · <strong style="color:#3b82f6;">'+totCn+'</strong> conclusões</div>'+
+            '</div>'+
+            '<div style="display:flex;gap:0.3vw;">'+filtroBtns(diasFiltro)+
+              '<button onclick="document.getElementById(\'dashboard-tv-modal\').remove()" style="padding:0.4vh 0.7vw;background:#dc2626;color:white;border:none;border-radius:0.3vw;font-size:clamp(0.65rem,0.8vw,0.8rem);font-weight:700;cursor:pointer;">✕</button>'+
+            '</div>'+
+          '</div>'+
+          '<div style="background:rgba(0,0,0,0.3);border-radius:0.5vw;padding:0.6vw;margin-bottom:0.5vh;flex-shrink:0;">'+
+            '<h2 style="font-size:clamp(0.8rem,1.1vw,1.1rem);font-weight:800;color:white;margin:0 0 0.3vh 0;">📝 Top 3 — Mais Atualizações</h2>'+
+            podio(r.rankAtual)+
+          '</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6vw;flex-shrink:0;">'+
+            listaRank(r.rankAtual,'📝 Atualizações (clique pra ver empresas)','#10b981',false)+
+            listaRank(r.rankConcl,'✅ Conclusões (clique pra ver empresas)','#3b82f6',true)+
+          '</div>'+
+          (drillAtivo?painelDrill(drillAtivo.usuario,drillAtivo.tipo,f):'');
+        modal.querySelectorAll('[data-filtro-dias]').forEach(function(b){
+          b.onclick=function(){ diasFiltro=parseInt(b.dataset.filtroDias); localStorage.setItem('azuos_tv_filtro',String(diasFiltro)); drillAtivo=null; renderTV(); };
+        });
+        modal.querySelectorAll('.rank-item').forEach(function(el){
+          el.addEventListener('click', function(){
+            drillAtivo={usuario:el.dataset.usuario,tipo:el.dataset.tipo};
+            renderTV();
+            setTimeout(function(){
+              var dp=document.getElementById('drill-panel');
+              if(dp && modal) modal.scrollTo({top:modal.scrollHeight,behavior:'smooth'});
+            },200);
+          });
+        });
+      }
+      renderTV();
+      document.body.appendChild(modal);
+      var iv=setInterval(function(){ if(!document.getElementById('dashboard-tv-modal')){clearInterval(iv);return;} renderTV(); },60000);
+    }
+    window.abrirDashboardTV=abrirDashboardTV;
+    console.log('[v5.7.43] dashboard ultra-compacto');
+  } catch(e){ console.warn('[v5.7.43]',e); }
 })();
 
 </script>
