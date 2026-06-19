@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.27 (+ Melhorias)</title>
+<title>AZUOS Paralegal - Sistema v5.7.28 (Produtividade)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5295,6 +5295,137 @@ function abrirBaselineDialog() {
   } catch(e){}
 })();
 console.log('[v5.7.27] todas as melhorias modulares carregadas');
+
+
+/* ===== v5.7.28 — Bulk + Dashboard + Alertas + Comentários ===== */
+
+/* 6. Card de produtividade individual no Resumo do Dia */
+(function produtividade(){
+  try {
+    function gerar(){
+      try {
+        var email = state && state.sessao && state.sessao.email;
+        if (!email) return;
+        var nome = state.sessao.nome || email;
+        var cargo = state.sessao.cargo || '';
+
+        // Stats: ciências do user, empresas dele
+        var minhasCiencias = (state.ciencias_por_usuario && state.ciencias_por_usuario[email]) || [];
+        var qtdCiencias = Array.isArray(minhasCiencias) ? minhasCiencias.length : 0;
+
+        // Empresas onde o user é responsável (se cargo paralegal)
+        var minhasEmpresas = (state.empresas || []).filter(function(e){
+          return e && e.responsavel && nome && e.responsavel.toLowerCase() === nome.toLowerCase();
+        });
+
+        // Já existe card?
+        if (document.getElementById('card-produtividade')) {
+          var info = document.getElementById('card-produtividade-info');
+          if (info) info.innerHTML = '<div style="font-size:13px;color:#64748b;margin-bottom:4px;">Suas estatísticas hoje</div>' +
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;text-align:center;">' +
+            '<div><div style="font-size:24px;font-weight:700;color:#10b981;">'+qtdCiencias+'</div><div style="font-size:11px;color:#64748b;">Ciências dadas</div></div>' +
+            '<div><div style="font-size:24px;font-weight:700;color:#3b82f6;">'+minhasEmpresas.length+'</div><div style="font-size:11px;color:#64748b;">Empresas suas</div></div>' +
+            '<div><div style="font-size:24px;font-weight:700;color:#6366f1;">'+(state.empresas||[]).length+'</div><div style="font-size:11px;color:#64748b;">Total ativas</div></div>' +
+            '</div>';
+          return;
+        }
+
+        // Procurar container do Resumo do Dia
+        var titulo = null;
+        document.querySelectorAll('h1, h2, h3').forEach(function(h){
+          if ((h.textContent||'').includes('Resumo do Dia')) titulo = h;
+        });
+        if (!titulo) return;
+
+        var container = titulo.closest('div.p-6, div.p-8, main > div') || titulo.parentElement;
+        if (!container) return;
+
+        var card = document.createElement('div');
+        card.id = 'card-produtividade';
+        card.style.cssText = 'background:white;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #e2e8f0;';
+        card.innerHTML = '<div style="font-size:14px;font-weight:600;color:#0f172a;margin-bottom:8px;">👋 Olá, ' + nome + '</div>' +
+          '<div id="card-produtividade-info"></div>';
+        container.insertBefore(card, titulo.nextSibling);
+        gerar(); // re-render com dados
+      } catch(e){ console.warn('[prod]', e); }
+    }
+    new MutationObserver(gerar).observe(document.body,{childList:true,subtree:true});
+    setTimeout(gerar, 2500);
+  } catch(e){}
+})();
+
+/* 7. Alertas inteligentes (no Resumo) */
+(function alertasInteligentes(){
+  try {
+    function calcular(){
+      try {
+        if (document.getElementById('alertas-inteligentes')) return;
+        // Procurar Resumo do Dia
+        var titulo = null;
+        document.querySelectorAll('h1, h2, h3').forEach(function(h){
+          if ((h.textContent||'').includes('Resumo do Dia')) titulo = h;
+        });
+        if (!titulo) return;
+
+        var email = state && state.sessao && state.sessao.email;
+        var minhas = (state.ciencias_por_usuario && state.ciencias_por_usuario[email]) || [];
+        var qtd = Array.isArray(minhas) ? minhas.length : 0;
+        var totalEmp = (state.empresas || []).length;
+        var semCiencia = totalEmp - qtd;
+
+        if (semCiencia <= 0) return;
+
+        var div = document.createElement('div');
+        div.id = 'alertas-inteligentes';
+        div.style.cssText = 'background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:12px;padding:16px;margin:16px 0;border-left:4px solid #f59e0b;color:#78350f;';
+        div.innerHTML = '<div style="font-weight:600;font-size:14px;margin-bottom:4px;">⚠️ Atenção</div>' +
+          '<div style="font-size:13px;">Você ainda não deu ciência em <strong>' + semCiencia + '</strong> empresas. Vá em <strong>Novas Empresas</strong> e clique em <strong>✓ Dar ciência em todas</strong>.</div>';
+
+        var container = titulo.closest('div.p-6, div.p-8, main > div') || titulo.parentElement;
+        container.insertBefore(div, titulo.nextSibling.nextSibling || titulo.nextSibling);
+      } catch(e){}
+    }
+    new MutationObserver(calcular).observe(document.body,{childList:true,subtree:true});
+    setTimeout(calcular, 4000);
+  } catch(e){}
+})();
+
+/* 8. Comentários internos por empresa (textarea no modal de edição) */
+(function comentariosEmpresa(){
+  try {
+    function add(){
+      try {
+        // Detectar modal de empresa aberto (procura textarea ou form com empresa)
+        var modais = document.querySelectorAll('[id*="modal"], .modal, .dialog, [role="dialog"]');
+        modais.forEach(function(m){
+          if (m.dataset.coAplicado) return;
+          var temEmpresaCnpj = false;
+          m.querySelectorAll('input').forEach(function(i){
+            if ((i.placeholder||'').toLowerCase().includes('cnpj')) temEmpresaCnpj = true;
+          });
+          if (!temEmpresaCnpj) return;
+          m.dataset.coAplicado = '1';
+
+          // Adicionar textarea de observações
+          var wrap = document.createElement('div');
+          wrap.style.cssText = 'margin:16px 0;';
+          wrap.innerHTML = '<label style="display:block;font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">📝 Observações internas</label>' +
+            '<textarea id="obs-empresa-input" rows="3" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-family:inherit;font-size:13px;box-sizing:border-box;" placeholder="Anotações privadas da equipe (ex: cliente só atende pela manhã)"></textarea>';
+
+          // Posicionar antes do botão salvar
+          var btnSalvar = null;
+          m.querySelectorAll('button').forEach(function(b){
+            if ((b.textContent||'').trim().toLowerCase().includes('salvar')) btnSalvar = b;
+          });
+          if (btnSalvar) btnSalvar.parentElement.parentElement.insertBefore(wrap, btnSalvar.parentElement);
+        });
+      } catch(e){}
+    }
+    new MutationObserver(add).observe(document.body,{childList:true,subtree:true});
+  } catch(e){}
+})();
+
+console.log('[v5.7.28] features complementares carregadas');
 
 </script>
 </body>
