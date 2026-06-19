@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.36 (Andamento+)</title>
+<title>AZUOS Paralegal - Sistema v5.7.37 (+ Isento)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5828,6 +5828,35 @@ console.log('[v5.7.28] features complementares carregadas');
       } catch(e) { return 0; }
     };
     console.log('[v5.7.36] sem obrigat + arquivado contam');
+  } catch(e){}
+})();
+
+
+/* ===== v5.7.37 — Isento conta como concluído ===== */
+(function fixCalcAndIsento(){
+  try {
+    window._calcAndamentoCorreto = function(emp){
+      try {
+        if (!emp || emp.id === undefined) return 0;
+        var alvaras = (state.alvaras || []).filter(function(a){ return a && a.empresa_id === emp.id; });
+        if (alvaras.length === 0) return 0;
+        var validos = alvaras.filter(function(a){
+          var s = (a.status || '').toLowerCase().trim();
+          return s.length > 0;
+        });
+        if (validos.length === 0) return 0;
+        var concl = validos.filter(function(a){
+          var s = (a.status || '').toLowerCase();
+          return s.indexOf('conclu') >= 0 ||
+                 s.indexOf('formaliz') >= 0 ||
+                 s.indexOf('arquivado') >= 0 ||
+                 s.indexOf('sem obrigat') >= 0 ||
+                 s.indexOf('isento') >= 0;
+        }).length;
+        return Math.round((concl / validos.length) * 100);
+      } catch(e) { return 0; }
+    };
+    console.log('[v5.7.37] isento conta');
   } catch(e){}
 })();
 
