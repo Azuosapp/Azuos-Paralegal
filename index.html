@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.30 (Checklists hide)</title>
+<title>AZUOS Paralegal - Sistema v5.7.31 (Sidebar layout)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5556,6 +5556,50 @@ console.log('[v5.7.28] features complementares carregadas');
     setTimeout(esconderTudo, 3000);
     console.log('[v5.7.30] checklists escondido');
   } catch(e){ console.warn('[v5.7.30]', e); }
+})();
+
+
+/* ===== v5.7.31 — Corrigir sobreposição sidebar (nav + footer empilhados) ===== */
+(function fixSidebarLayout(){
+  try {
+    var css = `
+      /* Aside como flex column ocupando 100vh */
+      aside.bg-gradient-azuos {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+      }
+      /* Nav (lista de itens) ocupa o espaço disponivel COM SCROLL proprio */
+      aside.bg-gradient-azuos > nav {
+        flex: 1 1 auto !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        min-height: 0 !important;
+      }
+      /* Footer (card usuario + botoes) com altura natural, FIXO embaixo via flex */
+      aside.bg-gradient-azuos > div.border-t {
+        flex-shrink: 0 !important;
+        position: relative !important; /* NAO sticky */
+        bottom: auto !important;
+        background: rgba(0,0,0,0.18) !important;
+      }
+      /* Cabeçalho da sidebar com altura natural */
+      aside.bg-gradient-azuos > div.border-b {
+        flex-shrink: 0 !important;
+      }
+      /* Scrollbar fina pra nav */
+      aside.bg-gradient-azuos > nav::-webkit-scrollbar { width: 4px; }
+      aside.bg-gradient-azuos > nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+      aside.bg-gradient-azuos > nav::-webkit-scrollbar-track { background: transparent; }
+    `;
+    var st = document.createElement('style');
+    st.id = 'v5_7_31_layout';
+    st.textContent = css;
+    document.head.appendChild(st);
+    console.log('[v5.7.31] layout sidebar corrigido');
+  } catch(e){ console.warn('[v5.7.31]', e); }
 })();
 
 </script>
