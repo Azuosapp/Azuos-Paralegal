@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.31 (Sidebar layout)</title>
+<title>AZUOS Paralegal - Sistema v5.7.32 (Responsiva)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5600,6 +5600,115 @@ console.log('[v5.7.28] features complementares carregadas');
     document.head.appendChild(st);
     console.log('[v5.7.31] layout sidebar corrigido');
   } catch(e){ console.warn('[v5.7.31]', e); }
+})();
+
+
+/* ===== v5.7.32 — Sidebar responsiva (compacta em telas pequenas) ===== */
+(function sidebarResponsiva(){
+  try {
+    var css = `
+      /* ===== Base: sidebar 100vh, flex column ===== */
+      aside.bg-gradient-azuos {
+        height: 100vh !important;
+        max-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+      }
+      aside.bg-gradient-azuos > div.border-b,
+      aside.bg-gradient-azuos > div.border-t {
+        flex-shrink: 0 !important;
+      }
+      aside.bg-gradient-azuos > nav {
+        flex: 1 1 auto !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        min-height: 0 !important;
+      }
+      aside.bg-gradient-azuos > div.border-t {
+        position: relative !important;
+        background: rgba(0,0,0,0.18) !important;
+      }
+      /* Scrollbar discreta */
+      aside.bg-gradient-azuos > nav::-webkit-scrollbar { width: 4px; }
+      aside.bg-gradient-azuos > nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+      aside.bg-gradient-azuos > nav::-webkit-scrollbar-track { background: transparent; }
+
+      /* ===== Notebook pequeno (altura <= 800px) ===== */
+      @media (max-height: 800px) {
+        aside.bg-gradient-azuos > div.border-b {
+          padding: 12px 18px !important;
+        }
+        aside.bg-gradient-azuos > div.border-b * {
+          font-size: 13px !important;
+        }
+        aside.bg-gradient-azuos > div.border-b h1,
+        aside.bg-gradient-azuos > div.border-b > div > div {
+          font-size: 16px !important;
+        }
+        aside.bg-gradient-azuos > nav {
+          padding-top: 6px !important;
+          padding-bottom: 6px !important;
+        }
+        aside.bg-gradient-azuos > nav button {
+          padding-top: 6px !important;
+          padding-bottom: 6px !important;
+          font-size: 13px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t {
+          padding: 8px 14px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t > div > div.w-10,
+        aside.bg-gradient-azuos > div.border-t > div > div.w-12 {
+          width: 32px !important;
+          height: 32px !important;
+          font-size: 12px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t button {
+          padding: 6px 10px !important;
+          font-size: 12px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t button + button {
+          margin-top: 2px !important;
+        }
+      }
+
+      /* ===== Tela MUITO pequena (altura <= 650px - notebook 11/12") ===== */
+      @media (max-height: 650px) {
+        aside.bg-gradient-azuos > div.border-b {
+          padding: 8px 14px !important;
+        }
+        aside.bg-gradient-azuos > nav button {
+          padding-top: 4px !important;
+          padding-bottom: 4px !important;
+          font-size: 12.5px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t {
+          padding: 6px 12px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t button {
+          padding: 4px 8px !important;
+          font-size: 11.5px !important;
+        }
+      }
+
+      /* ===== Monitor grande (altura >= 1080px) ===== */
+      @media (min-height: 1080px) {
+        aside.bg-gradient-azuos > nav button {
+          padding-top: 12px !important;
+          padding-bottom: 12px !important;
+        }
+        aside.bg-gradient-azuos > div.border-t {
+          padding: 20px !important;
+        }
+      }
+    `;
+    var st = document.createElement('style');
+    st.id = 'v5_7_32_responsivo';
+    st.textContent = css;
+    document.head.appendChild(st);
+    console.log('[v5.7.32] sidebar responsiva ativa');
+  } catch(e){ console.warn('[v5.7.32]', e); }
 })();
 
 </script>
