@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.43 (Ultra-compacta)</title>
+<title>AZUOS Paralegal - Sistema v5.7.44 (Drill modal)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6807,6 +6807,59 @@ console.log('[v5.7.28] features complementares carregadas');
     window.abrirDashboardTV=abrirDashboardTV;
     console.log('[v5.7.43] dashboard ultra-compacto');
   } catch(e){ console.warn('[v5.7.43]',e); }
+})();
+
+
+/* ===== v5.7.44 — Drill via modal sobreposto ===== */
+(function dv44(){
+  try {
+    var SC=['conclu','formaliz','arquivado','sem obrigat','isento'];
+    function ehC(s){s=(s||'').toLowerCase();return SC.some(function(k){return s.indexOf(k)>=0;});}
+    window._azuosTV={edicoes:[],dias:1};
+    window._abrirDrill=function(usuario,tipo){
+      var ed=window._azuosTV.edicoes;
+      var so=tipo==='conclusoes';
+      var lista=ed.filter(function(e){if(e._editado_por!==usuario) return false; if(so&&!ehC(e.status)) return false; return true;});
+      lista.sort(function(a,b){return new Date(b._editado_em).getTime()-new Date(a._editado_em).getTime();});
+      var cor=so?'#3b82f6':'#10b981';
+      var tit=so?'✅ Conclusões de '+usuario:'📝 Atualizações de '+usuario;
+      var old=document.getElementById('drill-modal'); if(old) old.remove();
+      var ov=document.createElement('div');
+      ov.id='drill-modal';
+      ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100000;display:flex;align-items:center;justify-content:center;padding:3vh 3vw;';
+      ov.onclick=function(e){if(e.target===ov) ov.remove();};
+      var h='<div style="background:linear-gradient(135deg,#1e293b,#0f172a);border:3px solid '+cor+';border-radius:1vw;padding:1.5vw;max-width:90vw;max-height:90vh;width:100%;display:flex;flex-direction:column;" onclick="event.stopPropagation()">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1vh;">';
+      h+='<h2 style="font-size:clamp(1rem,1.6vw,1.6rem);font-weight:800;color:'+cor+';margin:0;">'+tit+' · <span style="color:white;">'+lista.length+' empresa(s)</span></h2>';
+      h+='<button onclick="document.getElementById(\'drill-modal\').remove()" style="padding:0.6vh 1vw;background:#dc2626;color:white;border:none;border-radius:0.4vw;font-size:1rem;font-weight:700;cursor:pointer;">✕ Fechar</button>';
+      h+='</div>';
+      if(lista.length===0){h+='<div style="color:#64748b;text-align:center;padding:3vw;">Nenhum encontrado</div>';}
+      else{
+        h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(30vw,400px),1fr));gap:0.6vh;overflow:auto;flex:1;">';
+        lista.slice(0,200).forEach(function(e){
+          var d=new Date(e._editado_em),ds=d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+          h+='<div style="background:rgba(255,255,255,0.05);padding:0.6vh 1vw;border-radius:0.4vw;border-left:3px solid '+cor+';">';
+          h+='<div style="font-size:clamp(0.85rem,1.1vw,1.1rem);font-weight:600;color:white;word-break:break-word;">'+(e.empresa||'?')+'</div>';
+          h+='<div style="font-size:clamp(0.7rem,0.85vw,0.85rem);color:#94a3b8;margin-top:0.2vh;display:flex;justify-content:space-between;gap:0.5vw;">';
+          h+='<span>'+(e.tipo||'')+' · <span style="color:'+(ehC(e.status)?'#22c55e':'#f59e0b')+';">'+(e.status||'?')+'</span></span>';
+          h+='<span>'+ds+'</span></div></div>';
+        });
+        h+='</div>';
+      }
+      h+='</div>';
+      ov.innerHTML=h;
+      document.body.appendChild(ov);
+    };
+    function getEd(){return Object.values(state.edicoes_alvaras||{}).filter(function(e){return e&&e._editado_por&&e._editado_em;});}
+    function porDias(ed,d){if(!d) return ed; var l=Date.now()-d*86400000; return ed.filter(function(e){return new Date(e._editado_em).getTime()>=l;});}
+    function rankear(ed){var at={},cn={};ed.forEach(function(e){var u=e._editado_por; if(!u) return; at[u]=(at[u]||0)+1; if(ehC(e.status)) cn[u]=(cn[u]||0)+1;}); return {ra:Object.keys(at).map(function(u){return{nome:u,total:at[u]};}).sort(function(a,b){return b.total-a.total;}),rc:Object.keys(cn).map(function(u){return{nome:u,total:cn[u]};}).sort(function(a,b){return b.total-a.total;})};}
+    function podio(r){var m=['🥇','🥈','🥉'],c=['#fbbf24','#94a3b8','#d97706'];var h='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.6vw;margin-bottom:0.5vh;">';for(var i=0;i<3;i++){var it=r[i]; if(!it){h+='<div style="background:rgba(255,255,255,0.05);border-radius:0.5vw;padding:0.6vw;text-align:center;border:2px dashed rgba(255,255,255,0.1);"><div style="opacity:0.3;">—</div></div>';continue;} h+='<div style="background:linear-gradient(135deg,'+c[i]+'30,'+c[i]+'10);border:2px solid '+c[i]+';border-radius:0.5vw;padding:0.6vw;text-align:center;">';h+='<div style="font-size:clamp(1.2rem,2.2vw,2.2rem);line-height:1;">'+m[i]+'</div>';h+='<div style="font-size:clamp(0.8rem,1.1vw,1.1rem);font-weight:700;color:white;">'+it.nome+'</div>';h+='<div style="font-size:clamp(1.2rem,2.2vw,2.2rem);font-weight:900;color:'+c[i]+';">'+it.total+'</div>';h+='<div style="font-size:clamp(0.55rem,0.7vw,0.7rem);color:#cbd5e1;text-transform:uppercase;">atualizações</div>';h+='</div>';} return h+'</div>';}
+    function lista(r,tit,cor,so){var tipo=so?'conclusoes':'atualizacoes';var h='<div style="background:rgba(15,23,42,0.6);border-radius:0.5vw;padding:0.6vw;overflow:auto;">';h+='<h3 style="font-size:clamp(0.8rem,1.1vw,1.1rem);font-weight:800;color:white;margin:0 0 0.4vh 0;">'+tit+'</h3>';if(r.length===0){h+='<div style="color:#64748b;text-align:center;padding:0.5vw;">Sem registros</div>';}else{h+='<div style="display:flex;flex-direction:column;gap:0.3vh;">';r.forEach(function(it,i){var bg=i<3?cor+'20':'rgba(255,255,255,0.03)'; var sn=(it.nome||'').replace(/'/g,"&#39;"); h+='<div onclick="window._abrirDrill(\''+sn+'\',\''+tipo+'\')" style="display:flex;align-items:center;gap:0.6vw;padding:0.5vh 0.7vw;background:'+bg+';border-radius:0.3vw;cursor:pointer;user-select:none;">'; h+='<div style="font-size:clamp(0.7rem,0.95vw,0.95rem);font-weight:800;color:#94a3b8;min-width:2vw;">'+(i+1)+'°</div>';h+='<div style="flex:1;font-size:1rem;font-weight:600;color:white;">'+it.nome+'</div>';h+='<div style="font-size:clamp(0.95rem,1.3vw,1.3rem);font-weight:900;color:'+cor+';">'+it.total+'</div>';h+='<div style="font-size:clamp(0.65rem,0.85vw,0.85rem);color:'+cor+';opacity:0.7;">▶ ver</div></div>';}); h+='</div>';} return h+'</div>';}
+    function fb(a){return [{d:1,l:'Hoje'},{d:7,l:'7d'},{d:30,l:'30d'},{d:60,l:'60d'}].map(function(o){var at=o.d===a,bg=at?'#3b82f6':'rgba(255,255,255,0.1)',co=at?'white':'#cbd5e1'; return '<button data-filtro-dias="'+o.d+'" style="padding:0.5vh 0.8vw;background:'+bg+';color:'+co+';border:none;border-radius:0.3vw;font-size:clamp(0.75rem,0.9vw,0.9rem);font-weight:600;cursor:pointer;">'+o.l+'</button>';}).join('');}
+    function abrir(){var ja=document.getElementById('dashboard-tv-modal'); if(ja) ja.remove(); var modal=document.createElement('div'); modal.id='dashboard-tv-modal'; modal.style.cssText='position:fixed;inset:0;background:linear-gradient(135deg,#0f172a,#1e293b);z-index:99999;overflow:auto;padding:0.8vh 1vw;display:flex;flex-direction:column;'; var dias=parseInt(localStorage.getItem('azuos_tv_filtro')||'1'); function render(){var ed=getEd(),f=porDias(ed,dias),r=rankear(f); window._azuosTV.edicoes=f; window._azuosTV.dias=dias; var totE=f.length,totC=f.filter(function(e){return ehC(e.status);}).length,hoje=new Date().toLocaleDateString('pt-BR'); modal.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6vh;flex-shrink:0;"><div><h1 style="font-size:clamp(1rem,1.7vw,1.7rem);font-weight:900;color:white;margin:0;">🏆 Ranking AZUOS Paralegal</h1><div style="color:#94a3b8;font-size:clamp(0.7rem,0.9vw,0.9rem);">'+hoje+' · <strong style="color:#10b981;">'+totE+'</strong> atualizações · <strong style="color:#3b82f6;">'+totC+'</strong> conclusões</div></div><div style="display:flex;gap:0.4vw;">'+fb(dias)+'<button onclick="document.getElementById(\'dashboard-tv-modal\').remove()" style="padding:0.5vh 0.9vw;background:#dc2626;color:white;border:none;border-radius:0.3vw;font-size:clamp(0.7rem,0.85vw,0.85rem);font-weight:700;cursor:pointer;">✕ Fechar</button></div></div><div style="background:rgba(0,0,0,0.3);border-radius:0.5vw;padding:0.7vw;margin-bottom:0.6vh;flex-shrink:0;"><h2 style="font-size:clamp(0.85rem,1.2vw,1.2rem);font-weight:800;color:white;margin:0 0 0.4vh 0;">📝 Top 3 — Mais Atualizações</h2>'+podio(r.ra)+'</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7vw;flex:1;min-height:0;">'+lista(r.ra,'📝 Atualizações (clique em alguém pra ver empresas)','#10b981',false)+lista(r.rc,'✅ Conclusões (clique em alguém pra ver empresas)','#3b82f6',true)+'</div>'; modal.querySelectorAll('[data-filtro-dias]').forEach(function(b){b.onclick=function(){dias=parseInt(b.dataset.filtroDias);localStorage.setItem('azuos_tv_filtro',String(dias));render();};}); } render(); document.body.appendChild(modal); var iv=setInterval(function(){if(!document.getElementById('dashboard-tv-modal')){clearInterval(iv);return;}render();},60000);}
+    window.abrirDashboardTV=abrir;
+    console.log('[v5.7.44] OK');
+  } catch(e){ console.warn('[v5.7.44]',e); }
 })();
 
 </script>
