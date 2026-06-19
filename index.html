@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.51 (Hook universal alvara)</title>
+<title>AZUOS Paralegal - Sistema v5.7.52 (Auto-recuperacao)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6191,6 +6191,128 @@ var ivInit=setInterval(function(){
 setTimeout(function(){clearInterval(ivInit);},60000);
 console.log('[v5.7.51] hook universal armado');
 }catch(e){console.warn('[v5.7.51]',e);}
+})();
+
+
+/* ===== v5.7.52 — Auto-recuperacao + hook universal robusto ===== */
+(function recup52(){
+try{
+var CAMPOS=['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade','anexos','conversas'];
+function sig(a){var o={};CAMPOS.forEach(function(c){o[c]=a[c]===undefined||a[c]===null?'':typeof a[c]==='object'?JSON.stringify(a[c]):String(a[c]);});return JSON.stringify(o);}
+function getEmail(){return (state.sessao&&state.sessao.email)||(firebase.auth().currentUser&&firebase.auth().currentUser.email)||(state.sessao&&state.sessao.nome)||'desconhecido';}
+
+// MAIS IMPORTANTE: ao boot, compara state.alvaras LOCAL com Firestore.
+// Se LOCAL tem coisa que FIRESTORE nao tem -> capturar como edicao + salvar
+async function autoRecuperar(){
+  try{
+    if(!state||!state.alvaras||state.alvaras.length===0) return;
+    if(!firebase||!firebase.firestore) return;
+    var db=firebase.firestore();
+    var email=getEmail();
+    console.log('[v5.7.52] iniciando auto-recuperacao para',email,'com',state.alvaras.length,'alvaras locais');
+
+    // Pega versao server-side
+    var snap=await db.collection('azuos').doc('shared').get({source:'server'});
+    var srv=snap.data()||{};
+    var srvAlvs=srv.alvaras||[];
+    var srvMap={};
+    srvAlvs.forEach(function(a){if(a&&a.id) srvMap[a.id]=a;});
+
+    var divergencias=[];
+    state.alvaras.forEach(function(local){
+      if(!local||!local.id) return;
+      var server=srvMap[local.id];
+      if(!server){divergencias.push({alv:local,motivo:'novo'});return;}
+      if(sig(local)!==sig(server)){divergencias.push({alv:local,motivo:'diff'});}
+    });
+
+    if(divergencias.length===0){console.log('[v5.7.52] sem divergencias');return;}
+    console.warn('[v5.7.52] DETECTADAS',divergencias.length,'edicoes locais nao sincronizadas. Recuperando...');
+
+    var agora=new Date().toISOString();
+    var updates={};
+    divergencias.forEach(function(d){
+      var a=d.alv;
+      // Registra edicao com email do paralegal e timestamp de agora (preserva o trabalho)
+      updates['edicoes_alvaras.'+a.id]={
+        _editado_por:email,
+        _editado_em:agora,
+        _editado_manualmente:true,
+        _auto_recuperado:true,
+        _motivo:d.motivo,
+        empresa:a.empresa||'',
+        empresa_id:a.empresa_id||0,
+        tipo:a.tipo||'',
+        status:a.status||'',
+        observacao:a.observacao||'',
+        proxima_atualizacao:a.proxima_atualizacao||'',
+        responsavel:a.responsavel||'',
+        cidade:a.cidade||'',
+        vencimento:a.vencimento||''
+      };
+    });
+    // Tambem atualiza alvaras com versao local (preserva os campos editados)
+    updates['alvaras']=state.alvaras;
+
+    await db.collection('azuos').doc('shared').update(updates);
+    console.warn('[v5.7.52] RECUPERADAS',divergencias.length,'edicoes! Atribuidas a',email);
+    if(window._azuosTV) window._azuosTV.edicoes=[]; // forca refresh
+  }catch(e){console.error('[v5.7.52 erro]',e);}
+}
+
+// HOOK ATIVO: a cada save no alvara (any change), garante registro
+function hookAtivo(){
+  setInterval(function(){
+    try{
+      if(!state||!state.alvaras||!state.edicoes_alvaras) return;
+      var email=getEmail();
+      var agora=new Date().toISOString();
+      var atualizados=0;
+      state.alvaras.forEach(function(a){
+        if(!a||!a.id) return;
+        if(!window._sigCache) window._sigCache={};
+        var sigAtual=sig(a);
+        var sigAnt=window._sigCache[a.id];
+        if(sigAnt===undefined){window._sigCache[a.id]=sigAtual;return;}
+        if(sigAnt!==sigAtual){
+          window._sigCache[a.id]=sigAtual;
+          state.edicoes_alvaras[a.id]={
+            ...state.edicoes_alvaras[a.id],
+            _editado_por:email,
+            _editado_em:agora,
+            _editado_manualmente:true,
+            empresa:a.empresa,empresa_id:a.empresa_id,tipo:a.tipo,
+            status:a.status,observacao:a.observacao,proxima_atualizacao:a.proxima_atualizacao,
+            responsavel:a.responsavel,cidade:a.cidade,vencimento:a.vencimento
+          };
+          atualizados++;
+        }
+      });
+      if(atualizados>0){
+        console.log('[v5.7.52] '+atualizados+' edicoes capturadas. Salvando...');
+        // Forca write
+        if(firebase&&firebase.firestore){
+          firebase.firestore().collection('azuos').doc('shared').update({
+            edicoes_alvaras:state.edicoes_alvaras,
+            alvaras:state.alvaras
+          }).catch(function(e){console.error('[v5.7.52 write erro]',e);});
+        }
+      }
+    }catch(e){console.warn('[v5.7.52 hook]',e);}
+  },4000);
+}
+
+// Espera state carregar
+var ivW=setInterval(function(){
+  if(state&&state.alvaras&&state.alvaras.length>0&&firebase&&firebase.firestore){
+    clearInterval(ivW);
+    setTimeout(autoRecuperar,3000); // 3s pra estabilizar
+    setTimeout(hookAtivo,8000); // 8s depois ativa hook
+  }
+},1000);
+setTimeout(function(){clearInterval(ivW);},60000);
+console.log('[v5.7.52] armado');
+}catch(e){console.warn('[v5.7.52]',e);}
 })();
 
 </script>
