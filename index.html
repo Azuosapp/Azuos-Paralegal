@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.29 (Seguro)</title>
+<title>AZUOS Paralegal - Sistema v5.7.30 (Checklists hide)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5519,6 +5519,43 @@ console.log('[v5.7.28] features complementares carregadas');
     setTimeout(restaurarSeguro, 3500);
     console.log('[v5.7.29] filtros seguros ativados');
   } catch(e){ console.warn('[v5.7.29]', e); }
+})();
+
+
+/* ===== v5.7.30 — Esconder Checklists completamente (botao inteiro) ===== */
+(function esconderChecklists(){
+  try {
+    function esconderTudo(){
+      try {
+        // Esconder qualquer botão de nav cujo texto seja Checklists OU vazio
+        var navs = document.querySelectorAll('nav button, aside nav button, aside button');
+        navs.forEach(function(b){
+          var txt = (b.textContent || '').trim().toLowerCase();
+          // Esconder se for Checklists OU se for botão da sidebar com texto vazio (só ícone)
+          if (txt === 'checklists' || txt.indexOf('checklist') >= 0) {
+            b.style.display = 'none';
+          }
+          // Esconder se for botão SUBMIT do nav com texto vazio
+          if (b.type === 'submit' && txt.length === 0) {
+            b.style.display = 'none';
+          }
+        });
+      } catch(e){}
+    }
+
+    // Aplicar agora
+    esconderTudo();
+
+    // Aplicar quando DOM mudar (mas usar MutationObserver, não setInterval pra não causar flicker)
+    var obs = new MutationObserver(function(){
+      esconderTudo();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    setTimeout(esconderTudo, 1000);
+    setTimeout(esconderTudo, 3000);
+    console.log('[v5.7.30] checklists escondido');
+  } catch(e){ console.warn('[v5.7.30]', e); }
 })();
 
 </script>
