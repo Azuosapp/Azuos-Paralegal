@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.26 (Ordenação)</title>
+<title>AZUOS Paralegal - Sistema v5.7.27 (+ Melhorias)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5210,6 +5210,91 @@ function abrirBaselineDialog() {
   setTimeout(tornarHeadersClicaveis, 3000);
   console.log('[v5.7.26] ordenacao por colunas ativa');
 })();
+
+
+/* ===== v5.7.27 — Pacote modular de melhorias ===== */
+
+/* 1. Modo escuro */
+(function modoEscuro(){
+  try {
+    var css = `
+      body.azuos-dark { background:#0f172a !important; color:#cbd5e1; }
+      body.azuos-dark main, body.azuos-dark .bg-white, body.azuos-dark .bg-slate-50 { background:#1e293b !important; color:#e2e8f0 !important; }
+      body.azuos-dark table thead { background:#334155 !important; color:#cbd5e1 !important; }
+      body.azuos-dark table tbody tr { background:#1e293b !important; color:#cbd5e1 !important; border-color:#334155 !important; }
+      body.azuos-dark input, body.azuos-dark select, body.azuos-dark textarea { background:#334155 !important; color:#e2e8f0 !important; border-color:#475569 !important; }
+      body.azuos-dark h1, body.azuos-dark h2, body.azuos-dark h3 { color:#f1f5f9 !important; }
+      body.azuos-dark .text-slate-700 { color:#cbd5e1 !important; }
+      body.azuos-dark .text-slate-500 { color:#94a3b8 !important; }
+      body.azuos-dark .border-slate-100, body.azuos-dark .border-slate-200 { border-color:#334155 !important; }
+    `;
+    var st=document.createElement('style'); st.id='azuos-dark-css'; st.textContent=css; document.head.appendChild(st);
+    if (localStorage.getItem('azuos_tema')==='dark') document.body.classList.add('azuos-dark');
+    window.toggleModoEscuro=function(){ document.body.classList.toggle('azuos-dark'); localStorage.setItem('azuos_tema', document.body.classList.contains('azuos-dark')?'dark':'light'); };
+    function add(){ try{ if(document.getElementById('btn-modo-escuro')) return; var s=document.getElementById('logout-btn'); if(!s) return; var b=document.createElement('button'); b.id='btn-modo-escuro'; b.innerHTML='🌓 Tema escuro/claro'; b.className=s.className; b.onclick=function(e){ e.preventDefault(); window.toggleModoEscuro(); }; s.parentNode.insertBefore(b,s); }catch(e){} }
+    new MutationObserver(add).observe(document.body,{childList:true,subtree:true});
+    setTimeout(add,2000);
+  } catch(e){}
+})();
+
+/* 2. Toast */
+(function toast(){
+  try {
+    var css=`.azuos-toast{position:fixed;bottom:24px;right:24px;padding:14px 20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.2);z-index:99999;font-size:14px;font-weight:500;opacity:0;transform:translateY(20px);transition:all 0.3s ease;max-width:400px;}
+.azuos-toast.show{opacity:1;transform:translateY(0);}
+.azuos-toast.success{background:linear-gradient(135deg,#10b981,#059669);color:white;}
+.azuos-toast.info{background:linear-gradient(135deg,#3b82f6,#6366f1);color:white;}
+.azuos-toast.warning{background:linear-gradient(135deg,#f59e0b,#d97706);color:white;}`;
+    var st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
+    window.toastAzuos=function(msg,tipo){ var d=document.createElement('div'); d.className='azuos-toast '+(tipo||'info'); d.textContent=msg; document.body.appendChild(d); setTimeout(function(){d.classList.add('show')},10); setTimeout(function(){d.classList.remove('show'); setTimeout(function(){d.remove()},300)},3500); };
+  } catch(e){}
+})();
+
+/* 3. Filtros persistentes */
+(function filtros(){
+  try {
+    function getKey(){ var u=state && state.sessao && state.sessao.email; return 'azuos_filtros_'+(u||'anon'); }
+    function salvar(){ try{ var f={}; document.querySelectorAll('input, select').forEach(function(el){ if(el.id) f[el.id]=el.value; else if(el.name) f[el.name]=el.value; }); localStorage.setItem(getKey(), JSON.stringify(f)); }catch(e){} }
+    function restaurar(){ try{ var r=localStorage.getItem(getKey()); if(!r) return; var f=JSON.parse(r); Object.keys(f).forEach(function(k){ var el=document.getElementById(k)||document.querySelector('[name="'+k+'"]'); if(el && f[k] && !el.value){ el.value=f[k]; el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('input',{bubbles:true})); } }); }catch(e){} }
+    document.addEventListener('change',function(e){ if(e.target && (e.target.tagName==='SELECT'||e.target.tagName==='INPUT')) salvar(); });
+    setTimeout(restaurar,3000);
+    setInterval(restaurar,30000);
+  } catch(e){}
+})();
+
+/* 4. Atalhos teclado */
+(function atalhos(){
+  try {
+    document.addEventListener('keydown',function(e){
+      if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k') { var bb=document.querySelectorAll('input[placeholder*="usca"], input[type="search"]'); if(bb.length>0){ e.preventDefault(); bb[0].focus(); bb[0].select(); } }
+      if ((e.ctrlKey||e.metaKey) && e.key==='/') { e.preventDefault(); if(window.toastAzuos) window.toastAzuos('Atalhos: Ctrl+K busca · Ctrl+D modo escuro · Ctrl+/ ajuda','info'); }
+      if ((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='d') { e.preventDefault(); if(typeof window.toggleModoEscuro==='function') window.toggleModoEscuro(); }
+    });
+  } catch(e){}
+})();
+
+/* 5. Exportar CSV */
+(function exportCSV(){
+  try {
+    window.exportarEmpresasCSV=function(){
+      try{
+        var ee=state.empresas||[];
+        if(ee.length===0){ if(window.toastAzuos) window.toastAzuos('Nenhuma empresa','warning'); return; }
+        var h=['Nome','CNPJ','Cidade','Grupo','Responsavel','Status'];
+        var rows=[h.join(';')];
+        ee.forEach(function(e){ rows.push([(e.nome||'').replace(/;/g,','), (e.cnpj||''), (e.cidade||'').replace(/;/g,','), (e.grupo||'').replace(/;/g,','), (e.responsavel||'').replace(/;/g,','), (e.status||'')].join(';')); });
+        var csv='\uFEFF'+rows.join('\n');
+        var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+        var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='empresas_'+new Date().toISOString().substring(0,10)+'.csv'; a.click();
+        if(window.toastAzuos) window.toastAzuos('Exportado: '+ee.length+' empresas','success');
+      }catch(e){}
+    };
+    function add(){ try{ if(document.getElementById('btn-exportar-csv')) return; var bb=document.querySelectorAll('button'); var btnNova=null; bb.forEach(function(b){ var t=(b.textContent||'').trim(); if(t.includes('Nova empresa')||t.includes('Cadastrar empresa')) btnNova=b; }); if(!btnNova) return; var b=document.createElement('button'); b.id='btn-exportar-csv'; b.innerHTML='📥 Exportar'; b.style.cssText='padding:8px 16px;background:#6366f1;color:white;border:none;border-radius:8px;margin-right:8px;cursor:pointer;font-weight:500;'; b.onclick=function(){ window.exportarEmpresasCSV(); }; btnNova.parentNode.insertBefore(b,btnNova); }catch(e){} }
+    new MutationObserver(add).observe(document.body,{childList:true,subtree:true});
+    setTimeout(add,2000);
+  } catch(e){}
+})();
+console.log('[v5.7.27] todas as melhorias modulares carregadas');
 
 </script>
 </body>
