@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.33 (Estável)</title>
+<title>AZUOS Paralegal - Sistema v5.7.34 (Andamento OK)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5604,6 +5604,85 @@ console.log('[v5.7.28] features complementares carregadas');
 
 
 
+
+
+/* ===== v5.7.34 — Corrigir cálculo andamento (usar empresa_id + excluir isento) ===== */
+(function fixCalcAndamento(){
+  try {
+    // Substituir função de cálculo da v5.7.26 com versão correta
+    window._calcAndamentoCorreto = function(emp){
+      try {
+        if (!emp || emp.id === undefined) return 0;
+        var alvaras = (state.alvaras || []).filter(function(a){ return a && a.empresa_id === emp.id; });
+        // Filtrar fora "Isento", "Sem obrigatoriedade" e vazios
+        var comOb = alvaras.filter(function(a){
+          var s = (a.status || '').toLowerCase().trim();
+          if (!s) return false;
+          if (s.indexOf('isento') >= 0) return false;
+          if (s.indexOf('sem obrigat') >= 0) return false;
+          return true;
+        });
+        if (comOb.length === 0) return 0;
+        var concl = comOb.filter(function(a){
+          var s = (a.status || '').toLowerCase();
+          return s.indexOf('conclu') >= 0 || s.indexOf('formaliz') >= 0;
+        }).length;
+        return Math.round((concl / comOb.length) * 100);
+      } catch(e) { return 0; }
+    };
+
+    // Sobrescrever _ordenarEmpresas (v5.7.26)
+    if (typeof window._ordenarEmpresas === 'function') {
+      window._ordenarEmpresas = function(coluna){
+        if (!Array.isArray(state.empresas)) return;
+        if (!window._ordEmpresas) window._ordEmpresas = { coluna: null, asc: true };
+        if (window._ordEmpresas.coluna === coluna) window._ordEmpresas.asc = !window._ordEmpresas.asc;
+        else { window._ordEmpresas.coluna = coluna; window._ordEmpresas.asc = true; }
+        var asc = window._ordEmpresas.asc ? 1 : -1;
+        state.empresas.sort(function(a, b){
+          var va, vb;
+          if (coluna === 'nome') { va = (a.nome||'').toLowerCase(); vb = (b.nome||'').toLowerCase(); }
+          else if (coluna === 'andamento') { va = window._calcAndamentoCorreto(a); vb = window._calcAndamentoCorreto(b); }
+          else if (coluna === 'cnpj') { va = (a.cnpj||''); vb = (b.cnpj||''); }
+          else if (coluna === 'cidade') { va = (a.cidade||'').toLowerCase(); vb = (b.cidade||'').toLowerCase(); }
+          else if (coluna === 'responsavel') { va = (a.responsavel||'').toLowerCase(); vb = (b.responsavel||'').toLowerCase(); }
+          else return 0;
+          if (va < vb) return -1 * asc;
+          if (va > vb) return 1 * asc;
+          return 0;
+        });
+        try { if (typeof renderEmpresas === 'function') renderEmpresas(); } catch(e){}
+        try { if (typeof render === 'function') render(); } catch(e){}
+      };
+    }
+
+    // Re-bind nos headers com a função correta
+    setTimeout(function(){
+      try {
+        document.querySelectorAll('table th').forEach(function(th){
+          if (th.dataset.ordAplicado) {
+            var coluna = null;
+            var txt = (th.textContent||'').trim().toLowerCase().replace('⇅','').replace('▲','').replace('▼','').trim();
+            if (txt === 'empresa') coluna = 'nome';
+            else if (txt === 'andamento') coluna = 'andamento';
+            else if (txt === 'cnpj') coluna = 'cnpj';
+            else if (txt === 'cidade') coluna = 'cidade';
+            else if (txt === 'responsável' || txt === 'responsavel') coluna = 'responsavel';
+            if (coluna) {
+              // Clonar pra remover listeners antigos
+              var newTh = th.cloneNode(true);
+              th.parentNode.replaceChild(newTh, th);
+              newTh.addEventListener('click', function(){ window._ordenarEmpresas(coluna); });
+              newTh.style.cursor = 'pointer';
+            }
+          }
+        });
+      } catch(e){}
+    }, 3000);
+
+    console.log('[v5.7.34] cálculo andamento corrigido');
+  } catch(e){ console.warn('[v5.7.34]', e); }
+})();
 
 </script>
 </body>
