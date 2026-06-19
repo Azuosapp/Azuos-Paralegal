@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.49 (Botao flutuante TV)</title>
+<title>AZUOS Paralegal - Sistema v5.7.50 (Andamento crescente)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6065,6 +6065,63 @@ var iv=setInterval(function(){
 setTimeout(function(){clearInterval(iv);},60000);
 console.log('[v5.7.49] btn flutuante OK');
 }catch(e){console.warn('[v5.7.49]',e);}
+})();
+
+
+/* ===== v5.7.50 — Ordenacao ANDAMENTO crescente robusta ===== */
+(function ord50(){
+try{
+var STATUS_CONCLUIDOS_50=['conclu','formaliz','arquivado','sem obrigat','isento'];
+function calcAnd(empresa){
+  var alvs=(state.alvaras||[]).filter(function(a){
+    if(a.empresa_id && empresa.id) return a.empresa_id===empresa.id;
+    return (a.empresa||'').toLowerCase()===(empresa.nome||'').toLowerCase();
+  });
+  if(alvs.length===0) return -1;
+  var conc=alvs.filter(function(a){
+    var s=(a.status||'').toLowerCase();
+    return STATUS_CONCLUIDOS_50.some(function(k){return s.indexOf(k)>=0;});
+  }).length;
+  return Math.round((conc/alvs.length)*100);
+}
+function ordenarPorAndamento(crescente){
+  var tabela=document.querySelector('table tbody');
+  if(!tabela) return;
+  var trs=Array.from(tabela.querySelectorAll('tr'));
+  var dados=trs.map(function(tr){
+    var nome=tr.cells[0]?.textContent?.trim()||'';
+    var cnpj=tr.cells[1]?.textContent?.trim()||'';
+    // Encontra empresa pelo nome OU cnpj
+    var emp=(state.empresas||[]).find(function(e){
+      if(cnpj && e.cnpj && e.cnpj.replace(/\D/g,'')===cnpj.replace(/\D/g,'')) return true;
+      return (e.nome||'').toLowerCase().substring(0,30)===nome.toLowerCase().substring(0,30);
+    });
+    var and=emp?calcAnd(emp):-1;
+    return {tr:tr, and:and};
+  });
+  dados.sort(function(a,b){
+    if(crescente) return a.and-b.and;
+    return b.and-a.and;
+  });
+  dados.forEach(function(d){tabela.appendChild(d.tr);});
+  console.log('[v5.7.50] reordenado '+dados.length+' linhas');
+}
+window._ordenarAndamentoCrescente=function(){ordenarPorAndamento(true);};
+window._ordenarAndamentoDecrescente=function(){ordenarPorAndamento(false);};
+// Detecta click no header ANDAMENTO e reaplica
+var estado={crescente:true};
+document.addEventListener('click', function(e){
+  var th=e.target.closest('th');
+  if(!th) return;
+  var txt=(th.textContent||'').toUpperCase();
+  if(txt.indexOf('ANDAMENTO')<0) return;
+  setTimeout(function(){
+    ordenarPorAndamento(estado.crescente);
+    estado.crescente=!estado.crescente;
+  },300);
+}, true);
+console.log('[v5.7.50] OK');
+}catch(e){console.warn('[v5.7.50]',e);}
 })();
 
 </script>
