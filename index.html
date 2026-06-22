@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.62 (Chips por risco no header)</title>
+<title>AZUOS Paralegal - Sistema v5.7.61 (Em andamento e Arquivado pelo cliente como progresso)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1365,30 +1365,9 @@ function renderEmpresaDetalhe(){
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
               <span>📍 <strong>${esc(e.cidade||'-')}</strong></span>
               ${e.grupo ? `<span>🏢 Grupo: <strong>${esc(e.grupo)}</strong></span>` : ''}
-              ${(() => {
-                // v5.7.62: chips coloridos por risco
-                const ativo = e.status === 'ATIVO';
-                const formalizado = e.formalizado === 'TRUE';
-                // Alvará de Funcionamento - verde só se Concluído ou Em vigor
-                const alvFunc = state.alvaras.find(a => a.empresa_id === e.id && /alvar.{0,3} de funcionamento/i.test(a.tipo||''));
-                const alvFuncOk = alvFunc && (alvFunc.status === 'Concluído' || alvFunc.status === 'Em vigor (vencimento)');
-                const alvFuncStatus = alvFunc ? alvFunc.status : null;
-                // Chip ATIVO/INATIVO
-                const chipStatus = ativo
-                  ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">✓ ATIVO</span>'
-                  : '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">🚨 ' + esc(e.status||'INATIVO') + '</span>';
-                // Chip Formalizado
-                const chipForm = e.formalizado === 'TRUE'
-                  ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">✓ Formalizado</span>'
-                  : e.formalizado === 'FALSE'
-                    ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">⚠ Não formalizado</span>'
-                    : '';
-                // Chip Alvará de Funcionamento
-                const chipAlv = alvFuncOk
-                  ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700" title="Status: ' + esc(alvFuncStatus) + '">✓ Alvará Concluído</span>'
-                  : '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Status atual: ' + esc(alvFuncStatus||'sem alvará de funcionamento') + '">🚨 Alvará Não Gerado</span>';
-                return chipStatus + chipAlv + chipForm;
-              })()}
+              <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${e.status==='ATIVO'?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-600'}">${esc(e.status||'-')}</span>
+              ${e.prefeitura ? `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${e.prefeitura==='Pago'?'bg-emerald-100 text-emerald-700':e.prefeitura==='Não Pago'?'bg-red-100 text-red-700':e.prefeitura==='Não Gerado'?'bg-orange-100 text-orange-700':'bg-gray-100 text-gray-700'}">🏛️ ${esc(e.prefeitura)}</span>` : ''}
+              ${e.formalizado==='TRUE' ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">✓ Formalizado</span>' : e.formalizado==='FALSE' ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">⚠ Não formalizado</span>' : ''}
             </div>
             ${(e.envio || e.envio2 || e.atualizacao || e.atividade) ? `
               <div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-500">
@@ -6472,4 +6451,33 @@ console.log('[v5.7.56] auto-sync usuarios armado');
   }
   function isDateInput(el){
     if(!el || el.tagName !== 'INPUT') return false;
-    var id = (el.id||
+    var id = (el.id||'').toLowerCase();
+    var placeholder = (el.placeholder||'').toLowerCase();
+    if(id === 'fa-venc' || id === 'fa-prox') return true;
+    if(placeholder.indexOf('dd/mm/aaaa') >= 0) return true;
+    if(placeholder.indexOf('dd/mm/yyyy') >= 0) return true;
+    return false;
+  }
+  // Event delegation: aplica em qualquer input de data, mesmo os criados depois
+  document.addEventListener('input', function(e){
+    if(!isDateInput(e.target)) return;
+    var el = e.target;
+    var posCursor = el.selectionStart || 0;
+    var valorAntes = el.value;
+    var valorDepois = aplicaMascara(valorAntes);
+    if(valorDepois === valorAntes) return;
+    el.value = valorDepois;
+    // Ajusta cursor pra ficar no mesmo lugar lógico (depois da barra inserida)
+    var novaPos = posCursor;
+    if(valorDepois.length > valorAntes.length){
+      // Inseriu barra automaticamente — move cursor pra depois dela
+      if(valorAntes.length === 2 || valorAntes.length === 5) novaPos++;
+    }
+    try{ el.setSelectionRange(novaPos, novaPos); }catch(e2){}
+  }, true);
+  console.log('[v5.7.60] mascara de data ativa');
+})();
+
+</script>
+</body>
+</html>
