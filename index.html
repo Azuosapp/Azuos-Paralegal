@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.68 (Chip alvara verde so se Concluido ou Em vigor)</title>
+<title>AZUOS Paralegal - Sistema v5.7.69 (Chip alvara - amarelo para Em andamento e Aguardando)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1346,9 +1346,17 @@ function _chipAlvaraFuncionamento(e){
   try {
     var alvFunc = (state.alvaras||[]).find(function(a){ return a.empresa_id === e.id && /alvar.{0,3} de funcionamento/i.test(a.tipo||''); });
     var st = alvFunc ? String(alvFunc.status||'').trim() : '';
-    // v5.7.68: VERDE apenas se Concluído ou Em vigor — qualquer outro status fica VERMELHO
-    var ok = (st === 'Concluído' || st === 'Em vigor (vencimento)');
-    if (ok) return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700" title="Status do Alvará de Funcionamento">✓ Alvará: ' + esc(st) + '</span>';
+    var sLow = st.toLowerCase();
+    // v5.7.69: regras de cor
+    // Verde: Concluído ou Em vigor
+    if (st === 'Concluído' || st === 'Em vigor (vencimento)') {
+      return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700" title="Status do Alvará de Funcionamento">✓ Alvará: ' + esc(st) + '</span>';
+    }
+    // Amarelo: Em andamento ou Aguardando pagamento
+    if (sLow.indexOf('em andamento')>=0 || sLow.indexOf('aguardando pagamento')>=0) {
+      return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700" title="Status do Alvará de Funcionamento">⏳ Alvará: ' + esc(st) + '</span>';
+    }
+    // Vermelho: qualquer outro
     var labelTxt = st ? ('Alvará: ' + st) : 'Alvará Não Gerado';
     return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Status do Alvará de Funcionamento">🚨 ' + esc(labelTxt) + '</span>';
   } catch(err){ return ''; }
