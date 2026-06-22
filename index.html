@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.57 (Performance + anti-falso-positivo)</title>
+<title>AZUOS Paralegal - Sistema v5.7.58 (Mata setIntervals empilhados)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -15,6 +15,44 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
+
+/* ===== v5.7.58 — Performance: matar setIntervals empilhados depois do boot ===== */
+(function performance58(){
+  // Lista de IDs de setInterval criados
+  var intervalsCriados = [];
+  var origSetInterval = window.setInterval;
+  window.setInterval = function(fn, ms){
+    var id = origSetInterval.apply(this, arguments);
+    intervalsCriados.push({id:id, ms:ms||0, fn:fn});
+    return id;
+  };
+
+  // Depois de 30s, mata todos setIntervals com frequência < 5s
+  // (esses são patches antigos redundantes que ficaram empilhados)
+  setTimeout(function(){
+    var matos = 0;
+    intervalsCriados.forEach(function(rec){
+      if(rec.ms > 0 && rec.ms < 5000){
+        try{ clearInterval(rec.id); matos++; }catch(e){}
+      }
+    });
+    console.log('[v5.7.58] matou '+matos+' setIntervals empilhados (<5s)');
+    // E reinstala apenas os ESSENCIAIS com frequência aumentada
+    // 1. aplicarUsuariosOficiais (uma vez a cada 60s é suficiente)
+    if(typeof aplicarUsuariosOficiais === 'function'){
+      setInterval(aplicarUsuariosOficiais, 60000);
+    }
+    // 2. _detectarESalvarEdicoes54 (10s ao invés de 4s)
+    if(typeof window._detectarESalvarEdicoes54 === 'function'){
+      setInterval(window._detectarESalvarEdicoes54, 10000);
+      console.log('[v5.7.58] hook v54 reagendado para 10s');
+    }
+    console.log('[v5.7.58] sistema otimizado');
+  }, 30000); // espera 30s pro boot terminar
+  console.log('[v5.7.58] performance armada');
+})();
+
+
   // === Firebase config AZUOS Paralegal ===
   const firebaseConfig = {
     apiKey: "AIzaSyAetNviUEud17HVdmUyfY_FaMVaK4WwWA8",
