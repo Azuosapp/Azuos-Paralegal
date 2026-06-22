@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.67 (Chip alvara mostra status real)</title>
+<title>AZUOS Paralegal - Sistema v5.7.68 (Chip alvara verde so se Concluido ou Em vigor)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1346,22 +1346,11 @@ function _chipAlvaraFuncionamento(e){
   try {
     var alvFunc = (state.alvaras||[]).find(function(a){ return a.empresa_id === e.id && /alvar.{0,3} de funcionamento/i.test(a.tipo||''); });
     var st = alvFunc ? String(alvFunc.status||'').trim() : '';
-    if (!st) return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Sem alvará de funcionamento cadastrado">🚨 Alvará Não Gerado</span>';
-    var sLow = st.toLowerCase();
-    var cor, icone;
-    // Verde: concluído, em vigor, formalizado, arquivado pelo cliente, sem obrigatoriedade, isento, pago
-    if (sLow.indexOf('conclu')>=0 || sLow.indexOf('em vigor')>=0 || sLow.indexOf('formaliz')>=0 || sLow.indexOf('arquivado pelo cliente')>=0 || sLow.indexOf('sem obrigat')>=0 || sLow.indexOf('isento')>=0 || sLow === 'pago') {
-      cor = 'bg-emerald-100 text-emerald-700'; icone = '✓';
-    }
-    // Amarelo: em andamento, aguardando, encaminhado
-    else if (sLow.indexOf('em andamento')>=0 || sLow.indexOf('aguardando')>=0 || sLow.indexOf('encaminhado')>=0) {
-      cor = 'bg-amber-100 text-amber-700'; icone = '⏳';
-    }
-    // Vermelho: não iniciado, não pago, paralisado, arquivado com pendências
-    else {
-      cor = 'bg-red-100 text-red-700'; icone = '🚨';
-    }
-    return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold ' + cor + '" title="Status do Alvará de Funcionamento">' + icone + ' Alvará: ' + esc(st) + '</span>';
+    // v5.7.68: VERDE apenas se Concluído ou Em vigor — qualquer outro status fica VERMELHO
+    var ok = (st === 'Concluído' || st === 'Em vigor (vencimento)');
+    if (ok) return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700" title="Status do Alvará de Funcionamento">✓ Alvará: ' + esc(st) + '</span>';
+    var labelTxt = st ? ('Alvará: ' + st) : 'Alvará Não Gerado';
+    return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Status do Alvará de Funcionamento">🚨 ' + esc(labelTxt) + '</span>';
   } catch(err){ return ''; }
 }
 function _chipFormalizado(e){
