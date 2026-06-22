@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.58 (Mata setIntervals empilhados)</title>
+<title>AZUOS Paralegal - Sistema v5.7.59 (Pendencias respeitam filtro resp)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -827,9 +827,18 @@ function renderPendencias() {
     return false;
   };
   const itens = [];
+  // v5.7.59: respeita filtro de responsável da aba Empresas
   state.alvaras.forEach(a => {
     // Pular status que já estão resolvidos
     if (STATUS_NAO_PENDENTE(a.status)) return;
+    // Aplica filtro de responsável se estiver setado
+    if (_filtroResp === '__SEM__') { if (a.responsavel) return; }
+    else if (_filtroResp && (a.responsavel||'') !== _filtroResp) return;
+    // Aplica filtro de status ATIVO/INATIVO (via empresa)
+    if (_filtroStatus) {
+      const emp = state.empresas.find(e => e.id === a.empresa_id);
+      if (emp && emp.status !== _filtroStatus) return;
+    }
     const d = parseDataBR(a.vencimento);
     if (!d) return;
     if (d >= hoje && d <= limite) {
