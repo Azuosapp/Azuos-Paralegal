@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.59 (Pendencias respeitam filtro resp)</title>
+<title>AZUOS Paralegal - Sistema v5.7.60 (Mascara data automatica)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6436,6 +6436,46 @@ console.log('[v5.7.56] auto-sync usuarios armado');
     };
     console.log('[v5.7.57] wrapper instalado no _detectarESalvarEdicoes54');
   }
+})();
+
+
+
+/* ===== v5.7.60 — Mascara automatica para campos de data dd/mm/aaaa ===== */
+(function mascaraData(){
+  function aplicaMascara(valor){
+    // Remove tudo que não é número
+    var nums = (valor||'').replace(/\D/g, '').substring(0,8);
+    if(nums.length <= 2) return nums;
+    if(nums.length <= 4) return nums.substring(0,2) + '/' + nums.substring(2);
+    return nums.substring(0,2) + '/' + nums.substring(2,4) + '/' + nums.substring(4);
+  }
+  function isDateInput(el){
+    if(!el || el.tagName !== 'INPUT') return false;
+    var id = (el.id||'').toLowerCase();
+    var placeholder = (el.placeholder||'').toLowerCase();
+    if(id === 'fa-venc' || id === 'fa-prox') return true;
+    if(placeholder.indexOf('dd/mm/aaaa') >= 0) return true;
+    if(placeholder.indexOf('dd/mm/yyyy') >= 0) return true;
+    return false;
+  }
+  // Event delegation: aplica em qualquer input de data, mesmo os criados depois
+  document.addEventListener('input', function(e){
+    if(!isDateInput(e.target)) return;
+    var el = e.target;
+    var posCursor = el.selectionStart || 0;
+    var valorAntes = el.value;
+    var valorDepois = aplicaMascara(valorAntes);
+    if(valorDepois === valorAntes) return;
+    el.value = valorDepois;
+    // Ajusta cursor pra ficar no mesmo lugar lógico (depois da barra inserida)
+    var novaPos = posCursor;
+    if(valorDepois.length > valorAntes.length){
+      // Inseriu barra automaticamente — move cursor pra depois dela
+      if(valorAntes.length === 2 || valorAntes.length === 5) novaPos++;
+    }
+    try{ el.setSelectionRange(novaPos, novaPos); }catch(e2){}
+  }, true);
+  console.log('[v5.7.60] mascara de data ativa');
 })();
 
 </script>
