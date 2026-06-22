@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.63 (Validacao minima 10 dias proxima atualizacao)</title>
+<title>AZUOS Paralegal - Sistema v5.7.62 (Chips por risco no header)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1940,20 +1940,6 @@ function salvarAlvara(id, empresaId){
   if (bloqueioConsulta()) return;
   const tipo = document.getElementById('fa-tipo').value;
   if (!tipo) { alert('Tipo é obrigatório'); return; }
-  // v5.7.63: validar que próxima atualização é pelo menos 10 dias ANTES do vencimento
-  const _vencInput = document.getElementById('fa-venc').value;
-  const _proxInput = document.getElementById('fa-prox').value;
-  if (_vencInput && _proxInput) {
-    const _dVenc = parseDataBR(_vencInput);
-    const _dProx = parseDataBR(_proxInput);
-    if (_dVenc && _dProx) {
-      const _diff = Math.round((_dVenc - _dProx) / (1000*60*60*24));
-      if (_diff < 10) {
-        alert('⚠ A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + _vencInput + '\nPróxima atualização: ' + _proxInput + '\nDiferença atual: ' + _diff + ' dia(s)\n\nAjuste a data para pelo menos 10 dias antes do vencimento.');
-        return;
-      }
-    }
-  }
   const empresa = state.empresas.find(x => x.id === empresaId);
   let conversas = [], anexos = [];
   try { conversas = JSON.parse(document.getElementById('fa-conversas-data').value || '[]'); } catch(e) {}
@@ -6463,4 +6449,27 @@ console.log('[v5.7.56] auto-sync usuarios armado');
           });
           console.log('[v5.7.57] '+diffs.length+' mudancas salvando no Firestore');
           var sanit = window._sanitizar54 ? window._sanitizar54(state.edicoes_alvaras) : state.edicoes_alvaras;
-          await firebase.firestore().collection('azuos').doc('shared').update({edicoes_alvaras:
+          await firebase.firestore().collection('azuos').doc('shared').update({edicoes_alvaras: sanit});
+          console.log('[v5.7.57] SALVO!');
+        }
+      }catch(e){console.error('[v5.7.57 erro]',e.message);}
+      finally{ executando = false; }
+    };
+    console.log('[v5.7.57] wrapper instalado no _detectarESalvarEdicoes54');
+  }
+})();
+
+
+
+/* ===== v5.7.60 — Mascara automatica para campos de data dd/mm/aaaa ===== */
+(function mascaraData(){
+  function aplicaMascara(valor){
+    // Remove tudo que não é número
+    var nums = (valor||'').replace(/\D/g, '').substring(0,8);
+    if(nums.length <= 2) return nums;
+    if(nums.length <= 4) return nums.substring(0,2) + '/' + nums.substring(2);
+    return nums.substring(0,2) + '/' + nums.substring(2,4) + '/' + nums.substring(4);
+  }
+  function isDateInput(el){
+    if(!el || el.tagName !== 'INPUT') return false;
+    var id = (el.id||
