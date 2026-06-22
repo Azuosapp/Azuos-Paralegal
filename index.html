@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.70 (Cards de status dinamicos)</title>
+<title>AZUOS Paralegal - Sistema v5.7.71 (Save sincrono no Firestore - resolve paralegais)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2038,6 +2038,29 @@ function salvarAlvara(id, empresaId){
     log('Cadastrou alvará', `${tipo} - ${empresa.nome}`);
   }
   closeModal(); saveState(); render();
+  // v5.7.71: SAVE SÍNCRONO direto no Firestore (resolve paralegais não conseguirem salvar)
+  try {
+    if (firebase && firebase.firestore && state.edicoes_alvaras) {
+      var _clean71 = {};
+      Object.keys(state.edicoes_alvaras).forEach(function(kk){
+        var v = state.edicoes_alvaras[kk];
+        if (!v) return;
+        var o = {};
+        Object.keys(v).forEach(function(k2){
+          var val = v[k2];
+          o[k2] = (val === undefined || val === null) ? '' : val;
+        });
+        _clean71[kk] = o;
+      });
+      firebase.firestore().collection('azuos').doc('shared').update({
+        edicoes_alvaras: _clean71
+      }).then(function(){ console.log('[v5.7.71] alvará salvo direto no Firestore'); })
+        .catch(function(err){
+          console.error('[v5.7.71] erro Firestore:', err.message);
+          alert('⚠ Aviso: alteração salva localmente mas FALHOU no servidor.\n\nErro: ' + err.message + '\n\nA próxima vez que carregar pode perder. Tente sair e entrar de novo.');
+        });
+    }
+  } catch(e71){ console.warn('[v5.7.71]', e71); }
   // Toast de confirmação
   const t = document.createElement('div');
   t.className = 'toast-slide';
@@ -6556,6 +6579,52 @@ console.log('[v5.7.56] auto-sync usuarios armado');
   console.log('[v5.7.60] mascara de data ativa');
 })();
 
+
+/* ===== v5.7.71 — Boot: recupera trabalho local não sincronizado ===== */
+(function recup71(){
+try{
+  setTimeout(async function(){
+    try {
+      if (!firebase || !firebase.firestore || !firebase.auth().currentUser) return;
+      if (!state || !state.alvaras) return;
+      var db = firebase.firestore();
+      var snap = await db.collection('azuos').doc('shared').get({source:'server'});
+      var fs = snap.data() || {};
+      var fsEd = fs.edicoes_alvaras || {};
+      var localEd = state.edicoes_alvaras || {};
+      // Para cada edicao LOCAL marcada como editado_manualmente, comparar com Firestore
+      // Se LOCAL mais nova OU não existe no Firestore, envia pro Firestore
+      var maisNovas = {};
+      Object.keys(localEd).forEach(function(k){
+        var lv = localEd[k];
+        if (!lv || !lv._editado_manualmente) return;
+        var fv = fsEd[k];
+        if (!fv || !fv._editado_em || new Date(lv._editado_em||0) > new Date(fv._editado_em||0)) {
+          // LOCAL é mais recente — preservar
+          var o = {};
+          Object.keys(lv).forEach(function(k2){
+            var val = lv[k2];
+            o[k2] = (val === undefined || val === null) ? '' : val;
+          });
+          maisNovas[k] = o;
+        }
+      });
+      var qt = Object.keys(maisNovas).length;
+      if (qt > 0) {
+        console.warn('[v5.7.71] recuperando '+qt+' edicoes locais nao sincronizadas');
+        var updates = {};
+        Object.keys(maisNovas).forEach(function(k){
+          updates['edicoes_alvaras.'+k] = maisNovas[k];
+        });
+        await db.collection('azuos').doc('shared').update(updates);
+        console.log('[v5.7.71] '+qt+' edicoes recuperadas pro Firestore');
+      } else {
+        console.log('[v5.7.71] sem edicoes locais novas pra recuperar');
+      }
+    } catch(e){ console.error('[v5.7.71 boot]', e.message); }
+  }, 8000); // 8s depois do boot pra dar tempo do firebase auth ficar pronto
+}catch(e){console.warn('[v5.7.71]',e);}
+})();
 </script>
 </body>
 </html>
