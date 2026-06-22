@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.61 (Em andamento e Arquivado pelo cliente como progresso)</title>
+<title>AZUOS Paralegal - Sistema v5.7.63b (Validacao 10 dias - refeita)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1919,6 +1919,20 @@ function salvarAlvara(id, empresaId){
   if (bloqueioConsulta()) return;
   const tipo = document.getElementById('fa-tipo').value;
   if (!tipo) { alert('Tipo é obrigatório'); return; }
+  // v5.7.63b: validar que próxima atualização tem pelo menos 10 dias antes do vencimento
+  var _vencInput = document.getElementById('fa-venc').value;
+  var _proxInput = document.getElementById('fa-prox').value;
+  if (_vencInput && _proxInput && typeof parseDataBR === 'function') {
+    var _dVenc = parseDataBR(_vencInput);
+    var _dProx = parseDataBR(_proxInput);
+    if (_dVenc && _dProx) {
+      var _diff = Math.round((_dVenc - _dProx) / (1000*60*60*24));
+      if (_diff < 10) {
+        alert('A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + _vencInput + '\nPróxima atualização: ' + _proxInput + '\nDiferença atual: ' + _diff + ' dia(s)\n\nAjuste para pelo menos 10 dias antes do vencimento.');
+        return;
+      }
+    }
+  }
   const empresa = state.empresas.find(x => x.id === empresaId);
   let conversas = [], anexos = [];
   try { conversas = JSON.parse(document.getElementById('fa-conversas-data').value || '[]'); } catch(e) {}
