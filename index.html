@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.63b (Validacao 10 dias - refeita)</title>
+<title>AZUOS Paralegal - Sistema v5.7.64 (Chips coloridos + validacao 10 dias)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1336,6 +1336,27 @@ function renderPartial(){
 }
 
 // ============ Empresa - Detalhe (com TODOS os alvarás) ============
+
+// v5.7.64: helpers para chips coloridos por risco no header da empresa
+function _chipStatusEmpresa(e){
+  if (e.status === 'ATIVO') return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">✓ ATIVO</span>';
+  return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">🚨 ' + esc(e.status||'INATIVO') + '</span>';
+}
+function _chipAlvaraFuncionamento(e){
+  try {
+    var alvFunc = (state.alvaras||[]).find(function(a){ return a.empresa_id === e.id && /alvar.{0,3} de funcionamento/i.test(a.tipo||''); });
+    var st = alvFunc ? alvFunc.status : '';
+    var ok = st === 'Concluído' || st === 'Em vigor (vencimento)';
+    if (ok) return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700" title="Status: ' + esc(st) + '">✓ Alvará Concluído</span>';
+    return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700" title="Status atual: ' + esc(st||'sem alvará de funcionamento') + '">🚨 Alvará Não Gerado</span>';
+  } catch(err){ return ''; }
+}
+function _chipFormalizado(e){
+  if (e.formalizado === 'TRUE') return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">✓ Formalizado</span>';
+  if (e.formalizado === 'FALSE') return '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">⚠ Não formalizado</span>';
+  return '';
+}
+
 function renderEmpresaDetalhe(){
   const e = state.empresas.find(x => x.id === state.empresaAtiva);
   if (!e) { return '<div class="p-6">Empresa não encontrada. <button id="voltar-em" class="text-blue-600 underline">Voltar</button></div>'; }
@@ -1365,9 +1386,9 @@ function renderEmpresaDetalhe(){
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
               <span>📍 <strong>${esc(e.cidade||'-')}</strong></span>
               ${e.grupo ? `<span>🏢 Grupo: <strong>${esc(e.grupo)}</strong></span>` : ''}
-              <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${e.status==='ATIVO'?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-600'}">${esc(e.status||'-')}</span>
-              ${e.prefeitura ? `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${e.prefeitura==='Pago'?'bg-emerald-100 text-emerald-700':e.prefeitura==='Não Pago'?'bg-red-100 text-red-700':e.prefeitura==='Não Gerado'?'bg-orange-100 text-orange-700':'bg-gray-100 text-gray-700'}">🏛️ ${esc(e.prefeitura)}</span>` : ''}
-              ${e.formalizado==='TRUE' ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">✓ Formalizado</span>' : e.formalizado==='FALSE' ? '<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">⚠ Não formalizado</span>' : ''}
+              ${_chipStatusEmpresa(e)}
+              ${_chipAlvaraFuncionamento(e)}
+              ${_chipFormalizado(e)}
             </div>
             ${(e.envio || e.envio2 || e.atualizacao || e.atividade) ? `
               <div class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-slate-500">
