@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.56 (Auto-sync usuarios)</title>
+<title>AZUOS Paralegal - Sistema v5.7.57 (Performance + anti-falso-positivo)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6306,6 +6306,90 @@ window._autoSyncUsuarios = async function(){
 })();
 setInterval(function(){window._autoSyncUsuarios();},5*60*1000);
 console.log('[v5.7.56] auto-sync usuarios armado');
+
+
+
+/* ===== v5.7.57 — Performance: corrigir falsos positivos do hook v5.7.54 ===== */
+(function fix57(){
+  // 1. Re-inicializa o cache de signatures quando state.alvaras cresce muito
+  // (evita o snapshot inicial de 130 alvarás comparar com 6432 depois do sync)
+  setInterval(function(){
+    try{
+      if(!state||!state.alvaras||!window._cacheSigAlvs54) return;
+      var totalAtual = state.alvaras.length;
+      var totalCache = Object.keys(window._cacheSigAlvs54).length;
+      // Se cache tem menos de 80% dos alvarás atuais, re-inicializa
+      if(totalAtual > 100 && totalCache < totalAtual*0.8){
+        console.warn('[v5.7.57] cache desatualizado (cache:'+totalCache+', state:'+totalAtual+'). Re-inicializando.');
+        var camp = window._CAMPOS_HOOK_54 || ['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
+        function sig(a){var o={};camp.forEach(function(c){o[c]=a[c]==null?'':String(a[c]);});return JSON.stringify(o);}
+        var novoCache = {};
+        state.alvaras.forEach(function(a){if(a&&a.id) novoCache[a.id]=sig(a);});
+        window._cacheSigAlvs54 = novoCache;
+        console.log('[v5.7.57] cache re-inicializado com '+Object.keys(novoCache).length+' alvaras');
+      }
+    }catch(e){console.warn('[v5.7.57]',e);}
+  }, 5000);
+
+  // 2. Wrapper no _detectarESalvarEdicoes54 que LIMITA mudancas a 50 por ciclo
+  // (se forem mais que isso, é falso positivo de sync - ignora)
+  if(typeof window._detectarESalvarEdicoes54 === 'function'){
+    var fnOriginal = window._detectarESalvarEdicoes54;
+    var executando = false;
+    window._detectarESalvarEdicoes54 = async function(){
+      if(executando){console.log('[v5.7.57] ja executando, pulando ciclo');return;}
+      executando = true;
+      try{
+        if(!state||!state.alvaras||!window._cacheSigAlvs54) return;
+        var totalAtual = state.alvaras.length;
+        var totalCache = Object.keys(window._cacheSigAlvs54).length;
+        // Se cache desatualizado, NÃO roda o detector ainda
+        if(totalAtual > 100 && totalCache < totalAtual*0.8){
+          console.log('[v5.7.57] aguardando re-init de cache antes de detectar');
+          return;
+        }
+        // Detecta diff mas limita a 50 (safe guard)
+        var camp = window._CAMPOS_HOOK_54 || ['status','observacao','proxima_atualizacao','tipo','vencimento','responsavel','cidade'];
+        function sig(a){var o={};camp.forEach(function(c){o[c]=a[c]==null?'':String(a[c]);});return JSON.stringify(o);}
+        var diffs = [];
+        for(var i=0;i<state.alvaras.length;i++){
+          var a = state.alvaras[i];
+          if(!a||!a.id) continue;
+          var sNow = sig(a);
+          var sAnt = window._cacheSigAlvs54[a.id];
+          if(sAnt!==undefined && sAnt!==sNow){
+            diffs.push(a);
+            if(diffs.length>50){
+              console.warn('[v5.7.57] +50 diffs detectados — provavel falso positivo. ABORTANDO.');
+              return;
+            }
+          }
+        }
+        // Se chegou aqui com diffs <= 50, aplica
+        if(diffs.length>0){
+          var email = (state.sessao&&state.sessao.email)||(firebase.auth().currentUser&&firebase.auth().currentUser.email)||'desconhecido';
+          var agora = new Date().toISOString();
+          if(!state.edicoes_alvaras) state.edicoes_alvaras={};
+          diffs.forEach(function(a){
+            window._cacheSigAlvs54[a.id] = sig(a);
+            state.edicoes_alvaras[a.id] = Object.assign({},state.edicoes_alvaras[a.id]||{},{
+              _editado_por:email,_editado_em:agora,_editado_manualmente:true,
+              empresa:a.empresa||'',empresa_id:a.empresa_id||0,tipo:a.tipo||'',
+              status:a.status||'',observacao:a.observacao||'',proxima_atualizacao:a.proxima_atualizacao||'',
+              responsavel:a.responsavel||'',cidade:a.cidade||'',vencimento:a.vencimento||''
+            });
+          });
+          console.log('[v5.7.57] '+diffs.length+' mudancas salvando no Firestore');
+          var sanit = window._sanitizar54 ? window._sanitizar54(state.edicoes_alvaras) : state.edicoes_alvaras;
+          await firebase.firestore().collection('azuos').doc('shared').update({edicoes_alvaras: sanit});
+          console.log('[v5.7.57] SALVO!');
+        }
+      }catch(e){console.error('[v5.7.57 erro]',e.message);}
+      finally{ executando = false; }
+    };
+    console.log('[v5.7.57] wrapper instalado no _detectarESalvarEdicoes54');
+  }
+})();
 
 </script>
 </body>
