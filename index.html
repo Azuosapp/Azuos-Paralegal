@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.55 (Backup duplo + verifica)</title>
+<title>AZUOS Paralegal - Sistema v5.7.56 (Auto-sync usuarios)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6256,6 +6256,56 @@ setInterval(function(){window._azuosBackupSafe('auto-30min');},30*60*1000);
 // Backup ao carregar (uma vez)
 setTimeout(function(){window._azuosBackupSafe('boot-v55');},5000);
 console.log('[v5.7.55] sistema backup duplo armado');
+
+
+
+/* ===== v5.7.56 — Auto-reset de cache no boot ===== */
+window._autoSyncUsuarios = async function(){
+  try{
+    if(!firebase||!firebase.firestore) return {ok:false,msg:'sem firebase'};
+    if(!firebase.auth().currentUser) return {ok:false,msg:'sem auth'};
+    var snap = await firebase.firestore().collection('azuos').doc('shared').get({source:'server'});
+    var dados = snap.data()||{};
+    var usrsFS = dados.usuarios||[];
+    var usrsLocal = state.usuarios||[];
+    function mkMap(arr){var m={};arr.forEach(function(u){if(u&&u.email)m[u.email.toLowerCase().trim()]=u;});return m;}
+    var mapFS = mkMap(usrsFS);
+    var mapLocal = mkMap(usrsLocal);
+    var emailsFS = Object.keys(mapFS);
+    var emailsLocal = Object.keys(mapLocal);
+    var falta = emailsFS.filter(function(e){return emailsLocal.indexOf(e)<0;});
+    var sobra = emailsLocal.filter(function(e){return emailsFS.indexOf(e)<0;});
+    var diff = falta.length>0 || sobra.length>0;
+    if(diff && emailsFS.length>=emailsLocal.length){
+      console.warn('[v5.7.56] divergencia — Firestore tem '+emailsFS.length+', local tem '+emailsLocal.length+'. Falta:'+falta.join(',')+' Sobra:'+sobra.join(','));
+      var usrsMerged = usrsFS.map(function(uFS){
+        var uLocal = mapLocal[uFS.email.toLowerCase().trim()];
+        if(uLocal && uLocal.foto && (!uFS.foto || uFS.foto.length<uLocal.foto.length)){
+          return Object.assign({}, uFS, {foto: uLocal.foto});
+        }
+        return uFS;
+      });
+      state.usuarios = JSON.parse(JSON.stringify(usrsMerged));
+      try{ if(typeof saveState==='function') saveState(); }catch(e){}
+      try{ if(typeof renderApp==='function') renderApp(); }catch(e){}
+      console.log('[v5.7.56] state.usuarios atualizado com '+state.usuarios.length+' usuarios do Firestore');
+      return {ok:true,corrigidos:state.usuarios.length,falta:falta,sobra:sobra};
+    }
+    return {ok:true,nadaPraFazer:true,total:emailsLocal.length};
+  }catch(e){console.error('[v5.7.56 erro]',e); return {ok:false,erro:e.message};}
+};
+(function(){
+  var tentou=0;
+  var iv=setInterval(function(){
+    if(firebase&&firebase.auth&&firebase.auth().currentUser&&state&&Array.isArray(state.usuarios)){
+      clearInterval(iv);
+      window._autoSyncUsuarios().then(function(r){console.log('[v5.7.56 boot]',r);});
+    }
+    if(++tentou>120) clearInterval(iv);
+  },1000);
+})();
+setInterval(function(){window._autoSyncUsuarios();},5*60*1000);
+console.log('[v5.7.56] auto-sync usuarios armado');
 
 </script>
 </body>
