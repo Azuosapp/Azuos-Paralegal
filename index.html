@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.69 (Chip alvara - amarelo para Em andamento e Aguardando)</title>
+<title>AZUOS Paralegal - Sistema v5.7.70 (Cards de status dinamicos)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1367,6 +1367,59 @@ function _chipFormalizado(e){
   return '';
 }
 
+
+// v5.7.70: cards de status dinâmicos por empresa
+function _classeStatusEmpresa(status){
+  var s = (status||'').toLowerCase();
+  // Verde (concluído/em vigor)
+  if (s === 'concluído' || s === 'concluido' || s === 'em vigor (vencimento)' || s === 'pago') {
+    return { bg: 'bg-emerald-50', txt: 'text-emerald-700', label: 'text-emerald-600' };
+  }
+  // Verde claro (formalizado, isento)
+  if (s.indexOf('formaliz') >= 0 || s === 'isento') {
+    return { bg: 'bg-teal-50', txt: 'text-teal-700', label: 'text-teal-600' };
+  }
+  // Roxo (sem obrigatoriedade, arquivado)
+  if (s.indexOf('sem obrigat') >= 0 || s.indexOf('arquivado') >= 0) {
+    return { bg: 'bg-purple-50', txt: 'text-purple-700', label: 'text-purple-600' };
+  }
+  // Amarelo (em andamento, aguardando, encaminhado)
+  if (s.indexOf('em andamento') >= 0 || s.indexOf('aguardando') >= 0 || s.indexOf('encaminhado') >= 0) {
+    return { bg: 'bg-amber-50', txt: 'text-amber-700', label: 'text-amber-600' };
+  }
+  // Vermelho (não iniciado, não pago, paralisado)
+  if (s.indexOf('não iniciado') >= 0 || s.indexOf('nao iniciado') >= 0 || s.indexOf('não pago') >= 0 || s.indexOf('paralis') >= 0) {
+    return { bg: 'bg-red-50', txt: 'text-red-700', label: 'text-red-600' };
+  }
+  // Cinza (qualquer outro)
+  return { bg: 'bg-slate-50', txt: 'text-slate-700', label: 'text-slate-500' };
+}
+
+function _renderCardsStatusEmpresa(e, totalCadastrados){
+  try {
+    var alvs = (state.alvaras||[]).filter(function(a){ return a.empresa_id === e.id; });
+    // Agrupa por status
+    var grupos = {};
+    alvs.forEach(function(a){
+      var st = String(a.status||'').trim();
+      if (!st) st = '(sem status)';
+      grupos[st] = (grupos[st] || 0) + 1;
+    });
+    // Ordena por contagem desc
+    var entries = Object.keys(grupos).map(function(k){ return { status: k, count: grupos[k] }; });
+    entries.sort(function(a,b){ return b.count - a.count; });
+    // Primeiro card sempre é Cadastrados
+    var totalSeed = (typeof SEED !== 'undefined' && SEED.tipos_alvara) ? SEED.tipos_alvara.length : alvs.length;
+    var html = '<div class="text-center bg-slate-50 rounded-lg py-2 px-1"><div class="text-xl font-bold text-slate-800">' + totalCadastrados + '/' + totalSeed + '</div><div class="text-[10px] text-slate-500 uppercase tracking-wide">Cadastrados</div></div>';
+    // Depois um card pra cada status
+    entries.forEach(function(en){
+      var c = _classeStatusEmpresa(en.status);
+      html += '<div class="text-center ' + c.bg + ' rounded-lg py-2 px-1" title="' + esc(en.status) + '"><div class="text-xl font-bold ' + c.txt + '">' + en.count + '</div><div class="text-[10px] ' + c.label + ' uppercase tracking-wide truncate" title="' + esc(en.status) + '">' + esc(en.status) + '</div></div>';
+    });
+    return html;
+  } catch(err){ console.warn('[v5.7.70]', err); return ''; }
+}
+
 function renderEmpresaDetalhe(){
   const e = state.empresas.find(x => x.id === state.empresaAtiva);
   if (!e) { return '<div class="p-6">Empresa não encontrada. <button id="voltar-em" class="text-blue-600 underline">Voltar</button></div>'; }
@@ -1416,12 +1469,8 @@ function renderEmpresaDetalhe(){
             <button id="del-empresa" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100">Excluir</button>
           </div>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5 pt-5 border-t border-slate-100">
-          <div class="text-center"><div class="text-2xl font-bold text-slate-800">${totalCadastrados}/${SEED.tipos_alvara.length}</div><div class="text-xs text-slate-500 uppercase">Cadastrados</div></div>
-          <div class="text-center"><div class="text-2xl font-bold text-emerald-600">${concl}</div><div class="text-xs text-slate-500 uppercase">Concluídos</div></div>
-          <div class="text-center"><div class="text-2xl font-bold text-cyan-600">${vigor}</div><div class="text-xs text-slate-500 uppercase">Em vigor</div></div>
-          <div class="text-center"><div class="text-2xl font-bold text-orange-600">${pend}</div><div class="text-xs text-slate-500 uppercase">Pendentes</div></div>
-          <div class="text-center"><div class="text-2xl font-bold text-purple-600">${sem}</div><div class="text-xs text-slate-500 uppercase">S/ obrig.</div></div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 mt-5 pt-5 border-t border-slate-100">
+          ${_renderCardsStatusEmpresa(e, totalCadastrados)}
         </div>
       </div>
 
