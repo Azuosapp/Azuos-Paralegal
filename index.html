@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.73 (Toggle ordenacao Andamento corrigido)</title>
+<title>AZUOS Paralegal - Sistema v5.7.72 (Limpar busca persistida no boot)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6655,113 +6655,6 @@ try{
     } catch(e){ console.error('[v5.7.71 boot]', e.message); }
   }, 8000); // 8s depois do boot pra dar tempo do firebase auth ficar pronto
 }catch(e){console.warn('[v5.7.71]',e);}
-})();
-
-/* ===== v5.7.73 — Toggle ordenacao Andamento corrigido (substitui handlers anteriores) ===== */
-(function fixOrd73(){
-try {
-  function colunaDoTh(th){
-    var txt = (th.textContent||'').trim().toLowerCase().replace(/[⇅▲▼↕↑↓]/g,'').trim();
-    if (txt === 'empresa') return 'nome';
-    if (txt === 'andamento') return 'andamento';
-    if (txt === 'cnpj') return 'cnpj';
-    if (txt === 'cidade') return 'cidade';
-    if (txt === 'responsável' || txt === 'responsavel') return 'responsavel';
-    return null;
-  }
-  function handler73(e){
-    var th = e.target.closest('th');
-    if (!th) return;
-    var coluna = colunaDoTh(th);
-    if (!coluna) return;
-    // Para todos os outros listeners
-    e.stopImmediatePropagation();
-    e.preventDefault();
-    // Decide próxima direção
-    if (!window._ordEmpresas) window._ordEmpresas = {coluna:null, asc:true};
-    if (window._ordEmpresas.coluna !== coluna) {
-      window._ordEmpresas.coluna = coluna;
-      window._ordEmpresas.asc = true;  // primeira vez na coluna = crescente
-    } else {
-      window._ordEmpresas.asc = !window._ordEmpresas.asc;
-    }
-    console.log('[v5.7.73] click em', coluna, 'asc:', window._ordEmpresas.asc);
-    // Chama o reordenar do sistema (definido em v5.7.38)
-    try {
-      if (window._ordenarTabelaEmpresas) {
-        // Não chama _ordenarTabelaEmpresas porque ele faz toggle de novo
-        // Em vez disso, dispara só o reordenar via mudança de DOM
-        // Truque: invocar o método interno via document.dispatchEvent? Não.
-        // Solução: re-implementar reordenar inline com state correto
-      }
-    } catch(err){}
-    // Reordena manualmente
-    try {
-      var tbody = document.querySelector('table tbody');
-      if (!tbody) return;
-      var STATUS_OK = ['conclu','formaliz','arquivado','sem obrigat','isento'];
-      function calcAnd(emp){
-        if (!emp || emp.id === undefined) return 0;
-        var alvaras = (state.alvaras||[]).filter(function(a){ return a && a.empresa_id === emp.id; });
-        if (alvaras.length === 0) return 0;
-        var validos = alvaras.filter(function(a){ return ((a.status||'').trim().length > 0); });
-        if (validos.length === 0) return 0;
-        var concl = validos.filter(function(a){
-          var s = (a.status||'').toLowerCase();
-          return STATUS_OK.some(function(k){ return s.indexOf(k) >= 0; });
-        }).length;
-        return Math.round((concl/validos.length)*100);
-      }
-      function getValor(emp, coluna){
-        if (coluna === 'nome') return (emp.nome||'').toLowerCase();
-        if (coluna === 'andamento') return calcAnd(emp);
-        if (coluna === 'cnpj') return (emp.cnpj||'');
-        if (coluna === 'cidade') return (emp.cidade||'').toLowerCase();
-        if (coluna === 'responsavel') return (emp.responsavel||'').toLowerCase();
-        return '';
-      }
-      function acharEmp(tr){
-        var tds = tr.querySelectorAll('td');
-        if (tds.length < 2) return null;
-        var cnpjVis = (tds[1].textContent||'').trim();
-        if (cnpjVis && cnpjVis !== '-') {
-          var byCnpj = state.empresas.find(function(e){ return (e.cnpj||'').trim() === cnpjVis; });
-          if (byCnpj) return byCnpj;
-        }
-        var nomeVis = (tds[0].textContent||'').trim();
-        var byNome = state.empresas.find(function(e){ return (e.nome||'').trim() === nomeVis; });
-        if (byNome) return byNome;
-        return null;
-      }
-      var sinal = window._ordEmpresas.asc ? 1 : -1;
-      var pares = Array.from(tbody.querySelectorAll('tr')).map(function(tr){ return { tr:tr, emp:acharEmp(tr) }; });
-      pares.sort(function(a, b){
-        if (!a.emp && !b.emp) return 0;
-        if (!a.emp) return 1;
-        if (!b.emp) return -1;
-        var va = getValor(a.emp, window._ordEmpresas.coluna);
-        var vb = getValor(b.emp, window._ordEmpresas.coluna);
-        if (va < vb) return -1 * sinal;
-        if (va > vb) return 1 * sinal;
-        return 0;
-      });
-      pares.forEach(function(p){ tbody.appendChild(p.tr); });
-      // Atualiza indicador visual
-      document.querySelectorAll('[data-ord-indicator]').forEach(function(s){
-        if (s.dataset.ordIndicator === window._ordEmpresas.coluna) {
-          s.textContent = window._ordEmpresas.asc ? '▲' : '▼';
-          s.style.opacity = '1';
-        } else {
-          s.textContent = '⇅';
-          s.style.opacity = '0.4';
-        }
-      });
-    } catch(err){ console.warn('[v5.7.73 sort]', err); }
-  }
-  // Instala handler de capture phase no document (roda ANTES de qualquer outro handler)
-  document.addEventListener('click', handler73, true);
-  console.log('[v5.7.73] handler unico de sort instalado');
-} catch(e){ console.warn('[v5.7.73]', e); }
 })();
 </script>
 </body>
