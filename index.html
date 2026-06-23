@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.71 (Save sincrono no Firestore - resolve paralegais)</title>
+<title>AZUOS Paralegal - Sistema v5.7.72 (Limpar busca persistida no boot)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -15,6 +15,37 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
+
+/* ===== v5.7.72 — Limpar campo de busca persistido (causava 'filtro nao funciona') ===== */
+(function limparBusca72(){
+try {
+  // Limpa toda key azuos_filtros_* do localStorage no boot
+  // (v5.7.27 persistia o campo de busca, que ficava 'preso' entre sessoes)
+  var keysRemover = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k && k.indexOf('azuos_filtros_') === 0) keysRemover.push(k);
+  }
+  keysRemover.forEach(function(k){
+    try {
+      var data = JSON.parse(localStorage.getItem(k));
+      if (data && typeof data === 'object') {
+        // Remove campos que sao busca de texto
+        Object.keys(data).forEach(function(field){
+          var v = data[field];
+          if (typeof v === 'string' && v.length > 0 && !['ATIVO','INATIVO','__SEM__','Camila','Ketrin','Luanna','Diogenes','Leyla','Abner','Azuos','Thierry','Comercial'].includes(v)) {
+            delete data[field];
+          }
+        });
+        localStorage.setItem(k, JSON.stringify(data));
+      }
+    } catch(e){}
+  });
+  console.log('[v5.7.72] persistencia de busca limpa em '+keysRemover.length+' keys');
+} catch(e){ console.warn('[v5.7.72]', e); }
+})();
+
+
 
 /* ===== v5.7.58 — Performance: matar setIntervals empilhados depois do boot ===== */
 (function performance58(){
