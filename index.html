@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.72 (Limpar busca persistida no boot)</title>
+<title>AZUOS Paralegal - Sistema v5.7.74 (Preservar status legacy no select)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1714,7 +1714,16 @@ function openModalAlvara(alvara, empresaId, tipoSugerido){
           </select></div>
         <div><label class="block text-xs font-semibold text-slate-600 mb-1 uppercase">Status *</label>
           <select id="fa-status" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
-            ${SEED.status_options.map(s => `<option ${s===a.status?'selected':''} value="${esc(s)}">${esc(s)}</option>`).join('')}
+            ${(function(){
+              // v5.7.74: garantir que status_options tenha Formalizado e preservar valor atual mesmo se nao listado
+              var opts = (SEED.status_options||[]).slice();
+              if (opts.indexOf('Formalizado') < 0) opts.push('Formalizado');
+              if (opts.indexOf('Formalizado com o cliente') < 0) opts.push('Formalizado com o cliente');
+              if (opts.indexOf('Isento') < 0) opts.push('Isento');
+              // Se o status atual nao estiver na lista, adiciona pra preservar
+              if (a.status && opts.indexOf(a.status) < 0) opts.unshift(a.status);
+              return opts.map(function(s){ return '<option '+(s===a.status?'selected':'')+' value="'+esc(s)+'">'+esc(s)+'</option>'; }).join('');
+            })()}
           </select></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
