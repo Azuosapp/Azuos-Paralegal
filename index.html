@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0-fase1 (Subcolecoes Firestore - leitura dupla)</title>
+<title>AZUOS Paralegal - Sistema v6.0 (Subcolecoes + auto-migracao)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -7073,6 +7073,121 @@ try{
       }
     } catch(e) { console.warn('[v6.fase1 write]', e); }
   }, 5000);
+})();
+
+
+/* ===== v6.0 Fase 1b — AUTO-MIGRAÇÃO no boot (admin only, idempotente) ===== */
+(function autoMigrate(){
+  setTimeout(async function(){
+    try {
+      if (!firebase || !firebase.firestore) return;
+      const email = (state && state.sessao && state.sessao.email) || '';
+      if (email !== 'contato@azuoscontabil.com.br') return;
+
+      // Idempotente: só roda 1x. Usa flag em localStorage + flag em Firestore.
+      const flag = localStorage.getItem('_v6_migrated');
+      if (flag === '1') return;
+
+      const db = firebase.firestore();
+
+      // Verifica se já foi migrado no Firestore
+      const shared = await db.collection('azuos').doc('shared').get();
+      const sharedData = shared.data() || {};
+      if (sharedData._fase1_migrated_at) {
+        localStorage.setItem('_v6_migrated', '1');
+        console.log('[v6 auto-migrate] já migrado em ' + sharedData._fase1_migrated_at);
+        return;
+      }
+
+      console.log('[v6 auto-migrate] === INICIANDO MIGRAÇÃO AUTOMÁTICA ===');
+      const ts = Date.now();
+      const snapshotId = 'pre_v6_' + ts;
+
+      // 1. Backup
+      console.log('[v6 auto-migrate] 1/4 Salvando backup em azuos/' + snapshotId);
+      await db.collection('azuos').doc(snapshotId).set(sharedData);
+
+      // 2. Ciências
+      const ciencias = sharedData.ciencias_por_usuario || {};
+      const emails = Object.keys(ciencias);
+      console.log('[v6 auto-migrate] 2/4 Migrando ciências de ' + emails.length + ' usuários');
+      let totalDeduped = 0;
+      for (const em of emails) {
+        try {
+          const hash = em.replace(/[^a-zA-Z0-9]/g, '_');
+          let arr = ciencias[em];
+          if (arr && typeof arr === 'object' && !Array.isArray(arr)) arr = Object.values(arr);
+          const porKey = {};
+          (arr || []).forEach(e => {
+            if (!e || !e.key) return;
+            const ex = porKey[e.key];
+            if (!ex || (e.ciencia_em && ex.ciencia_em && e.ciencia_em > ex.ciencia_em)) {
+              porKey[e.key] = e;
+            }
+          });
+          const dedup = Object.values(porKey);
+          totalDeduped += (arr?.length || 0) - dedup.length;
+          await db.collection('azuos').doc('ciencias').collection('por_usuario').doc(hash).set({
+            email: em,
+            entries: dedup,
+            migrated_at: new Date().toISOString(),
+            original_count: arr?.length || 0,
+            deduped_count: dedup.length
+          });
+          console.log('[v6 auto-migrate]   ✓ ' + em + ': ' + (arr?.length||0) + ' → ' + dedup.length);
+        } catch(e) { console.warn('[v6 auto-migrate] erro em ' + em + ':', e.message); }
+      }
+
+      // 3. Edições de alvarás (batches de 400)
+      const edicoes = sharedData.edicoes_alvaras || {};
+      const alvIds = Object.keys(edicoes);
+      console.log('[v6 auto-migrate] 3/4 Migrando ' + alvIds.length + ' edições');
+      let batch = db.batch();
+      let batchCount = 0;
+      let okEdicoes = 0;
+      for (const alvId of alvIds) {
+        try {
+          const dados = edicoes[alvId];
+          if (!dados) continue;
+          const ref = db.collection('azuos').doc('edicoes').collection('alvaras').doc(String(alvId));
+          batch.set(ref, Object.assign({}, dados, { _migrated_at: new Date().toISOString() }));
+          batchCount++;
+          okEdicoes++;
+          if (batchCount >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            batchCount = 0;
+          }
+        } catch(e) { console.warn('[v6 auto-migrate] erro alvId ' + alvId + ':', e.message); }
+      }
+      if (batchCount > 0) await batch.commit();
+      console.log('[v6 auto-migrate]   ✓ ' + okEdicoes + ' edições migradas');
+
+      // 4. Marca como migrado
+      console.log('[v6 auto-migrate] 4/4 Marcando como concluído');
+      await db.collection('azuos').doc('shared').update({
+        _fase1_migrated_at: new Date().toISOString(),
+        _fase1_snapshot: snapshotId
+      });
+      localStorage.setItem('_v6_migrated', '1');
+
+      console.log('[v6 auto-migrate] === MIGRAÇÃO CONCLUÍDA ===');
+      console.log('[v6 auto-migrate] Backup em: azuos/' + snapshotId);
+      console.log('[v6 auto-migrate] Ciências deduplicadas: -' + totalDeduped + ' entries');
+      console.log('[v6 auto-migrate] Edições migradas: ' + okEdicoes);
+
+      // Toast visual discreto
+      try {
+        const t = document.createElement('div');
+        t.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#10b981;color:white;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-size:13px;font-weight:600;max-width:300px;';
+        t.innerHTML = '✓ Documento Firestore otimizado!<br><span style="font-weight:400;font-size:11px;">Migração v6 concluída em background.</span>';
+        document.body.appendChild(t);
+        setTimeout(() => { if(t.parentElement) t.remove(); }, 8000);
+      } catch(e) {}
+    } catch(e) {
+      console.warn('[v6 auto-migrate] erro fatal:', e.message);
+    }
+  }, 12000); // 12s após boot, depois de tudo carregar
 })();
 
 </script>
