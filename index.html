@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0 (Subcolecoes + auto-migracao)</title>
+<title>AZUOS Paralegal - Sistema v6.0.1 (Save fix - sem set inteiro)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4505,9 +4505,25 @@ function abrirBaselineDialog() {
     try {
       if (!firebase || !firebase.firestore || !state) return;
       var db = firebase.firestore();
-      db.collection('azuos').doc('shared').set(JSON.parse(JSON.stringify(state)), { merge: true })
-        .then(function(){ console.log('[v5.7.15] state salvo direto no firestore'); })
-        .catch(function(e){ console.warn('[v5.7.15 set]', e.message); });
+      // [v6 fix] APENAS sub-campos pequenos (NAO state inteiro - causava erro 1MB)
+      function sanitize(v){
+        if (v === undefined || v === null) return '';
+        if (typeof v !== 'object') return v;
+        if (Array.isArray(v)) return v.map(sanitize);
+        var o = {};
+        Object.keys(v).forEach(function(k){ o[k] = sanitize(v[k]); });
+        return o;
+      }
+      var patch = {
+        ciencias_por_usuario: sanitize(state.ciencias_por_usuario || {}),
+        empresas_manuais: sanitize(state.empresas_manuais || []),
+        resumo_visto_por_usuario: sanitize(state.resumo_visto_por_usuario || {}),
+        last_modified_by: (state.sessao && state.sessao.nome) || 'desconhecido',
+        last_modified_at: new Date().toISOString()
+      };
+      db.collection('azuos').doc('shared').update(patch)
+        .then(function(){ console.log('[v5.7.15] campos seguros salvos no firestore'); })
+        .catch(function(e){ console.warn('[v5.7.15 update]', e.message); });
     } catch(e) { console.warn('[v5.7.15 salvar]', e); }
   }
 
