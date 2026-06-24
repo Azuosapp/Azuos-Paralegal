@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.77 (Toggle Andamento com debounce)</title>
+<title>AZUOS Paralegal - Sistema v5.7.78 (Save robusto + retry + fila pendentes)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6759,6 +6759,151 @@ try{
       console.log('[v5.7.77] _ordenarTabelaEmpresas substituida com debounce 250ms');
     } catch(e){ console.warn('[v5.7.77]', e); }
   }, 3000);
+})();
+
+/* ===== v5.7.78 — Save robusto + retry automatico + fila de pendentes ===== */
+(function save78(){
+  function sanitizar78(obj){
+    if (obj === null || obj === undefined) return '';
+    if (typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(sanitizar78);
+    var o = {};
+    Object.keys(obj).forEach(function(k){
+      var v = obj[k];
+      if (v === undefined) o[k] = '';
+      else if (typeof v === 'object' && v !== null) o[k] = sanitizar78(v);
+      else o[k] = v;
+    });
+    return o;
+  }
+
+  function getPendentes(){
+    try { return JSON.parse(localStorage.getItem('_azuos_pendentes_v78')||'[]'); }
+    catch(e){ return []; }
+  }
+  function setPendentes(arr){
+    try { localStorage.setItem('_azuos_pendentes_v78', JSON.stringify(arr)); }catch(e){}
+  }
+
+  // Toast discreto (substitui o alert)
+  function toastDiscreto(texto, cor){
+    try {
+      var t = document.createElement('div');
+      t.style.cssText = 'position:fixed;bottom:80px;right:20px;background:'+(cor||'#10b981')+';color:white;padding:8px 14px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-size:12px;font-weight:600;opacity:0.92;';
+      t.innerHTML = texto;
+      document.body.appendChild(t);
+      setTimeout(function(){ if(t.parentElement) t.remove(); }, 3000);
+    } catch(e){}
+  }
+
+  // Salva no Firestore: SÓ o alvará alterado via FieldPath (evita 1MB e race conditions)
+  window._enviarPendentes78 = async function(){
+    if (!firebase || !firebase.firestore) return {ok:false, motivo:'sem firebase'};
+    var pendentes = getPendentes();
+    if (pendentes.length === 0) return {ok:true, qt:0};
+    var ref = firebase.firestore().collection('azuos').doc('shared');
+    var enviados = [];
+    var falhas = [];
+    for (var i = 0; i < pendentes.length; i++) {
+      var p = pendentes[i];
+      try {
+        var update = {};
+        update['edicoes_alvaras.' + p.alvId] = sanitizar78(p.dados);
+        await ref.update(update);
+        enviados.push(p.alvId);
+      } catch(e) {
+        falhas.push({alvId: p.alvId, erro: e.message});
+        console.warn('[v5.7.78] alvId='+p.alvId+' erro:', e.message);
+      }
+    }
+    var restantes = pendentes.filter(function(p){ return enviados.indexOf(p.alvId) < 0; });
+    setPendentes(restantes);
+    if (enviados.length > 0) {
+      console.log('[v5.7.78] '+enviados.length+' alvarás sincronizados com Firestore');
+    }
+    return {ok:true, enviados:enviados.length, falhas:falhas.length, restantes:restantes.length};
+  };
+
+  // Adiciona um alvará à fila de pendentes E tenta enviar imediato
+  window._enfileirarSalvar78 = function(alvId, dados){
+    var pendentes = getPendentes();
+    // Substitui versão antiga do mesmo alvId se já está na fila
+    pendentes = pendentes.filter(function(p){ return p.alvId !== alvId; });
+    pendentes.push({alvId: alvId, dados: sanitizar78(dados), ts: Date.now()});
+    setPendentes(pendentes);
+    // Dispara envio assíncrono
+    window._enviarPendentes78().then(function(r){
+      if (r && r.falhas > 0) {
+        toastDiscreto('⏳ Salvando em segundo plano...', '#f59e0b');
+      }
+    }).catch(function(){
+      toastDiscreto('⏳ Sem rede — salvando offline', '#f59e0b');
+    });
+  };
+
+  // Hook na função salvarAlvara existente: depois dela rodar, enfileirar
+  // Não substitui — apenas observa via wrapping do `state.edicoes_alvaras`
+  // Mais simples: hook em closeModal pra detectar quando salvou
+  // Mais robusto: wrap firebase.firestore().update pra interceptar
+  // Estratégia: hook no setInterval que tenta enviar pendentes
+
+  // Retry automático a cada 20s + quando volta online
+  setInterval(function(){
+    if (getPendentes().length > 0) {
+      window._enviarPendentes78().catch(function(){});
+    }
+  }, 20000);
+  window.addEventListener('online', function(){
+    if (getPendentes().length > 0) window._enviarPendentes78().catch(function(){});
+  });
+
+  // Substitui a função salvarAlvara: enfileira pra envio robusto + chama original
+  setTimeout(function(){
+    if (typeof window.salvarAlvara !== 'function') return;
+    var orig = window.salvarAlvara;
+    window.salvarAlvara = function(id, empresaId){
+      // Captura snapshot do form ANTES de tudo
+      var camposAntes = {
+        tipo: (document.getElementById('fa-tipo')||{}).value,
+        status: (document.getElementById('fa-status')||{}).value,
+        responsavel: (document.getElementById('fa-resp')||{}).value,
+        vencimento: (document.getElementById('fa-venc')||{}).value,
+        proxima_atualizacao: (document.getElementById('fa-prox')||{}).value,
+        observacao: (document.getElementById('fa-obs')||{}).value
+      };
+      // Chama a função original
+      var r = orig.apply(this, arguments);
+      // Depois enfileira (já que state.edicoes_alvaras foi atualizado)
+      try {
+        if (id && state.edicoes_alvaras && state.edicoes_alvaras[id]) {
+          window._enfileirarSalvar78(id, state.edicoes_alvaras[id]);
+          toastDiscreto('✓ Salvando...', '#3b82f6');
+          setTimeout(function(){
+            var pend = getPendentes();
+            if (pend.find(function(p){return p.alvId === id;})) {
+              toastDiscreto('⏳ Aguardando rede', '#f59e0b');
+            } else {
+              toastDiscreto('✓ Salvo no servidor', '#10b981');
+            }
+          }, 2500);
+        }
+      } catch(e){ console.warn('[v5.7.78 hook]', e); }
+      return r;
+    };
+    console.log('[v5.7.78] salvarAlvara hookada com retry automatico');
+  }, 4000);
+
+  // Boot: tenta enviar pendentes que ficaram da sessão anterior
+  setTimeout(function(){
+    if (getPendentes().length > 0) {
+      console.log('[v5.7.78] '+getPendentes().length+' alvarás pendentes da sessão anterior. Enviando...');
+      window._enviarPendentes78().then(function(r){
+        if (r && r.enviados > 0) toastDiscreto('✓ '+r.enviados+' alterações sincronizadas', '#10b981');
+      });
+    }
+  }, 8000);
+
+  console.log('[v5.7.78] save robusto armado');
 })();
 </script>
 </body>
