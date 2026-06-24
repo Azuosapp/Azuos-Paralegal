@@ -1,0 +1,34 @@
+name: PR Validation
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    name: Validate + Test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Validar HTML
+        run: node scripts/validate-html.js
+      - name: Rodar todos os testes
+        run: npm test
+      - name: Verificar tamanho do index.html
+        run: |
+          SIZE=$(wc -c < index.html)
+          KB=$((SIZE / 1024))
+          echo "📊 index.html: ${KB} KB"
+          if [ $KB -gt 500 ]; then
+            echo "::warning::index.html cresceu para ${KB}KB - meta é < 200KB após Fase 2 completa"
+          fi
+      - name: Contar IIFEs (alerta se crescer)
+        run: |
+          COUNT=$(grep -c "^(function" index.html || echo 0)
+          echo "📊 IIFEs no topo de linha: $COUNT"
+          if [ $COUNT -gt 50 ]; then
+            echo "::warning::IIFEs cresceram para $COUNT (meta < 5)"
+          fi
