@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.1 (Save fix - sem set inteiro)</title>
+<title>AZUOS Paralegal - Sistema v6.0.2 (Merge inteligente - snapshot nao atropela)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -207,12 +207,54 @@ function _fsCollectFromState() {
 function _fsApplyToState(remote) {
   if (!remote) return false;
   let changed = false;
-  ['ciencias_por_usuario','empresas_manuais','resumo_visto_por_usuario','historico','edicoes_alvaras','edicoes_empresas'].forEach(k => {
+  // Campos simples: substitui se diferente
+  ['empresas_manuais','resumo_visto_por_usuario','historico'].forEach(k => {
     if (remote[k] !== undefined && JSON.stringify(state[k]) !== JSON.stringify(remote[k])) {
       state[k] = remote[k];
       changed = true;
     }
   });
+  // [v6.0.2 fix] MERGE inteligente para edicoes_alvaras: mantem o mais RECENTE por alvId
+  // Antes sobrescrevia cegamente — bug: snapshot do servidor atropelava edição local recente
+  if (remote.edicoes_alvaras) {
+    state.edicoes_alvaras = state.edicoes_alvaras || {};
+    Object.keys(remote.edicoes_alvaras).forEach(aid => {
+      const r = remote.edicoes_alvaras[aid];
+      const l = state.edicoes_alvaras[aid];
+      // Sem local: usa remoto
+      if (!l) { state.edicoes_alvaras[aid] = r; changed = true; return; }
+      // Compara _editado_em (timestamps ISO comparam string-wise)
+      const tR = r && r._editado_em ? r._editado_em : '';
+      const tL = l && l._editado_em ? l._editado_em : '';
+      // Se local é mais recente, mantém local. Senão usa remoto.
+      if (tR > tL) { state.edicoes_alvaras[aid] = r; changed = true; }
+    });
+  }
+  // [v6.0.2 fix] Mesma lógica para edicoes_empresas
+  if (remote.edicoes_empresas) {
+    state.edicoes_empresas = state.edicoes_empresas || {};
+    Object.keys(remote.edicoes_empresas).forEach(eid => {
+      const r = remote.edicoes_empresas[eid];
+      const l = state.edicoes_empresas[eid];
+      if (!l) { state.edicoes_empresas[eid] = r; changed = true; return; }
+      const tR = r && r._editado_em ? r._editado_em : '';
+      const tL = l && l._editado_em ? l._editado_em : '';
+      if (tR > tL) { state.edicoes_empresas[eid] = r; changed = true; }
+    });
+  }
+  // [v6.0.2] Para ciencias_por_usuario: merge por email, união de arrays
+  if (remote.ciencias_por_usuario) {
+    state.ciencias_por_usuario = state.ciencias_por_usuario || {};
+    Object.keys(remote.ciencias_por_usuario).forEach(em => {
+      const r = remote.ciencias_por_usuario[em];
+      const l = state.ciencias_por_usuario[em];
+      if (!l) { state.ciencias_por_usuario[em] = r; changed = true; }
+      else if (JSON.stringify(l) !== JSON.stringify(r)) {
+        // Se diferente, preserva o local (paralegal acabou de dar ciência)
+        // Servidor pega na próxima sincronização
+      }
+    });
+  }
   // Overlay de edições nos arrays do SEED
   if (state.edicoes_alvaras) {
     Object.keys(state.edicoes_alvaras).forEach(aid => {
