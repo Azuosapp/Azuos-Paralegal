@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.82 (Aguardando cliente + para piscar)</title>
+<title>AZUOS Paralegal - Sistema v5.7.81 (Aguardando cliente conta no andamento)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6905,27 +6905,6 @@ try{
 
   console.log('[v5.7.78] save robusto armado');
 })();
-
-/* ===== v5.7.82 — Para o loop de piscar (congela _ordEmpresas.coluna = null) ===== */
-(function fix82(){
-  // Roda CEDO pra interceptar antes do v5.7.38 conseguir ler coluna
-  try {
-    // Limpa state que possa estar persistido na sessao
-    var _frozen = { coluna: null, asc: true };
-    // Trava getter/setter
-    Object.defineProperty(window, '_ordEmpresas', {
-      configurable: false,
-      get: function(){ return _frozen; },
-      set: function(v){ /* ignora qualquer tentativa de setar */ }
-    });
-    // Tambem trava as funcoes de sort pra nao reativarem o estado
-    var noop = function(){};
-    try { Object.defineProperty(window, '_ordenarTabelaEmpresas', { value: noop, writable: false, configurable: false }); } catch(e){}
-    try { Object.defineProperty(window, '_ordenarEmpresas', { value: noop, writable: false, configurable: false }); } catch(e){}
-    console.log('[v5.7.82] _ordEmpresas congelado em coluna=null — sort desativado mas tela nao pisca');
-  } catch(e){ console.warn('[v5.7.82]', e); }
-})();
-
 </script>
 </body>
 </html>
