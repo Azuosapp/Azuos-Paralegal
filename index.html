@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.78 (Save robusto + retry + fila pendentes)</title>
+<title>AZUOS Paralegal - Sistema v5.7.79 (Toggle Andamento fix - handlers limpos)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6904,6 +6904,74 @@ try{
   }, 8000);
 
   console.log('[v5.7.78] save robusto armado');
+})();
+
+/* ===== v5.7.79 — Limpar handlers duplicados do toggle Andamento (clone + 1 listener) ===== */
+(function fixToggle79(){
+  // Roda depois de TODOS os patches anteriores (.26 .34 .35 .38 .77) registrarem listeners
+  setTimeout(function(){
+    try {
+      var _ignorarMut = false;
+
+      function colunaDoTh(th){
+        var txt = (th.textContent||'').trim().toLowerCase().replace(/[\u21c5\u25b2\u25bc]/g,'').trim();
+        if (txt === 'empresa') return 'nome';
+        if (txt === 'andamento') return 'andamento';
+        if (txt === 'cnpj') return 'cnpj';
+        if (txt === 'cidade') return 'cidade';
+        if (txt === 'respons\u00e1vel' || txt === 'responsavel') return 'responsavel';
+        return null;
+      }
+
+      function limparEBind(){
+        if (_ignorarMut) return;
+        try {
+          var ths = document.querySelectorAll('table thead th');
+          if (!ths.length) return;
+          _ignorarMut = true;
+          ths.forEach(function(th){
+            if (th.dataset.v579 === '1') return; // ja limpo
+            var coluna = colunaDoTh(th);
+            if (!coluna) return;
+            // Clona pra REMOVER todos os listeners antigos (v5.7.26/.34/.35/.38)
+            var novo = th.cloneNode(true);
+            th.parentNode.replaceChild(novo, th);
+            novo.dataset.v579 = '1';
+            novo.style.cursor = 'pointer';
+            // UNICO handler - chama window._ordenarTabelaEmpresas (versao v5.7.77 com debounce)
+            novo.addEventListener('click', function(ev){
+              ev.stopPropagation();
+              if (typeof window._ordenarTabelaEmpresas === 'function') {
+                window._ordenarTabelaEmpresas(coluna);
+              }
+            });
+          });
+          setTimeout(function(){ _ignorarMut = false; }, 250);
+        } catch(e){ _ignorarMut = false; console.warn('[v5.7.79 limpar]', e); }
+      }
+
+      limparEBind();
+
+      // Re-aplica quando a tabela e re-renderizada (troca de aba, filtro, etc.)
+      var observer = new MutationObserver(function(muts){
+        if (_ignorarMut) return;
+        // So age se uma <table> ou <th> foi adicionada/removida
+        var relevant = false;
+        for (var i=0; i<muts.length && !relevant; i++){
+          var m = muts[i];
+          if (m.target && (m.target.tagName === 'TBODY' || m.target.tagName === 'THEAD' || m.target.tagName === 'TABLE')) { relevant = true; break; }
+          for (var j=0; j<m.addedNodes.length && !relevant; j++){
+            var n = m.addedNodes[j];
+            if (n.nodeType === 1 && (n.tagName === 'TABLE' || n.tagName === 'TH' || (n.querySelector && n.querySelector('th')))) { relevant = true; break; }
+          }
+        }
+        if (relevant) limparEBind();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      console.log('[v5.7.79] handlers do toggle limpos - 1 listener unico por <th>');
+    } catch(e){ console.warn('[v5.7.79]', e); }
+  }, 5000);
 })();
 </script>
 </body>
