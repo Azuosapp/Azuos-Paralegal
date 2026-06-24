@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.81 (Aguardando cliente conta no andamento)</title>
+<title>AZUOS Paralegal - Sistema v5.7.83 (Para piscar com edicao cirurgica)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5988,10 +5988,8 @@ console.log('[v5.7.28] features complementares carregadas');
     // Observer pra rebind quando tabela aparecer + reordenar pós-render
     new MutationObserver(function(){
       rebindHeaders();
-      if (window._ordEmpresas.coluna) {
-        // Pequeno delay pra render terminar antes do reorder
-        setTimeout(reordenarTabela, 100);
-      }
+      // [v5.7.83] desativado - causava loop infinito com observer da v5.7.38
+      // if (window._ordEmpresas.coluna) { setTimeout(reordenarTabela, 100); }
     }).observe(document.body, { childList: true, subtree: true });
 
     setTimeout(rebindHeaders, 2000);
@@ -6173,7 +6171,7 @@ console.log('[v5.7.28] features complementares carregadas');
 
     new MutationObserver(function(){
       rebindHeaders();
-      if (window._ordEmpresas.coluna) setTimeout(reordenar, 150);
+      // [v5.7.83] desativado - causava loop infinito
     }).observe(document.body, { childList: true, subtree: true });
 
     setTimeout(rebindHeaders, 2000);
@@ -6905,6 +6903,16 @@ try{
 
   console.log('[v5.7.78] save robusto armado');
 })();
+
+/* ===== v5.7.83 — Zera _ordEmpresas no boot pra evitar loop em sessoes existentes ===== */
+(function fix83(){
+  try {
+    // Reset simples - SEM defineProperty (que travou clicks na v5.7.82)
+    window._ordEmpresas = { coluna: null, asc: true };
+    console.log('[v5.7.83] _ordEmpresas zerado, observers de loop desativados (35/38)');
+  } catch(e){ console.warn('[v5.7.83]', e); }
+})();
+
 </script>
 </body>
 </html>
