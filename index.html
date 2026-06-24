@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.83 (Para piscar com edicao cirurgica)</title>
+<title>AZUOS Paralegal - Sistema v5.7.84 (Dedup automatico ciencias)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6911,6 +6911,79 @@ try{
     window._ordEmpresas = { coluna: null, asc: true };
     console.log('[v5.7.83] _ordEmpresas zerado, observers de loop desativados (35/38)');
   } catch(e){ console.warn('[v5.7.83]', e); }
+})();
+
+
+/* ===== v5.7.84 — Dedup automatico das ciencias (reduz doc Firestore < 1MB) ===== */
+(function fix84(){
+  setTimeout(function(){
+    try {
+      // SO admin contato@ executa
+      var email = (state && state.sessao && state.sessao.email) || '';
+      if (email !== 'contato@azuoscontabil.com.br') { return; }
+      // Flag pra rodar UMA vez por dia
+      var ultimaExec = localStorage.getItem('_dedup84_ts');
+      var hoje = new Date().toISOString().slice(0,10);
+      if (ultimaExec === hoje) {
+        console.log('[v5.7.84] dedup ja rodou hoje, pulando');
+        return;
+      }
+      if (!firebase || !firebase.firestore) return;
+      var db = firebase.firestore();
+      console.log('[v5.7.84] iniciando dedup automatico das ciencias');
+      db.collection('azuos').doc('shared').get().then(function(snap){
+        var data = snap.data();
+        if (!data || !data.ciencias_por_usuario) { console.log('[v5.7.84] sem ciencias'); return; }
+        var ciencias = data.ciencias_por_usuario;
+        var totalAntes = 0, totalDepois = 0;
+        var novo = {};
+        Object.keys(ciencias).forEach(function(em){
+          var arr = ciencias[em];
+          if (!arr || typeof arr !== 'object') { novo[em] = arr; return; }
+          var keys = Object.keys(arr);
+          totalAntes += keys.length;
+          var porKey = {};
+          keys.forEach(function(idx){
+            var e = arr[idx];
+            if (!e || !e.key) return;
+            var existente = porKey[e.key];
+            if (!existente || (e.ciencia_em && existente.ciencia_em && e.ciencia_em > existente.ciencia_em)) {
+              porKey[e.key] = e;
+            }
+          });
+          var arrayDedup = Object.values(porKey);
+          totalDepois += arrayDedup.length;
+          novo[em] = arrayDedup;
+        });
+        console.log('[v5.7.84] dedup: ' + totalAntes + ' -> ' + totalDepois + ' entries');
+        if (totalDepois >= totalAntes) {
+          console.log('[v5.7.84] nada a deduplicar, marcando hoje');
+          localStorage.setItem('_dedup84_ts', hoje);
+          return;
+        }
+        // BACKUP primeiro
+        var backupRef = 'pre_dedup_' + Date.now();
+        db.collection('azuos').doc(backupRef).set(data).then(function(){
+          console.log('[v5.7.84] backup salvo em azuos/' + backupRef);
+          // Agora atualiza ciencias_por_usuario
+          return db.collection('azuos').doc('shared').update({ ciencias_por_usuario: novo });
+        }).then(function(){
+          console.log('[v5.7.84] ciencias_por_usuario deduplicado e salvo');
+          localStorage.setItem('_dedup84_ts', hoje);
+          // Mostra toast discreto
+          try {
+            var t = document.createElement('div');
+            t.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#10b981;color:white;padding:10px 14px;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-size:12px;font-weight:600;';
+            t.textContent = '✓ Documento Firestore otimizado (' + totalAntes + ' → ' + totalDepois + ' ciencias)';
+            document.body.appendChild(t);
+            setTimeout(function(){ t.remove(); }, 5000);
+          } catch(e){}
+        }).catch(function(e){
+          console.warn('[v5.7.84] erro:', e.message);
+        });
+      }).catch(function(e){ console.warn('[v5.7.84] erro lendo:', e.message); });
+    } catch(e){ console.warn('[v5.7.84]', e); }
+  }, 10000);
 })();
 
 </script>
