@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.78 (Save robusto + retry + fila pendentes)</title>
+<title>AZUOS Paralegal - Sistema v5.7.81 (Aguardando cliente conta no andamento)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -983,7 +983,7 @@ function renderEmpresasTabela(lista) {
                 <td class="px-3 py-1.5">${(() => {
                   // Andamento = % de alvarás concluídos+em vigor sobre total que precisam ser feitos (exclui "Sem obrigatoriedade")
                   const obrigatorios = alvs.filter(a => a.status && a.status !== 'Sem obrigatoriedade');
-                  const completos = obrigatorios.filter(a => CONCLUIDO.includes(a.status) || a.status === 'Em vigor (vencimento)' || /^formalizado/i.test(a.status||'') || a.status === 'Pago' || /^em andamento/i.test(a.status||'') || a.status === 'Arquivado pelo cliente' || a.status === 'Serviço paralisado' || a.status === 'Isento').length;
+                  const completos = obrigatorios.filter(a => CONCLUIDO.includes(a.status) || a.status === 'Em vigor (vencimento)' || /^formalizado/i.test(a.status||'') || a.status === 'Pago' || /^em andamento/i.test(a.status||'') || a.status === 'Arquivado pelo cliente' || a.status === 'Serviço paralisado' || a.status === 'Isento' || /^aguardando cliente/i.test(a.status||'')).length;
                   const total = obrigatorios.length;
                   const pct = total ? Math.round(100 * completos / total) : 0;
                   const cor = pct >= 80 ? 'emerald' : pct >= 50 ? 'blue' : pct >= 25 ? 'amber' : (total === 0 ? 'slate' : 'red');
@@ -6072,7 +6072,7 @@ console.log('[v5.7.28] features complementares carregadas');
         if (validos.length === 0) return 0;
         var concl = validos.filter(function(a){
           var s = (a.status||'').toLowerCase();
-          return s.indexOf('conclu') >= 0 || s.indexOf('formaliz') >= 0 || s.indexOf('arquivado') >= 0 || s.indexOf('sem obrigat') >= 0 || s.indexOf('isento') >= 0 || s.indexOf('em andamento') >= 0 || s.indexOf('paralis') >= 0;
+          return s.indexOf('conclu') >= 0 || s.indexOf('formaliz') >= 0 || s.indexOf('arquivado') >= 0 || s.indexOf('sem obrigat') >= 0 || s.indexOf('isento') >= 0 || s.indexOf('em andamento') >= 0 || s.indexOf('paralis') >= 0 || (s.indexOf('aguardando') >= 0 && s.indexOf('cli') >= 0);
         }).length;
         return Math.round((concl / validos.length) * 100);
       } catch(e){ return 0; }
@@ -6185,7 +6185,7 @@ console.log('[v5.7.28] features complementares carregadas');
 /* ===== v5.7.48 — Dashboard TV: visual restaurado + drill funcional ===== */
 (function dv48(){
 try{
-var SC=['conclu','formaliz','arquivado','sem obrigat','isento','em andamento','paralis'];
+var SC=['conclu','formaliz','arquivado','sem obrigat','isento','em andamento','paralis','aguardando cli'];
 function ehC(s){s=(s||'').toLowerCase();return SC.some(function(k){return s.indexOf(k)>=0;});}
 window._azuosTV={edicoes:[],dias:7};
 window._abrirDrill=function(usuario,tipo){
@@ -6268,7 +6268,7 @@ console.log('[v5.7.49] btn flutuante OK');
 /* ===== v5.7.50 — Ordenacao ANDAMENTO crescente robusta ===== */
 (function ord50(){
 try{
-var STATUS_CONCLUIDOS_50=['conclu','formaliz','arquivado','sem obrigat','isento','em andamento','paralis'];
+var STATUS_CONCLUIDOS_50=['conclu','formaliz','arquivado','sem obrigat','isento','em andamento','paralis','aguardando cli'];
 function calcAnd(empresa){
   var alvs=(state.alvaras||[]).filter(function(a){
     if(a.empresa_id && empresa.id) return a.empresa_id===empresa.id;
