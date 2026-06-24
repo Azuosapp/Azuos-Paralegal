@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v5.7.84 (Dedup automatico ciencias)</title>
+<title>AZUOS Paralegal - Sistema v6.0-fase1 (Subcolecoes Firestore - leitura dupla)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6984,6 +6984,95 @@ try{
       }).catch(function(e){ console.warn('[v5.7.84] erro lendo:', e.message); });
     } catch(e){ console.warn('[v5.7.84]', e); }
   }, 10000);
+})();
+
+
+/* ===== v6.0 Fase 1 — Leitura dupla: subcoleções + fallback campo legado ===== */
+(function fase1Read(){
+  // Roda DEPOIS do boot completo (state já carregado)
+  setTimeout(async function(){
+    try {
+      if (!firebase || !firebase.firestore) return;
+      const db = firebase.firestore();
+      const userEmail = (state && state.sessao && state.sessao.email) || '';
+      if (!userEmail) return;
+
+      // ===== Leitura: ciências do usuário logado da subcoleção =====
+      const hash = userEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      try {
+        const cSnap = await db.collection('azuos').doc('ciencias').collection('por_usuario').doc(hash).get();
+        if (cSnap.exists) {
+          const d = cSnap.data();
+          if (d && d.entries) {
+            state.ciencias_por_usuario = state.ciencias_por_usuario || {};
+            // Sub-coleção tem prioridade sobre campo legado
+            state.ciencias_por_usuario[userEmail] = d.entries;
+            console.log('[v6.fase1] ciências de ' + userEmail + ' lidas da subcoleção: ' + d.entries.length);
+          }
+        }
+      } catch(e) { console.warn('[v6.fase1] ciências subcol erro:', e.message); }
+
+      // ===== Leitura: edições de alvarás da subcoleção =====
+      try {
+        const eSnap = await db.collection('azuos').doc('edicoes').collection('alvaras').get();
+        if (!eSnap.empty) {
+          state.edicoes_alvaras = state.edicoes_alvaras || {};
+          let aplicadas = 0;
+          eSnap.forEach(doc => {
+            const dados = doc.data();
+            if (!dados) return;
+            const alvId = doc.id;
+            // Subcoleção tem prioridade
+            state.edicoes_alvaras[alvId] = dados;
+            // Aplicar no overlay state.alvaras
+            const alv = (state.alvaras || []).find(a => String(a.id) === alvId);
+            if (alv) Object.assign(alv, dados);
+            aplicadas++;
+          });
+          console.log('[v6.fase1] ' + aplicadas + ' edições aplicadas da subcoleção');
+        }
+      } catch(e) { console.warn('[v6.fase1] edições subcol erro:', e.message); }
+
+      // Re-render se algo mudou
+      if (typeof render === 'function') render();
+    } catch(e) { console.warn('[v6.fase1]', e); }
+  }, 6000);
+})();
+
+/* ===== v6.0 Fase 1 — Escrita: hooks para escrever direto em subcoleção ===== */
+(function fase1Write(){
+  setTimeout(function(){
+    try {
+      if (!firebase || !firebase.firestore) return;
+      const db = firebase.firestore();
+
+      // Hook em salvarAlvara: depois que ele atualiza state, escreve em subcoleção
+      if (typeof window.salvarAlvara === 'function') {
+        const orig = window.salvarAlvara;
+        window.salvarAlvara = function(id, empresaId) {
+          const result = orig.apply(this, arguments);
+          // Async write em subcoleção (não bloqueia UI)
+          try {
+            if (id && state.edicoes_alvaras && state.edicoes_alvaras[id]) {
+              const dados = state.edicoes_alvaras[id];
+              // Sanitizar undefined → ''
+              const clean = {};
+              Object.keys(dados).forEach(k => {
+                const v = dados[k];
+                clean[k] = (v === undefined) ? '' : v;
+              });
+              db.collection('azuos').doc('edicoes').collection('alvaras').doc(String(id))
+                .set(clean)
+                .then(() => console.log('[v6.fase1] alvId ' + id + ' salvo na subcoleção'))
+                .catch(err => console.warn('[v6.fase1] salvar alvId ' + id + ':', err.message));
+            }
+          } catch(e) { console.warn('[v6.fase1 write hook]', e); }
+          return result;
+        };
+        console.log('[v6.fase1] salvarAlvara hookado para escrever em subcoleção');
+      }
+    } catch(e) { console.warn('[v6.fase1 write]', e); }
+  }, 5000);
 })();
 
 </script>
