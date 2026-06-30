@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.2 (Merge inteligente - snapshot nao atropela)</title>
+<title>AZUOS Paralegal - Sistema v6.0.3 (Saves resilientes - batches + sem mirror)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6463,12 +6463,9 @@ window._azuosBackupSafe = async function(motivo){
       }
     };
     await db.collection('backups').add(backup);
-    // Espelho separado em outro doc
-    await db.collection('azuos').doc('shared_mirror').set({
-      ...dadosAtuais,
-      _espelhado_em: new Date().toISOString()
-    },{merge:true});
-    console.log('[v5.7.55] backup duplo OK ('+motivo+')');
+    // [v6.0.3] shared_mirror DESATIVADO - causava erro de 1MB silencioso
+    // Backup em 'backups/' collection ja eh suficiente
+    console.log('[v5.7.55] backup salvo em backups/ ('+motivo+')');
     return true;
   }catch(e){console.error('[v5.7.55 backup erro]',e);return false;}
 };
@@ -6708,12 +6705,35 @@ try{
       var qt = Object.keys(maisNovas).length;
       if (qt > 0) {
         console.warn('[v5.7.71] recuperando '+qt+' edicoes locais nao sincronizadas');
-        var updates = {};
-        Object.keys(maisNovas).forEach(function(k){
-          updates['edicoes_alvaras.'+k] = maisNovas[k];
-        });
-        await db.collection('azuos').doc('shared').update(updates);
-        console.log('[v5.7.71] '+qt+' edicoes recuperadas pro Firestore');
+        // [v6.0.3] dividir em batches pequenos (max 20 por update) e descartar gigantes
+        var keys = Object.keys(maisNovas);
+        var BATCH = 20;
+        var MAX_BYTES = 500000; // 500KB por edicao individual (cada uma tem que caber)
+        var enviados = 0, descartados = 0;
+        for (var i = 0; i < keys.length; i += BATCH) {
+          var slice = keys.slice(i, i+BATCH);
+          var updates = {};
+          var temAlgo = false;
+          slice.forEach(function(k){
+            var ed = maisNovas[k];
+            var sz = JSON.stringify(ed).length;
+            if (sz > MAX_BYTES) {
+              console.warn('[v5.7.71] descartando edicao gigante alvId='+k+' ('+Math.round(sz/1024)+'KB)');
+              descartados++;
+              return;
+            }
+            updates['edicoes_alvaras.'+k] = ed;
+            temAlgo = true;
+          });
+          if (!temAlgo) continue;
+          try {
+            await db.collection('azuos').doc('shared').update(updates);
+            enviados += slice.length;
+          } catch(e) {
+            console.warn('[v5.7.71] batch falhou ('+slice.length+' itens):', e.message);
+          }
+        }
+        console.log('[v5.7.71] '+enviados+' edicoes recuperadas, '+descartados+' descartadas (gigantes)');
       } else {
         console.log('[v5.7.71] sem edicoes locais novas pra recuperar');
       }
