@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.3 (Saves resilientes - batches + sem mirror)</title>
+<title>AZUOS Paralegal - Sistema v6.0.4 (Batches dinamicos + auto-limpa fila)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -6705,34 +6705,48 @@ try{
       var qt = Object.keys(maisNovas).length;
       if (qt > 0) {
         console.warn('[v5.7.71] recuperando '+qt+' edicoes locais nao sincronizadas');
-        // [v6.0.3] dividir em batches pequenos (max 20 por update) e descartar gigantes
+        // [v6.0.4] batch DINAMICO: acumula updates ate ~700KB, entao faz flush
         var keys = Object.keys(maisNovas);
-        var BATCH = 20;
-        var MAX_BYTES = 500000; // 500KB por edicao individual (cada uma tem que caber)
+        var MAX_INDIVIDUAL = 100000; // 100KB por edicao individual
+        var MAX_BATCH = 700000; // 700KB por batch
         var enviados = 0, descartados = 0;
-        for (var i = 0; i < keys.length; i += BATCH) {
-          var slice = keys.slice(i, i+BATCH);
-          var updates = {};
-          var temAlgo = false;
-          slice.forEach(function(k){
-            var ed = maisNovas[k];
-            var sz = JSON.stringify(ed).length;
-            if (sz > MAX_BYTES) {
-              console.warn('[v5.7.71] descartando edicao gigante alvId='+k+' ('+Math.round(sz/1024)+'KB)');
-              descartados++;
-              return;
-            }
-            updates['edicoes_alvaras.'+k] = ed;
-            temAlgo = true;
-          });
-          if (!temAlgo) continue;
+        var updates = {};
+        var batchSize = 0;
+        async function flush(){
+          if (Object.keys(updates).length === 0) return;
           try {
             await db.collection('azuos').doc('shared').update(updates);
-            enviados += slice.length;
+            enviados += Object.keys(updates).length;
           } catch(e) {
-            console.warn('[v5.7.71] batch falhou ('+slice.length+' itens):', e.message);
+            console.warn('[v5.7.71] batch falhou:', e.message);
           }
+          updates = {};
+          batchSize = 0;
         }
+        for (var i = 0; i < keys.length; i++) {
+          var k = keys[i];
+          var ed = maisNovas[k];
+          var sz = JSON.stringify(ed).length;
+          if (sz > MAX_INDIVIDUAL) {
+            console.warn('[v5.7.71] descartando edicao gigante alvId='+k+' ('+Math.round(sz/1024)+'KB)');
+            descartados++;
+            continue;
+          }
+          // Se adicionar essa estoura o batch, flush primeiro
+          if (batchSize + sz > MAX_BATCH && Object.keys(updates).length > 0) {
+            await flush();
+          }
+          updates['edicoes_alvaras.'+k] = ed;
+          batchSize += sz;
+        }
+        await flush();
+        // [v6.0.4] LIMPA fila local apos sucesso (evita re-tentar nas proximas sessoes)
+        try {
+          if (enviados > 0 || descartados > 0) {
+            localStorage.removeItem('_azuos_pendentes_v78');
+            console.log('[v6.0.4] fila local limpa apos sync');
+          }
+        } catch(e){}
         console.log('[v5.7.71] '+enviados+' edicoes recuperadas, '+descartados+' descartadas (gigantes)');
       } else {
         console.log('[v5.7.71] sem edicoes locais novas pra recuperar');
