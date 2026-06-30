@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.4 (Batches dinamicos + auto-limpa fila)</title>
+<title>AZUOS Paralegal - Sistema v6.0.5 (Salva tudo + menos lento)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4614,10 +4614,10 @@ function abrirBaselineDialog() {
   setTimeout(aplicarUsuarios, 5000);
   setTimeout(aplicarUsuarios, 10000);
 
-  // Auto-save state no Firestore a cada 30s (resiliência)
+  // [v6.0.5] Auto-save reduzido de 30s para 5min (era spam de CPU)
   setInterval(function(){
     if (state && state.sessao && state.sessao.email) salvarFirestoreDireto();
-  }, 30000);
+  }, 300000);
 
   // Botões matcher fix
   setInterval(function(){
@@ -6705,10 +6705,11 @@ try{
       var qt = Object.keys(maisNovas).length;
       if (qt > 0) {
         console.warn('[v5.7.71] recuperando '+qt+' edicoes locais nao sincronizadas');
-        // [v6.0.4] batch DINAMICO: acumula updates ate ~700KB, entao faz flush
+        // [v6.0.5] batch DINAMICO: acumula updates ate ~700KB, entao faz flush
+        // NAO descarta mais - edicoes grandes vao em commit individual
         var keys = Object.keys(maisNovas);
-        var MAX_INDIVIDUAL = 100000; // 100KB por edicao individual
-        var MAX_BATCH = 700000; // 700KB por batch
+        var MAX_INDIVIDUAL = 900000; // 900KB - aceita quase qualquer edicao
+        var MAX_BATCH = 700000; // 700KB por batch agregado
         var enviados = 0, descartados = 0;
         var updates = {};
         var batchSize = 0;
