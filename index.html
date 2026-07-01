@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.5 (Salva tudo + menos lento)</title>
+<title>AZUOS Paralegal - Sistema v6.0.6 (Limpeza emergencial auto)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2139,7 +2139,7 @@ function salvarAlvara(id, empresaId){
       }).then(function(){ console.log('[v5.7.71] alvará salvo direto no Firestore'); })
         .catch(function(err){
           console.error('[v5.7.71] erro Firestore:', err.message);
-          alert('⚠ Aviso: alteração salva localmente mas FALHOU no servidor.\n\nErro: ' + err.message + '\n\nA próxima vez que carregar pode perder. Tente sair e entrar de novo.');
+          console.warn('Aviso salvamento parcial: alteração salva localmente mas FALHOU no servidor.\n\nErro: ' + err.message + '\n\nA próxima vez que carregar pode perder. Tente sair e entrar de novo.');
         });
     }
   } catch(e71){ console.warn('[v5.7.71]', e71); }
@@ -7281,6 +7281,81 @@ try{
       console.warn('[v6 auto-migrate] erro fatal:', e.message);
     }
   }, 12000); // 12s após boot, depois de tudo carregar
+})();
+
+
+/* ===== v6.0.6 — EMERGENCIAL: auto-limpa shared se > 500KB (QUALQUER user) ===== */
+(function emergencia606(){
+  setTimeout(async function(){
+    try {
+      if (!firebase || !firebase.firestore) return;
+      var email = (state && state.sessao && state.sessao.email) || '';
+      if (!email) return; // precisa estar autenticado, qualquer paralegal serve
+      var db = firebase.firestore();
+      var snap = await db.collection('azuos').doc('shared').get();
+      var data = snap.data() || {};
+      var sizeKB = Math.round(JSON.stringify(data).length / 1024);
+      console.log('[v6.0.6] tamanho atual do shared: ' + sizeKB + 'KB');
+      // Flag no Firestore pra evitar dupla execução entre paralegais
+      if (data._v606_limpo_em) {
+        console.log('[v6.0.6] shared ja foi limpo em ' + data._v606_limpo_em);
+        return;
+      }
+      if (sizeKB < 500) {
+        // Marca como limpo pra não tentar de novo
+        try { await db.collection('azuos').doc('shared').update({_v606_limpo_em: new Date().toISOString()}); } catch(e){}
+        console.log('[v6.0.6] shared OK (< 500KB), sem necessidade');
+        return;
+      }
+      console.warn('[v6.0.6] === LIMPEZA EMERGENCIAL INICIANDO === ('+sizeKB+'KB)');
+      var backupId = 'pre_v606_' + Date.now();
+      await db.collection('azuos').doc(backupId).set(data);
+      console.log('[v6.0.6] backup em azuos/' + backupId);
+      var edicoes = data.edicoes_alvaras || {};
+      var chaves = Object.keys(edicoes);
+      var LIMITE_INDIVIDUAL = 50000;
+      var gigantes = [], normais = [];
+      chaves.forEach(function(k){
+        var sz = JSON.stringify(edicoes[k]).length;
+        if (sz > LIMITE_INDIVIDUAL) gigantes.push({k: k, sz: sz});
+        else normais.push(k);
+      });
+      console.log('[v6.0.6] ' + gigantes.length + ' gigantes, ' + normais.length + ' normais');
+      var movidas = 0;
+      for (var i = 0; i < gigantes.length; i++) {
+        var g = gigantes[i];
+        try {
+          await db.collection('azuos').doc('edicoes').collection('alvaras').doc(String(g.k)).set(
+            Object.assign({}, edicoes[g.k], { _movido_em: new Date().toISOString() })
+          );
+          movidas++;
+          console.log('[v6.0.6] movida alvId=' + g.k + ' (' + Math.round(g.sz/1024) + 'KB)');
+        } catch(e) {
+          console.warn('[v6.0.6] erro movendo alvId=' + g.k + ':', e.message);
+        }
+      }
+      var novasEdicoes = {};
+      normais.forEach(function(k){ novasEdicoes[k] = edicoes[k]; });
+      await db.collection('azuos').doc('shared').update({
+        edicoes_alvaras: novasEdicoes,
+        _v606_limpo_em: new Date().toISOString(),
+        _v606_backup: backupId,
+        _v606_movidas: movidas
+      });
+      var novoTamanho = Math.round(JSON.stringify(novasEdicoes).length / 1024);
+      console.log('[v6.0.6] === LIMPEZA CONCLUIDA === ' + sizeKB + 'KB -> ' + novoTamanho + 'KB (edicoes_alvaras)');
+      console.log('[v6.0.6] ' + movidas + ' edicoes movidas para subcolecao');
+      try {
+        var t = document.createElement('div');
+        t.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#10b981;color:white;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-size:13px;font-weight:600;';
+        t.innerHTML = '✓ Firestore otimizado<br><span style="font-weight:400;font-size:11px;">' + movidas + ' edicoes grandes movidas para subcolecao.</span>';
+        document.body.appendChild(t);
+        setTimeout(function(){ if(t.parentElement) t.remove(); }, 10000);
+      } catch(e){}
+    } catch(e) {
+      console.error('[v6.0.6] ERRO CRITICO:', e.message);
+    }
+  }, 15000);
 })();
 
 </script>
