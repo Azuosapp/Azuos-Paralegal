@@ -6,7 +6,10 @@
       "**/.*",
       "**/node_modules/**",
       ".github/**",
-      "*.md"
+      "*.md",
+      "**/*.bak",
+      "**/*.bak-*",
+      "index.html.bak*"
     ],
     "rewrites": [
       {
