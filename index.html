@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.6 (Limpeza emergencial auto)</title>
+<title>AZUOS Paralegal - Sistema v6.0.7 (Salvamento robusto)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -307,16 +307,32 @@ function _mesclarAnexosLocais(remoto, local) {
   } catch(e) { return remoto; }
 }
 
+// v6.0.8: uniao de arrays por id — preserva itens de ambos; remoto prevalece em conflito
+function _uniPorId(local, remoto){
+  local = Array.isArray(local) ? local : [];
+  remoto = Array.isArray(remoto) ? remoto : [];
+  var map = {}; var semId = [];
+  local.forEach(function(x){ if (x && x.id != null) map[x.id] = x; });
+  remoto.forEach(function(x){ if (x && x.id != null) map[x.id] = x; else if (x) semId.push(x); });
+  return Object.keys(map).map(function(k){ return map[k]; }).concat(semId);
+}
+
 function _fsApplyToState(remote) {
   if (!remote) return false;
   let changed = false;
   // Campos simples: substitui se diferente
-  ['empresas_manuais','resumo_visto_por_usuario','historico'].forEach(k => {
-    if (remote[k] !== undefined && JSON.stringify(state[k]) !== JSON.stringify(remote[k])) {
-      state[k] = remote[k];
-      changed = true;
+  // v6.0.8: merge por id — nao substitui arrays em bloco (evita perder itens criados em paralelo)
+  ['empresas_manuais','historico'].forEach(k => {
+    if (remote[k] !== undefined) {
+      var _m = _uniPorId(state[k], remote[k]);
+      if (k === 'historico') _m.sort(function(a,b){ return ((b && b.id) || 0) - ((a && a.id) || 0); });
+      if (JSON.stringify(state[k]) !== JSON.stringify(_m)) { state[k] = _m; changed = true; }
     }
   });
+  if (remote.resumo_visto_por_usuario) {
+    var _rv = Object.assign({}, state.resumo_visto_por_usuario || {}, remote.resumo_visto_por_usuario);
+    if (JSON.stringify(state.resumo_visto_por_usuario) !== JSON.stringify(_rv)) { state.resumo_visto_por_usuario = _rv; changed = true; }
+  }
   // [v6.0.2 fix] MERGE inteligente para edicoes_alvaras: mantem o mais RECENTE por alvId
   // Antes sobrescrevia cegamente — bug: snapshot do servidor atropelava edição local recente
   if (remote.edicoes_alvaras) {
@@ -2210,6 +2226,7 @@ function salvarAlvara(id, empresaId){
     _editado_em: new Date().toISOString(),
     _editado_por: state.sessao ? (state.sessao.email || state.sessao.nome) : ''
   };
+  let _idSalvo = id;
   if (id) {
     state.alvaras = state.alvaras.map(x => x.id == id ? {...x, ...data} : x);
     // Sincroniza para outros usuários via Firestore (overlay de edição)
@@ -2218,35 +2235,35 @@ function salvarAlvara(id, empresaId){
     log('Editou alvará', `${tipo} - ${empresa.nome}`, `Status: ${data.status}`);
   } else {
     const novoId = uid(state.alvaras);
+    _idSalvo = novoId;
     state.alvaras.push({id: novoId, ...data});
     state.edicoes_alvaras = state.edicoes_alvaras || {};
     state.edicoes_alvaras[novoId] = {id: novoId, ...data};
     log('Cadastrou alvará', `${tipo} - ${empresa.nome}`);
   }
   closeModal(); saveState(); render();
-  // v5.7.71: SAVE SÍNCRONO direto no Firestore (resolve paralegais não conseguirem salvar)
+  // v6.0.8: SAVE direto no Firestore POR CAMPO — nao sobrescreve edicoes de outros paralegais
   try {
-    if (firebase && firebase.firestore && state.edicoes_alvaras) {
-      var _clean71 = {};
-      Object.keys(state.edicoes_alvaras).forEach(function(kk){
-        var v = state.edicoes_alvaras[kk];
-        if (!v) return;
-        var o = {};
-        Object.keys(v).forEach(function(k2){
-          var val = v[k2];
-          o[k2] = (val === undefined || val === null) ? '' : val;
-        });
-        _clean71[kk] = o;
+    if (firebase && firebase.firestore && _idSalvo != null && state.edicoes_alvaras && state.edicoes_alvaras[_idSalvo]) {
+      var _vv = state.edicoes_alvaras[_idSalvo];
+      var _o71 = {};
+      Object.keys(_vv).forEach(function(k2){
+        var val = _vv[k2];
+        if (k2 === 'anexos' && Array.isArray(val)) {
+          _o71[k2] = val.map(function(a){ var m = Object.assign({}, a); if (m.dados) { m.dados=''; m._local=true; } return m; });
+        } else {
+          _o71[k2] = (val === undefined || val === null) ? '' : val;
+        }
       });
-      firebase.firestore().collection('azuos').doc('shared').update({
-        edicoes_alvaras: _clean71
-      }).then(function(){ console.log('[v5.7.71] alvará salvo direto no Firestore'); })
+      var _patch71 = {}; _patch71['edicoes_alvaras.' + _idSalvo] = _o71;
+      firebase.firestore().collection('azuos').doc('shared').update(_patch71)
+        .then(function(){ console.log('[v6.0.8] alvará ' + _idSalvo + ' salvo por campo no Firestore'); })
         .catch(function(err){
-          console.error('[v5.7.71] erro Firestore:', err.message);
-          console.warn('Aviso salvamento parcial: alteração salva localmente mas FALHOU no servidor.\n\nErro: ' + err.message + '\n\nA próxima vez que carregar pode perder. Tente sair e entrar de novo.');
+          console.error('[v6.0.8] erro Firestore:', err.message);
+          console.warn('Aviso: alteração salva localmente mas FALHOU no servidor.\n\nErro: ' + err.message + '\n\nTente sair e entrar de novo.');
         });
     }
-  } catch(e71){ console.warn('[v5.7.71]', e71); }
+  } catch(e71){ console.warn('[v6.0.8]', e71); }
   // Toast de confirmação
   const t = document.createElement('div');
   t.className = 'toast-slide';
@@ -7462,6 +7479,54 @@ try{
   }, 15000);
 })();
 
+</script>
+<script>
+/* ===== v6.0.8 - Modulo UX: notificacao de vencimentos + copiar cobranca (WhatsApp) ===== */
+(function uxVenc608(){
+  function diasAte(venc){
+    try{ if(typeof parseDataBR!=='function') return null; var d=parseDataBR(venc); if(!d) return null;
+      var hoje=new Date(); hoje.setHours(0,0,0,0); d.setHours(0,0,0,0);
+      return Math.round((d-hoje)/(86400000)); }catch(e){ return null; }
+  }
+  function concluido(s){ if(!s) return false; if(/^formalizado/i.test(s)) return true; return s==='Concluido'||s==='Concluído'||s==='Pago'; }
+  function admin(){ try{ return typeof ehAdmin==='function'?ehAdmin():false; }catch(e){ return false; } }
+  function meu(){ try{ return (state.sessao&&state.sessao.nome)||''; }catch(e){ return ''; } }
+  function criticos(){
+    var out=[]; try{ var m=meu(), ad=admin();
+      (state.alvaras||[]).forEach(function(a){
+        if(!a||!a.vencimento) return; if(concluido(a.status)) return;
+        if(!ad && (a.responsavel||'')!==m) return;
+        var dias=diasAte(a.vencimento); if(dias===null) return;
+        if(dias<=30) out.push({dias:dias, empresa:a.empresa||a.nome||'', tipo:a.tipo||'', venc:a.vencimento});
+      }); }catch(e){}
+    out.sort(function(x,y){ return x.dias-y.dias; }); return out;
+  }
+  function texto(l){ var L=['*Alvaras a vencer - AZUOS Paralegal*','']; l.forEach(function(it){
+      var q=it.dias<0?('VENCIDO ha '+Math.abs(it.dias)+'d'):(it.dias===0?'vence HOJE':('faltam '+it.dias+'d'));
+      L.push('- '+it.empresa+' - '+it.tipo+' ('+it.venc+') - '+q); });
+    L.push(''); L.push('Total: '+l.length+' alvara(s).'); return L.join('\n'); }
+  function copiar(txt){ if(navigator.clipboard&&navigator.clipboard.writeText) return navigator.clipboard.writeText(txt);
+    return new Promise(function(res,rej){ try{ var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); res(); }catch(e){ rej(e); } }); }
+  function avisa(msg,cor){ try{ if(typeof toast==='function') toast(msg,cor||'emerald'); }catch(e){} }
+  function addBotao(){ if(document.getElementById('ux608-btn')) return;
+    var b=document.createElement('button'); b.id='ux608-btn'; b.textContent='📋 Copiar vencimentos';
+    b.title='Copiar alvaras vencidos + a vencer (para WhatsApp)';
+    b.style.cssText='position:fixed;bottom:20px;left:20px;z-index:99998;background:#25D366;color:#fff;border:none;border-radius:14px;padding:11px 15px;font:600 13px Inter,system-ui,sans-serif;box-shadow:0 8px 24px -6px rgba(0,0,0,.4);cursor:pointer;';
+    b.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em 30 dias 🎉','emerald'); return; }
+      copiar(texto(l)).then(function(){ avisa('Copiado! Cole no WhatsApp ('+l.length+' itens)','emerald'); }).catch(function(){ avisa('Nao consegui copiar','amber'); }); };
+    document.body.appendChild(b); }
+  function notificar(){ try{ if(!('Notification' in window)) return; if(sessionStorage.getItem('ux608_notif')) return;
+    var urg=criticos().filter(function(i){return i.dias<=7;}); if(!urg.length) return;
+    function go(){ try{ new Notification('AZUOS Paralegal - atencao aos prazos',{body:urg.length+' alvara(s) vencem em ate 7 dias. Abra os Alertas.',tag:'ux608'}); sessionStorage.setItem('ux608_notif','1'); }catch(e){} }
+    if(Notification.permission==='granted') go();
+    else if(Notification.permission!=='denied') Notification.requestPermission().then(function(p){ if(p==='granted') go(); }); }catch(e){} }
+  var jaNotif=false;
+  function tick(){ var logged=false; try{ logged=!!(state&&state.sessao&&state.sessao.nome); }catch(e){}
+    var b=document.getElementById('ux608-btn');
+    if(logged){ if(!b) addBotao(); if(!jaNotif){ jaNotif=true; setTimeout(notificar,3000); } }
+    else if(b){ b.remove(); } }
+  setInterval(tick,3000); setTimeout(tick,1500);
+})();
 </script>
 </body>
 </html>
