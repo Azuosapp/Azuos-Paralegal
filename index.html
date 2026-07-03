@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.11 (Desempenho)</title>
+<title>AZUOS Paralegal - Sistema v6.0.12 (Salvamento destravado)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -188,21 +188,36 @@ function _liberarEspacoLocalStorage() {
 
 // v6.0.7 — persiste o estado com recuperacao de quota. Retorna true se salvou.
 // Regra de ouro: preservar os dados dos alvaras; nunca apagar o que ja esta salvo.
+// v6.0.12 — copia do estado SEM o base64 pesado dos anexos, para caber no localStorage.
+function _estadoParaLocal() {
+  function limpar(item){
+    if (item && Array.isArray(item.anexos) && item.anexos.length) {
+      var c = Object.assign({}, item);
+      c.anexos = item.anexos.map(function(a){ var m = Object.assign({}, a); if (m.dados) { m.dados = ''; m._local = true; } return m; });
+      return c;
+    }
+    return item;
+  }
+  var s = Object.assign({}, state);
+  if (Array.isArray(state.alvaras)) s.alvaras = state.alvaras.map(limpar);
+  if (state.edicoes_alvaras) { var e = {}; Object.keys(state.edicoes_alvaras).forEach(function(k){ e[k] = limpar(state.edicoes_alvaras[k]); }); s.edicoes_alvaras = e; }
+  return s;
+}
 function _persistirEstadoAgora() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(_estadoParaLocal()));
     return true;
   } catch (e) {
     console.warn('[saveState] localStorage cheio (' + (e && e.name) + '), tentando liberar espaco...');
     // 1) Libera chaves temporarias e tenta de novo (dados intactos)
     try {
       _liberarEspacoLocalStorage();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(_estadoParaLocal()));
       return true;
     } catch (e2) {
       // 2) Salva com historico reduzido — dados dos alvaras sao preservados
       try {
-        var slim = Object.assign({}, state, { historico: (state.historico || []).slice(0, 100) });
+        var slim = Object.assign({}, _estadoParaLocal(), { historico: (state.historico || []).slice(0, 100) });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
         if (typeof toast === 'function') toast('\u26a0\ufe0f Espaco local cheio: historico antigo reduzido. Seus dados foram salvos.', 'amber');
         return true;
