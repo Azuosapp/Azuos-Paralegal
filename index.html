@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.13 (Anexos no Storage)</title>
+<title>AZUOS Paralegal - Sistema v6.0.14 (Anexos no navegador - IndexedDB)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2086,29 +2086,42 @@ function excluirConversa(idx) {
 }
 
 // Adiciona anexo (com limite de 2MB, armazena base64) + OCR de datas
+// v6.0.14 — Anexos no IndexedDB (armazenamento grande do navegador; nao estoura como o localStorage)
+var _IDB_N='azuos_anexos', _IDB_S='anexos';
+function _idbOpen(){ return new Promise(function(res,rej){ try{ var r=indexedDB.open(_IDB_N,1); r.onupgradeneeded=function(){ var db=r.result; if(!db.objectStoreNames.contains(_IDB_S)) db.createObjectStore(_IDB_S); }; r.onsuccess=function(){res(r.result);}; r.onerror=function(){rej(r.error);}; }catch(e){rej(e);} }); }
+function _idbPut(id,val){ return _idbOpen().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction(_IDB_S,'readwrite'); tx.objectStore(_IDB_S).put(val,id); tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);}; }); }); }
+function _idbGet(id){ return _idbOpen().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction(_IDB_S,'readonly'); var rq=tx.objectStore(_IDB_S).get(id); rq.onsuccess=function(){res(rq.result);}; rq.onerror=function(){rej(rq.error);}; }); }); }
+function _reidratarAnexosIDB(){
+  try{
+    var pend=[];
+    function scan(arr){ (arr||[]).forEach(function(it){ if(it && Array.isArray(it.anexos)) it.anexos.forEach(function(a){ if(a && a._idb && !a.dados) pend.push(a); }); }); }
+    scan(state.alvaras);
+    if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan([state.edicoes_alvaras[k]]); });
+    if(!pend.length) return;
+    var done=0;
+    pend.forEach(function(a){ _idbGet(a._idb).then(function(b64){ if(b64) a.dados=b64; done++; if(done===pend.length && typeof render==='function'){ try{render();}catch(e){} } }).catch(function(){ done++; }); });
+  }catch(e){}
+}
 function adicionarAnexo(input) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) { alert('Arquivo muito grande (max 5MB).'); input.value=''; return; }
-  if (!window.fbStorage) { alert('Armazenamento de anexos indisponivel. Recarregue a pagina e tente de novo.'); input.value=''; return; }
   var _nome=file.name, _tipo=file.type, _tamKB=(file.size/1024).toFixed(1)+' KB';
-  var _safe=String(_nome).replace(/[^\w.\-]+/g,'_');
-  var _path='anexos/'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+_safe;
-  if (typeof toast==='function') toast('\u23f3 Enviando anexo...', 'blue');
-  window.fbStorage.ref().child(_path).put(file).then(function(snap){ return snap.ref.getDownloadURL(); }).then(function(url){
-    var dataField=document.getElementById('fa-anexos-data');
-    var anexos=JSON.parse(dataField.value||'[]');
-    anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:url, url:url, path:_path, _storage:true });
-    dataField.value=JSON.stringify(anexos); renderAnexosLista(anexos);
-    if (typeof toast==='function') toast('\u2705 Anexo enviado', 'emerald');
-  }).catch(function(err){
-    console.error('[anexo] falha no upload:', err);
-    alert('Nao foi possivel enviar o anexo: '+((err&&err.message)?err.message:err)+'\n\nSe persistir, verifique se o Firebase Storage esta ativado no projeto.');
-  });
-  input.value='';
-  if (_tipo && _tipo.indexOf('image/')===0 && typeof Tesseract!=='undefined') {
-    try { var _r=new FileReader(); _r.onload=function(ev){ iaLerDocumento(ev.target.result, _nome); }; _r.readAsDataURL(file); } catch(e){}
-  }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var b64=e.target.result;
+    var id='idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+    _idbPut(id, b64).then(function(){
+      var dataField=document.getElementById('fa-anexos-data');
+      var anexos=JSON.parse(dataField.value||'[]');
+      anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:b64, _idb:id });
+      dataField.value=JSON.stringify(anexos); renderAnexosLista(anexos);
+      if (typeof toast==='function') toast('\u2705 Anexo salvo', 'emerald');
+    }).catch(function(err){ console.error('[anexo idb]',err); alert('Nao foi possivel salvar o anexo no navegador: '+((err&&err.message)?err.message:err)); });
+    input.value='';
+    if (_tipo && _tipo.indexOf('image/')===0 && typeof Tesseract!=='undefined') { try{ iaLerDocumento(b64,_nome); }catch(e){} }
+  };
+  reader.readAsDataURL(file);
 }
 
 // 🤖 IA: lê documento via OCR e extrai datas (validade + ano)
@@ -7533,5 +7546,6 @@ try{
   setInterval(tick,3000); setTimeout(tick,1500);
 })();
 </script>
+<script>/* v6.0.14 */(function _bootIDB(){var n=0;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){clearInterval(iv);try{_reidratarAnexosIDB();}catch(e){}}if(n>40)clearInterval(iv);},500);})();</script>
 </body>
 </html>
