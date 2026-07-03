@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.7 (Salvamento robusto)</title>
+<title>AZUOS Paralegal - Sistema v6.0.9 (Vencimentos + auditoria)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -511,7 +511,7 @@ function setState(patch) { Object.assign(state, patch); saveState(); sanearTipos
 function uid(list){ return list.length ? Math.max(...list.map(x=>x.id||0))+1 : 1; }
 function log(acao, alvo, det=''){
   state.historico.unshift({
-    id: uid(state.historico),
+    id: (Date.now() * 1000 + Math.floor(Math.random() * 1000)),
     data: new Date().toISOString(),
     usuario: state.sessao?.nome || 'Sistema',
     acao, alvo, detalhes: det
@@ -7481,50 +7481,25 @@ try{
 
 </script>
 <script>
-/* ===== v6.0.8 - Modulo UX: notificacao de vencimentos + copiar cobranca (WhatsApp) ===== */
-(function uxVenc608(){
-  function diasAte(venc){
-    try{ if(typeof parseDataBR!=='function') return null; var d=parseDataBR(venc); if(!d) return null;
-      var hoje=new Date(); hoje.setHours(0,0,0,0); d.setHours(0,0,0,0);
-      return Math.round((d-hoje)/(86400000)); }catch(e){ return null; }
-  }
+/* ===== v6.0.9 - Modulo UX: vencimentos (copiar / WhatsApp / CSV) + notificacao ===== */
+(function uxVenc609(){
+  var JANELA=30;
+  function diasAte(venc){ try{ if(typeof parseDataBR!=='function') return null; var d=parseDataBR(venc); if(!d) return null; var h=new Date(); h.setHours(0,0,0,0); d.setHours(0,0,0,0); return Math.round((d-h)/86400000); }catch(e){ return null; } }
   function concluido(s){ if(!s) return false; if(/^formalizado/i.test(s)) return true; return s==='Concluido'||s==='Concluído'||s==='Pago'; }
   function admin(){ try{ return typeof ehAdmin==='function'?ehAdmin():false; }catch(e){ return false; } }
   function meu(){ try{ return (state.sessao&&state.sessao.nome)||''; }catch(e){ return ''; } }
-  function criticos(){
-    var out=[]; try{ var m=meu(), ad=admin();
-      (state.alvaras||[]).forEach(function(a){
-        if(!a||!a.vencimento) return; if(concluido(a.status)) return;
-        if(!ad && (a.responsavel||'')!==m) return;
-        var dias=diasAte(a.vencimento); if(dias===null) return;
-        if(dias<=30) out.push({dias:dias, empresa:a.empresa||a.nome||'', tipo:a.tipo||'', venc:a.vencimento});
-      }); }catch(e){}
-    out.sort(function(x,y){ return x.dias-y.dias; }); return out;
-  }
-  function texto(l){ var L=['*Alvaras a vencer - AZUOS Paralegal*','']; l.forEach(function(it){
-      var q=it.dias<0?('VENCIDO ha '+Math.abs(it.dias)+'d'):(it.dias===0?'vence HOJE':('faltam '+it.dias+'d'));
-      L.push('- '+it.empresa+' - '+it.tipo+' ('+it.venc+') - '+q); });
-    L.push(''); L.push('Total: '+l.length+' alvara(s).'); return L.join('\n'); }
-  function copiar(txt){ if(navigator.clipboard&&navigator.clipboard.writeText) return navigator.clipboard.writeText(txt);
-    return new Promise(function(res,rej){ try{ var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); res(); }catch(e){ rej(e); } }); }
+  function criticos(){ var out=[]; try{ var m=meu(), ad=admin(); (state.alvaras||[]).forEach(function(a){ if(!a||!a.vencimento) return; if(concluido(a.status)) return; if(!ad && (a.responsavel||'')!==m) return; var dias=diasAte(a.vencimento); if(dias===null) return; if(dias<=JANELA) out.push({dias:dias, empresa:a.empresa||a.nome||'', tipo:a.tipo||'', venc:a.vencimento, resp:a.responsavel||''}); }); }catch(e){} out.sort(function(x,y){ return x.dias-y.dias; }); return out; }
+  function situacao(d){ return d<0?('VENCIDO ha '+Math.abs(d)+'d'):(d===0?'vence HOJE':('faltam '+d+'d')); }
+  function texto(l){ var L=['*Alvaras vencidos + a vencer ('+JANELA+' dias) - AZUOS Paralegal*','']; l.forEach(function(it){ L.push('- '+it.empresa+' - '+it.tipo+' ('+it.venc+') - '+situacao(it.dias)); }); L.push(''); L.push('Total: '+l.length+' alvara(s).'); return L.join('\n'); }
+  function copiar(txt){ if(navigator.clipboard&&navigator.clipboard.writeText) return navigator.clipboard.writeText(txt); return new Promise(function(res,rej){ try{ var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); res(); }catch(e){ rej(e); } }); }
+  function baixarCSV(l){ try{ var head=['Empresa','Tipo','Vencimento','Dias','Situacao','Responsavel']; function cel(v){ v=String(v==null?'':v); return '"'+v.replace(/"/g,'""')+'"'; } var linhas=[head.map(cel).join(';')]; l.forEach(function(it){ linhas.push([it.empresa,it.tipo,it.venc,it.dias,situacao(it.dias),it.resp].map(cel).join(';')); }); var csv='﻿'+linhas.join('\r\n'); var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='vencimentos_azuos_'+(new Date().toISOString().slice(0,10))+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(function(){ URL.revokeObjectURL(url); },2000); }catch(e){ avisa('Nao consegui gerar o CSV','amber'); } }
+  function abrirWhats(txt){ try{ window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank'); }catch(e){ avisa('Nao consegui abrir o WhatsApp','amber'); } }
   function avisa(msg,cor){ try{ if(typeof toast==='function') toast(msg,cor||'emerald'); }catch(e){} }
-  function addBotao(){ if(document.getElementById('ux608-btn')) return;
-    var b=document.createElement('button'); b.id='ux608-btn'; b.textContent='📋 Copiar vencimentos';
-    b.title='Copiar alvaras vencidos + a vencer (para WhatsApp)';
-    b.style.cssText='position:fixed;bottom:20px;left:20px;z-index:99998;background:#25D366;color:#fff;border:none;border-radius:14px;padding:11px 15px;font:600 13px Inter,system-ui,sans-serif;box-shadow:0 8px 24px -6px rgba(0,0,0,.4);cursor:pointer;';
-    b.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em 30 dias 🎉','emerald'); return; }
-      copiar(texto(l)).then(function(){ avisa('Copiado! Cole no WhatsApp ('+l.length+' itens)','emerald'); }).catch(function(){ avisa('Nao consegui copiar','amber'); }); };
-    document.body.appendChild(b); }
-  function notificar(){ try{ if(!('Notification' in window)) return; if(sessionStorage.getItem('ux608_notif')) return;
-    var urg=criticos().filter(function(i){return i.dias<=7;}); if(!urg.length) return;
-    function go(){ try{ new Notification('AZUOS Paralegal - atencao aos prazos',{body:urg.length+' alvara(s) vencem em ate 7 dias. Abra os Alertas.',tag:'ux608'}); sessionStorage.setItem('ux608_notif','1'); }catch(e){} }
-    if(Notification.permission==='granted') go();
-    else if(Notification.permission!=='denied') Notification.requestPermission().then(function(p){ if(p==='granted') go(); }); }catch(e){} }
+  function mkBtn(id,txt,title,bg){ var b=document.createElement('button'); b.id=id; b.textContent=txt; b.title=title; b.style.cssText='display:block;width:100%;margin:0 0 6px 0;background:'+bg+';color:#fff;border:none;border-radius:12px;padding:9px 13px;font:600 12px Inter,system-ui,sans-serif;box-shadow:0 6px 18px -6px rgba(0,0,0,.4);cursor:pointer;text-align:left;'; return b; }
+  function addBox(){ if(document.getElementById('ux609-box')) return; var box=document.createElement('div'); box.id='ux609-box'; box.style.cssText='position:fixed;bottom:18px;left:18px;z-index:99998;width:186px;'; var bCopy=mkBtn('ux609-copy','📋 Copiar vencimentos','Copiar vencidos + proximos '+JANELA+' dias','#25D366'); var bWa=mkBtn('ux609-wa','💬 Abrir no WhatsApp','Abrir o WhatsApp com a lista pronta','#128C7E'); var bCsv=mkBtn('ux609-csv','⬇️ Baixar CSV','Baixar planilha dos vencimentos (Excel)','#2563eb'); bCsv.style.marginBottom='0'; bCopy.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } copiar(texto(l)).then(function(){ avisa('Copiado! Cole no WhatsApp ('+l.length+' itens)','emerald'); }).catch(function(){ avisa('Nao consegui copiar','amber'); }); }; bWa.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } abrirWhats(texto(l)); }; bCsv.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } baixarCSV(l); avisa('CSV gerado ('+l.length+' itens)','emerald'); }; box.appendChild(bCopy); box.appendChild(bWa); box.appendChild(bCsv); document.body.appendChild(box); }
+  function notificar(){ try{ if(!('Notification' in window)) return; if(sessionStorage.getItem('ux609_notif')) return; var urg=criticos().filter(function(i){return i.dias<=7;}); if(!urg.length) return; function go(){ try{ new Notification('AZUOS Paralegal - atencao aos prazos',{body:urg.length+' alvara(s) vencem em ate 7 dias. Abra os Alertas.',tag:'ux609'}); sessionStorage.setItem('ux609_notif','1'); }catch(e){} } if(Notification.permission==='granted') go(); else if(Notification.permission!=='denied') Notification.requestPermission().then(function(p){ if(p==='granted') go(); }); }catch(e){} }
   var jaNotif=false;
-  function tick(){ var logged=false; try{ logged=!!(state&&state.sessao&&state.sessao.nome); }catch(e){}
-    var b=document.getElementById('ux608-btn');
-    if(logged){ if(!b) addBotao(); if(!jaNotif){ jaNotif=true; setTimeout(notificar,3000); } }
-    else if(b){ b.remove(); } }
+  function tick(){ var logged=false; try{ logged=!!(state&&state.sessao&&state.sessao.nome); }catch(e){} var box=document.getElementById('ux609-box'); if(logged){ if(!box) addBox(); if(!jaNotif){ jaNotif=true; setTimeout(notificar,3000); } } else if(box){ box.remove(); } }
   setInterval(tick,3000); setTimeout(tick,1500);
 })();
 </script>
