@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.12 (Salvamento destravado)</title>
+<title>AZUOS Paralegal - Sistema v6.0.13 (Anexos no Storage)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -14,6 +14,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script>
 
 /* ===== v5.7.72 — Limpar campo de busca persistido (causava 'filtro nao funciona') ===== */
@@ -96,6 +97,7 @@ try {
   firebase.initializeApp(firebaseConfig);
   window.fbAuth = firebase.auth();
   window.fbDB = firebase.firestore();
+  try { window.fbStorage = firebase.storage(); } catch(e) { console.warn("[storage] indisponivel", e); }
 </script>
 <style>
   /* === REFINAMENTO VISUAL v5.4 === */
@@ -193,7 +195,7 @@ function _estadoParaLocal() {
   function limpar(item){
     if (item && Array.isArray(item.anexos) && item.anexos.length) {
       var c = Object.assign({}, item);
-      c.anexos = item.anexos.map(function(a){ var m = Object.assign({}, a); if (m.dados) { m.dados = ''; m._local = true; } return m; });
+      c.anexos = item.anexos.map(function(a){ var m = Object.assign({}, a); if (m.dados && String(m.dados).indexOf('data:')===0) { m.dados = ''; m._local = true; } return m; });
       return c;
     }
     return item;
@@ -297,7 +299,7 @@ function _semAnexosPesados(edicoes) {
         var copia = Object.assign({}, e);
         copia.anexos = e.anexos.map(function(a){
           var m = Object.assign({}, a);
-          if (m.dados) { m.dados = ''; m._local = true; } // metadados sem base64
+          if (m.dados && String(m.dados).indexOf('data:')===0) { m.dados = ''; m._local = true; } // metadados sem base64
           return m;
         });
         out[id] = copia;
@@ -2087,31 +2089,26 @@ function excluirConversa(idx) {
 function adicionarAnexo(input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {
-    alert('Arquivo muito grande (máx 2MB). Use compressão ou guarde em outro lugar.');
-    input.value = '';
-    return;
+  if (file.size > 5 * 1024 * 1024) { alert('Arquivo muito grande (max 5MB).'); input.value=''; return; }
+  if (!window.fbStorage) { alert('Armazenamento de anexos indisponivel. Recarregue a pagina e tente de novo.'); input.value=''; return; }
+  var _nome=file.name, _tipo=file.type, _tamKB=(file.size/1024).toFixed(1)+' KB';
+  var _safe=String(_nome).replace(/[^\w.\-]+/g,'_');
+  var _path='anexos/'+Date.now()+'_'+Math.random().toString(36).slice(2,8)+'_'+_safe;
+  if (typeof toast==='function') toast('\u23f3 Enviando anexo...', 'blue');
+  window.fbStorage.ref().child(_path).put(file).then(function(snap){ return snap.ref.getDownloadURL(); }).then(function(url){
+    var dataField=document.getElementById('fa-anexos-data');
+    var anexos=JSON.parse(dataField.value||'[]');
+    anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:url, url:url, path:_path, _storage:true });
+    dataField.value=JSON.stringify(anexos); renderAnexosLista(anexos);
+    if (typeof toast==='function') toast('\u2705 Anexo enviado', 'emerald');
+  }).catch(function(err){
+    console.error('[anexo] falha no upload:', err);
+    alert('Nao foi possivel enviar o anexo: '+((err&&err.message)?err.message:err)+'\n\nSe persistir, verifique se o Firebase Storage esta ativado no projeto.');
+  });
+  input.value='';
+  if (_tipo && _tipo.indexOf('image/')===0 && typeof Tesseract!=='undefined') {
+    try { var _r=new FileReader(); _r.onload=function(ev){ iaLerDocumento(ev.target.result, _nome); }; _r.readAsDataURL(file); } catch(e){}
   }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const dataField = document.getElementById('fa-anexos-data');
-    const anexos = JSON.parse(dataField.value || '[]');
-    anexos.push({
-      nome: file.name,
-      tipo: file.type,
-      tamanho: (file.size/1024).toFixed(1) + ' KB',
-      dataUpload: new Date().toLocaleDateString('pt-BR'),
-      dados: e.target.result
-    });
-    dataField.value = JSON.stringify(anexos);
-    renderAnexosLista(anexos);
-    input.value = '';
-    // Se for imagem, rodar OCR
-    if (file.type.startsWith('image/') && typeof Tesseract !== 'undefined') {
-      iaLerDocumento(e.target.result, file.name);
-    }
-  };
-  reader.readAsDataURL(file);
 }
 
 // 🤖 IA: lê documento via OCR e extrai datas (validade + ano)
@@ -2283,7 +2280,7 @@ function salvarAlvara(id, empresaId){
       Object.keys(_vv).forEach(function(k2){
         var val = _vv[k2];
         if (k2 === 'anexos' && Array.isArray(val)) {
-          _o71[k2] = val.map(function(a){ var m = Object.assign({}, a); if (m.dados) { m.dados=''; m._local=true; } return m; });
+          _o71[k2] = val.map(function(a){ var m = Object.assign({}, a); if (m.dados && String(m.dados).indexOf('data:')===0) { m.dados=''; m._local=true; } return m; });
         } else {
           _o71[k2] = (val === undefined || val === null) ? '' : val;
         }
