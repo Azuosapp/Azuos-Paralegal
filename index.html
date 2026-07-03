@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.10 (Marca + auditoria)</title>
+<title>AZUOS Paralegal - Sistema v6.0.11 (Desempenho)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -75,7 +75,7 @@ try {
     }
     // 2. _detectarESalvarEdicoes54 (10s ao invés de 4s)
     if(typeof window._detectarESalvarEdicoes54 === 'function'){
-      setInterval(window._detectarESalvarEdicoes54, 10000);
+      /* v6.0.11 perf: duplicata do detector removida (ja registrado 1x) */ void 0;
       console.log('[v5.7.58] hook v54 reagendado para 10s');
     }
     console.log('[v5.7.58] sistema otimizado');
@@ -188,7 +188,7 @@ function _liberarEspacoLocalStorage() {
 
 // v6.0.7 — persiste o estado com recuperacao de quota. Retorna true se salvou.
 // Regra de ouro: preservar os dados dos alvaras; nunca apagar o que ja esta salvo.
-function _persistirEstado() {
+function _persistirEstadoAgora() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     return true;
@@ -222,6 +222,24 @@ function _persistirEstado() {
     }
   }
 }
+
+// v6.0.11 perf: agrupa gravacoes no localStorage (debounce) sem perder dados.
+// Descarga garantida ao ocultar/fechar a aba (pagehide/beforeunload/visibilitychange).
+var _persistTimer = null;
+function _persistirEstado() {
+  if (_persistTimer) clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(function(){ _persistTimer = null; _persistirEstadoAgora(); }, 400);
+  return true;
+}
+function _flushPersistir() {
+  if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
+  try { _persistirEstadoAgora(); } catch(e){}
+}
+try {
+  window.addEventListener('pagehide', _flushPersistir);
+  window.addEventListener('beforeunload', _flushPersistir);
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') _flushPersistir(); });
+} catch(e){}
 
 function saveState() {
   var ok = _persistirEstado();
@@ -6555,7 +6573,7 @@ window._detectarESalvarEdicoes54 = async function(){
 var _bootIv54=setInterval(function(){
   if(window._initHookEdit54()){
     clearInterval(_bootIv54);
-    setInterval(window._detectarESalvarEdicoes54, 4000);
+    setInterval(window._detectarESalvarEdicoes54, 20000); /* v6.0.11 perf: 4s->20s */
     console.log('[v5.7.54] HOOK ATIVO');
   }
 },1000);
