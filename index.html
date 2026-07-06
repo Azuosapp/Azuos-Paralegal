@@ -361,12 +361,47 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&am
 
 
 // ============ Render Router ============
+// v6.1.6 — blindagem: render nunca deixa a tela branca; erros ficam registrados e visiveis
+function _azuosRegistrarErro(origem, e){
+  try{
+    var rec={origem:origem, msg:(e&&e.message)||String(e), stack:(e&&e.stack)||'', page:(typeof state!=='undefined'&&state)?state.page:'', usuario:(typeof state!=='undefined'&&state&&state.sessao)?(state.sessao.nome||state.sessao.email||''):'', quando:new Date().toISOString(), versao:(typeof SYSTEM_VERSION!=='undefined'?SYSTEM_VERSION:'')};
+    window._azuosUltimoErro=rec;
+    try{ localStorage.setItem('azuos_ultimo_erro', JSON.stringify(rec)); }catch(_){}
+    console.error('[AZUOS erro]', origem, rec.msg, rec.stack);
+    return rec;
+  }catch(_){ return null; }
+}
+function verErroAzuos(){ try{ return JSON.parse(localStorage.getItem('azuos_ultimo_erro')||'null'); }catch(e){ return null; } }
+function _azuosBannerErro(rec){
+  try{
+    if(!rec || !document.body) return;
+    var b=document.getElementById('azuos-erro-banner');
+    if(!b){ b=document.createElement('div'); b.id='azuos-erro-banner'; b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#7f1d1d;color:#fff;padding:10px 14px;font:13px system-ui,Arial;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;gap:10px;align-items:center;flex-wrap:wrap;'; document.body.appendChild(b); }
+    var msg=(''+(rec.msg||'')).replace(/</g,'&lt;');
+    b.innerHTML='<strong>\u26A0\uFE0F Erro ao atualizar a tela</strong> <span style="opacity:.9">sua a\u00e7\u00e3o foi salva.</span> <code style="background:#00000030;padding:2px 6px;border-radius:4px;max-width:55vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+msg+'</code>';
+    var cp=document.createElement('button'); cp.textContent='Copiar detalhes'; cp.style.cssText='margin-left:auto;background:#fff;color:#7f1d1d;border:none;border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;'; cp.onclick=function(){ try{ navigator.clipboard.writeText(JSON.stringify(rec,null,2)); cp.textContent='Copiado!'; }catch(e){} };
+    var rl=document.createElement('button'); rl.textContent='Recarregar'; rl.style.cssText='background:#fca5a5;color:#7f1d1d;border:none;border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;'; rl.onclick=function(){ location.reload(); };
+    var cl=document.createElement('button'); cl.textContent='\u2715'; cl.style.cssText='background:transparent;color:#fff;border:none;font-size:16px;cursor:pointer;'; cl.onclick=function(){ b.remove(); };
+    b.appendChild(cp); b.appendChild(rl); b.appendChild(cl);
+  }catch(_){}
+}
+window.addEventListener('error', function(ev){ _azuosRegistrarErro('js', (ev&&ev.error)||{message:ev&&ev.message}); });
+window.addEventListener('unhandledrejection', function(ev){ _azuosRegistrarErro('promise', (ev&&ev.reason)||{message:'rejeicao'}); });
+
 function render() {
-  const app = document.getElementById('app');
-  if (!state.sessao) { app.innerHTML = renderLogin(); attachLogin(); return; }
-  app.innerHTML = renderLayout(renderPage());
-  attachLayout();
-  attachPage();
+  var app = document.getElementById('app');
+  if (!app) return;
+  try {
+    if (!state.sessao) { app.innerHTML = renderLogin(); attachLogin(); return; }
+    var _html = renderLayout(renderPage());
+    if (typeof _html !== 'string' || _html.length === 0) throw new Error('conteudo vazio (page=' + state.page + ')');
+    app.innerHTML = _html;
+  } catch (e) {
+    _azuosBannerErro(_azuosRegistrarErro('render', e));
+    return; // NAO apaga a tela
+  }
+  try { attachLayout(); } catch(e){ _azuosRegistrarErro('attachLayout', e); }
+  try { attachPage(); } catch(e){ _azuosRegistrarErro('attachPage', e); }
 }
 
 // ============ Delegação GLOBAL de cliques (v4.3) ============
