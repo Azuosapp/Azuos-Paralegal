@@ -45,14 +45,16 @@ O deploy roda `npm run build` e publica o `dist/` (que contém index.html + os 4
 - **Git:** `git push origin backup-pre-estagio3:refs/heads/main --force` (volta à v6.1.1). Também há a tag e cópias em `backups/`.
 - **Firebase Console:** Hosting → Histórico de versões → "Reverter" na versão anterior (1 clique, instantâneo).
 
-## O que falta (Estágio 3 — parte 3) — NÃO feito de propósito
+## Estágio 3 — parte 3: CONCLUÍDA (trava anti-remendo)
 
-**Limpeza dos ~100 remendos/IIFEs.** É a única parte **de remoção** (as outras foram relocação segura). Risco alto: muitos remendos **são correções de bug** (inclusive as feitas nesta sessão). Só deve ser feito:
-- peça por peça, provando que cada remendo é realmente redundante;
-- com um **ambiente de teste multiusuário** (para pegar bugs de concorrência que um teste de 1 usuário não pega);
-- nunca "apagando em massa às cegas".
+Feita pelo lado **seguro**: em vez de apagar os ~100 remendos (que muitas vezes **são correções de bug** — apagar reintroduziria perda de dado), o validador agora **congela** a contagem de IIFEs/observers (baseline: 51 IIFEs, 11 observers). Qualquer novo remendo faz o **deploy falhar** com mensagem mandando fazer como **módulo**. O `npm run validate` virou porteiro do deploy.
 
-Enquanto isso não existir, **recomenda-se não mexer** — o sistema está estável e a parte 3 é só arrumação, não afeta funcionalidade nem desempenho de forma relevante.
+Resultado: os remendos existentes ficam intactos (seguros), e o código **não regride** para pilha de patches.
+
+### Remoção de verdade dos remendos (opcional, futuro)
+Só deve ser feita **peça por peça, provando que cada remendo é dead code**, e com **teste multiusuário** (concorrência não aparece em teste de 1 usuário). Comprovado nesta sessão que "duplicatas" aparentes (ex.: `calcAndamento`) NÃO são redundantes — são funções legítimas em escopos diferentes. Ou seja: **não dá para apagar em massa**; o ganho é marginal e o risco é alto.
+
+## Modularização: COMPLETA (Estágios 0 a 3.3)
 
 ## Fluxo para retomar a modularização (parte 3, no futuro)
 
