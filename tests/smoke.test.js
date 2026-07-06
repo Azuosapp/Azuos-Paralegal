@@ -38,10 +38,14 @@ test('Aguardando cliente está no SEED.status_options', () => {
 });
 
 test('Funções críticas existem', () => {
-  const html = readFileSync('index.html', 'utf-8');
+  // v6 modularização: funções agora podem estar no index.html OU nos módulos public/*.js
+  let src = readFileSync('index.html', 'utf-8');
+  for (const f of ['public/seed.js','public/lib.js','public/data.js','public/firestore.js']) {
+    if (existsSync(f)) src += '\n' + readFileSync(f, 'utf-8');
+  }
   const funcoes = ['function salvarAlvara', 'function render', 'function renderEmpresas', 'function _fsCollectFromState'];
   funcoes.forEach(f => {
-    assert.ok(html.includes(f), `${f} ausente`);
+    assert.ok(src.includes(f), `${f} ausente`);
   });
 });
 
