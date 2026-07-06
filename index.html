@@ -1790,7 +1790,7 @@ function openModalAlvara(alvara, empresaId, tipoSugerido){
             <div class="flex items-center justify-between bg-slate-50 rounded p-2 text-xs">
               <div class="flex items-center gap-2 min-w-0 flex-1">
                 <span>📄</span>
-                ${an.dados ? `<a href="${an.dados}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`}
+                ${an.dados ? `<a href="${an.dados}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : (an._idb ? `<a href="#" data-idb="${esc(an._idb)}" data-nome="${esc(an.nome)}" onclick="return _baixarAnexoIDB(this)" class="font-medium text-blue-600 hover:underline truncate" title="Baixar ${esc(an.nome)}">\u2b07\ufe0f ${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`)}
                 <span class="text-slate-400 text-[10px] shrink-0">${esc(an.tamanho||'')} · ${esc(an.dataUpload||'')}</span>
               </div>
               <button onclick="excluirAnexo(${i})" class="text-red-500 hover:bg-red-50 px-1 rounded" title="Remover">×</button>
@@ -1894,15 +1894,50 @@ function _idbOpen(){ return new Promise(function(res,rej){ try{ var r=indexedDB.
 function _idbPut(id,val){ return _idbOpen().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction(_IDB_S,'readwrite'); tx.objectStore(_IDB_S).put(val,id); tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);}; }); }); }
 function _idbGet(id){ return _idbOpen().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction(_IDB_S,'readonly'); var rq=tx.objectStore(_IDB_S).get(id); rq.onsuccess=function(){res(rq.result);}; rq.onerror=function(){rej(rq.error);}; }); }); }
 function _reidratarAnexosIDB(){
+  // v6.1.7 — NAO reidrata base64 pesado no estado (isso inflava para ~13MB e travava o login).
+  // Em vez disso: MIGRA todo anexo base64 para o IndexedDB e ENXUGA o estado (auto-cura em qualquer navegador).
+  try{ _normalizarCiencias(); }catch(e){}
   try{
     var pend=[];
-    function scan(arr){ (arr||[]).forEach(function(it){ if(it && Array.isArray(it.anexos)) it.anexos.forEach(function(a){ if(a && a._idb && !a.dados) pend.push(a); }); }); }
-    scan(state.alvaras);
-    if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan([state.edicoes_alvaras[k]]); });
+    function scan(c){ if(c && Array.isArray(c.anexos)) c.anexos.forEach(function(a){ if(a && a.dados && String(a.dados).indexOf('data:')===0) pend.push(a); }); }
+    (state.alvaras||[]).forEach(scan);
+    if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan(state.edicoes_alvaras[k]); });
     if(!pend.length) return;
-    var done=0;
-    pend.forEach(function(a){ _idbGet(a._idb).then(function(b64){ if(b64) a.dados=b64; done++; if(done===pend.length && typeof render==='function'){ try{render();}catch(e){} } }).catch(function(){ done++; }); });
+    var done=0, mudou=false;
+    function fim(){ if(done===pend.length && mudou){ try{ saveState(); }catch(e){} try{ if(typeof render==='function') render(); }catch(e){} } }
+    pend.forEach(function(a){
+      var id = a._idb || ('idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+      _idbPut(id, a.dados).then(function(){ return _idbGet(id); }).then(function(b){
+        if(b && b.length===a.dados.length){ a._idb=id; a.dados=''; a._local=true; mudou=true; }
+        done++; fim();
+      }).catch(function(){ done++; fim(); });
+    });
   }catch(e){}
+}
+function _normalizarCiencias(){
+  // Corrige entradas corrompidas de ciencias (ex.: chave de e-mail com ponto virou objeto aninhado).
+  try{
+    var cpu = state.ciencias_por_usuario; if(!cpu || typeof cpu!=='object') return;
+    state._ciencias_corrompidas = state._ciencias_corrompidas || {};
+    Object.keys(cpu).forEach(function(k){
+      if(!Array.isArray(cpu[k])){
+        try{ state._ciencias_corrompidas[k] = cpu[k]; }catch(e){}
+        cpu[k] = [];
+      }
+    });
+  }catch(e){}
+}
+function _baixarAnexoIDB(el){
+  try{
+    var idb = (el && el.getAttribute) ? el.getAttribute('data-idb') : null;
+    var nome = ((el && el.getAttribute) ? el.getAttribute('data-nome') : '') || 'anexo';
+    if(!idb || typeof _idbGet!=='function') return false;
+    _idbGet(idb).then(function(b64){
+      if(b64){ var a=document.createElement('a'); a.href=b64; a.download=nome; document.body.appendChild(a); a.click(); a.remove(); }
+      else { alert('Anexo nao encontrado neste navegador.\n\nOs anexos ficam salvos localmente no navegador de quem os enviou.'); }
+    }).catch(function(e){ alert('Erro ao abrir anexo: '+((e&&e.message)||e)); });
+  }catch(e){}
+  return false;
 }
 function adicionarAnexo(input) {
   const file = input.files[0];
@@ -2029,7 +2064,7 @@ function renderAnexosLista(anexos) {
     <div class="flex items-center justify-between bg-slate-50 rounded p-2 text-xs">
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <span>📄</span>
-        ${an.dados ? `<a href="${an.dados}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`}
+        ${an.dados ? `<a href="${an.dados}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : (an._idb ? `<a href="#" data-idb="${esc(an._idb)}" data-nome="${esc(an.nome)}" onclick="return _baixarAnexoIDB(this)" class="font-medium text-blue-600 hover:underline truncate" title="Baixar ${esc(an.nome)}">\u2b07\ufe0f ${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`)}
         <span class="text-slate-400 text-[10px] shrink-0">${esc(an.tamanho||'')} · ${esc(an.dataUpload||'')}</span>
       </div>
       <button onclick="excluirAnexo(${i})" class="text-red-500 hover:bg-red-50 px-1 rounded">×</button>
