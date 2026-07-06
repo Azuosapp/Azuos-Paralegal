@@ -674,6 +674,7 @@ function renderLayout(content){
     {key:'novas', label:'Novas Empresas', icon:'🆕', badge: badgeNovas},
     {key:'execucao', label:'Em Execução', icon:'▶️'},
     {key:'dashboard', label:'Dashboard', icon:'📊'},
+    {key:'premiacao', label:'Premiação', icon:'🏆'},
     {key:'alertas', label:'Alertas', icon:'🔔'},
     {key:'historico', label:'Histórico', icon:'🕒'},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
@@ -733,6 +734,144 @@ function attachLayout(){
   };
 }
 
+/* ===== v6.2.0 — Premiacao / Gamificacao por produtividade (alvaras concluidos) ===== */
+var _gamMes = null; // 'YYYY-MM' selecionado; null = mes atual
+function _gamFmt(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); }
+function _gamMesAtual(){ return new Date().toISOString().slice(0,7); }
+function _gamMesLabel(m){ var M=['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']; var p=(m||'').split('-'); if(p.length<2) return m; return M[(parseInt(p[1],10)||1)-1]+' / '+p[0]; }
+function _gamValor(){ var g=state.gamificacao||{}; var v=parseFloat(g.valorPorAlvara); return isNaN(v)?0:v; }
+function _gamConta(s){ return (typeof CONCLUIDO!=='undefined' && CONCLUIDO.indexOf(s||'')>=0); }
+function _gamUser(token){
+  var t=(token==null?'':token).toString().trim().toLowerCase(); if(!t) return null;
+  var us=state.usuarios||[];
+  for(var i=0;i<us.length;i++){ var u=us[i]; if(!u) continue; if((u.email||'').toLowerCase()===t||(u.nome||'').toLowerCase()===t) return {nome:u.nome,email:(u.email||''),cargo:u.cargo||''}; }
+  return {nome:(token||'').toString(), email:(t.indexOf('@')>=0?token:''), cargo:''};
+}
+function _gamMeses(){ var s={}; Object.values(state.edicoes_alvaras||{}).forEach(function(e){ if(e&&e._editado_em&&e._editado_por&&_gamConta(e.status)) s[(e._editado_em||'').slice(0,7)]=1; }); var a=Object.keys(s).sort().reverse(); var atual=_gamMesAtual(); if(a.indexOf(atual)<0) a.unshift(atual); return a; }
+function _gamAgrega(mes){
+  var por={};
+  Object.values(state.edicoes_alvaras||{}).forEach(function(e){
+    if(!e||!e._editado_por||!e._editado_em) return;
+    if(!_gamConta(e.status)) return;
+    if(mes && (e._editado_em||'').slice(0,7)!==mes) return;
+    var u=_gamUser(e._editado_por); if(!u) return;
+    var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
+    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,qtd:0};
+    por[k].qtd++;
+  });
+  var val=_gamValor();
+  var arr=Object.keys(por).map(function(k){ var o=por[k]; o.valor=o.qtd*val; return o; });
+  arr.sort(function(a,b){ return (b.qtd-a.qtd) || (a.nome||'').localeCompare(b.nome||''); });
+  return arr;
+}
+function _gamCor(nome){ var cores=['#2563eb','#059669','#7c3aed','#db2777','#d97706','#0891b2','#dc2626','#4f46e5']; var h=0,s=(nome||''); for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return cores[h%cores.length]; }
+function _gamIniciais(nome){ return (nome||'?').split(' ').filter(Boolean).map(function(x){return x[0];}).slice(0,2).join('').toUpperCase(); }
+function _gamSouEu(row){ var me=state.sessao||{}; var e=(me.email||'').toLowerCase(), n=(me.nome||'').toLowerCase(); return !!((row.email&&row.email.toLowerCase()===e)||(row.nome&&row.nome.toLowerCase()===n)); }
+function _gamSetMes(m){ _gamMes=m||null; render(); }
+function _gamSalvarValor(){
+  if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar o valor.'); return; }
+  var el=document.getElementById('gam-valor-input'); if(!el) return;
+  var v=parseFloat((el.value||'').toString().replace(',','.'));
+  if(isNaN(v)||v<0){ alert('Informe um valor valido (ex: 5,00).'); return; }
+  state.gamificacao=state.gamificacao||{};
+  state.gamificacao.valorPorAlvara=v;
+  state.gamificacao.atualizado_em=new Date().toISOString();
+  state.gamificacao.atualizado_por=state.sessao?(state.sessao.email||state.sessao.nome):'';
+  try{ if(typeof log==='function') log('Config premiacao','valor','R$ '+v.toFixed(2)); }catch(e){}
+  saveState(); render();
+  if(typeof toast==='function') toast('Valor por alvara: '+_gamFmt(v),'emerald');
+}
+function renderPremiacao(){
+  var ehAdmin = state.sessao && state.sessao.cargo==='Administrador';
+  var meses=_gamMeses();
+  var mesSel=_gamMes||_gamMesAtual();
+  var rank=_gamAgrega(mesSel);
+  var val=_gamValor();
+  var totalQtd=rank.reduce(function(a,r){return a+r.qtd;},0);
+  var totalPagar=rank.reduce(function(a,r){return a+r.valor;},0);
+  var maxQtd=rank.length?rank[0].qtd:0;
+  var top3=rank.slice(0,3);
+  var meuGanho=(rank.filter(_gamSouEu)[0]||{}).valor||0;
+  return `
+  <div class="p-6 max-w-5xl mx-auto">
+    <header class="mb-5">
+      <div class="rounded-2xl p-6 text-white shadow-lg" style="background:linear-gradient(135deg,#f59e0b,#d97706 60%,#b45309);">
+        <div class="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 class="text-2xl font-extrabold flex items-center gap-2">🏆 Premiacao por Produtividade</h1>
+            <p class="text-amber-50 text-sm mt-1">Ganhe por cada alvara concluido — ranking de <strong>${_gamMesLabel(mesSel)}</strong>.</p>
+          </div>
+          <div class="text-right">
+            <label class="block text-[11px] uppercase tracking-wide text-amber-100 mb-1">Mes</label>
+            <select onchange="_gamSetMes(this.value)" class="rounded-lg text-slate-800 text-sm font-semibold px-3 py-2 border-0 shadow">
+              ${meses.map(function(m){ return '<option value="'+m+'"'+(m===mesSel?' selected':'')+'>'+_gamMesLabel(m)+'</option>'; }).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-5">
+          <div class="bg-white/15 rounded-xl px-4 py-3">
+            <div class="text-[11px] uppercase tracking-wide text-amber-50">Valor por alvara</div>
+            <div class="text-xl font-extrabold">${_gamFmt(val)}</div>
+          </div>
+          <div class="bg-white/15 rounded-xl px-4 py-3">
+            <div class="text-[11px] uppercase tracking-wide text-amber-50">Concluidos no mes</div>
+            <div class="text-xl font-extrabold">${totalQtd}</div>
+          </div>
+          ${ehAdmin ? `<div class="bg-white/15 rounded-xl px-4 py-3">
+            <div class="text-[11px] uppercase tracking-wide text-amber-50">Total a pagar</div>
+            <div class="text-xl font-extrabold">${_gamFmt(totalPagar)}</div>
+          </div>` : `<div class="bg-white/15 rounded-xl px-4 py-3">
+            <div class="text-[11px] uppercase tracking-wide text-amber-50">Seu ganho no mes</div>
+            <div class="text-xl font-extrabold">${_gamFmt(meuGanho)}</div>
+          </div>`}
+        </div>
+      </div>
+    </header>
+    ${ehAdmin ? `<div class="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex items-end gap-3 flex-wrap">
+      <div>
+        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Valor por alvara concluido (R$)</label>
+        <input id="gam-valor-input" type="number" step="0.01" min="0" value="${val}" class="w-40 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-amber-500 outline-none" />
+      </div>
+      <button onclick="_gamSalvarValor()" class="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold text-sm hover:bg-amber-700 shadow">Salvar valor</button>
+      <span class="text-xs text-slate-400">Somente o administrador ve e altera este valor.</span>
+    </div>` : ''}
+    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_gamMesLabel(mesSel)} ainda.</div>` : `
+    <div class="grid grid-cols-3 gap-3 mb-5 items-end">
+      ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
+        <div class="text-center">
+          <div class="mx-auto mb-2 w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${_gamIniciais(r.nome)}</div>
+          <div class="rounded-t-xl ${h} flex items-end justify-center pb-1 text-3xl" style="background:linear-gradient(180deg,rgba(245,158,11,0.15),rgba(245,158,11,0.55));">${medal}</div>
+          <div class="bg-white rounded-b-xl border border-slate-200 p-2">
+            <div class="font-bold text-slate-800 text-sm truncate">${esc(r.nome)}${_gamSouEu(r)?' (voce)':''}</div>
+            <div class="text-xs text-slate-500">${r.qtd} concluidos</div>
+            <div class="font-extrabold text-emerald-600 text-sm">${podeVer?_gamFmt(r.valor):'•••'}</div>
+          </div>
+        </div>`; }).join('')}
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="font-bold text-slate-800">Ranking completo</h2>
+        <span class="text-xs text-slate-400">${rank.length} pessoas</span>
+      </div>
+      <div class="divide-y divide-slate-100">
+        ${rank.map(function(r,i){ var podeVer=ehAdmin||_gamSouEu(r); var eu=_gamSouEu(r); var pct=maxQtd?Math.round(100*r.qtd/maxQtd):0; return `
+          <div class="flex items-center gap-3 px-4 py-3 ${eu?'bg-amber-50':''}">
+            <div class="w-7 text-center font-bold ${i<3?'text-amber-500':'text-slate-400'}">${i+1}º</div>
+            <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${_gamIniciais(r.nome)}</div>
+            <div class="flex-1 min-w-0">
+              <div class="font-semibold text-slate-800 text-sm truncate">${esc(r.nome)}${eu?' <span class="text-[10px] text-amber-600 font-bold">(voce)</span>':''}</div>
+              <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${_gamCor(r.nome)}"></div></div>
+            </div>
+            <div class="text-right shrink-0"><div class="font-bold text-slate-800 text-sm">${r.qtd}</div><div class="text-[10px] text-slate-400 uppercase">alvaras</div></div>
+            <div class="w-24 text-right shrink-0"><div class="font-extrabold text-emerald-600 text-sm">${podeVer?_gamFmt(r.valor):'<span class="text-slate-300" title="Somente voce e o gestor veem seu valor">•••</span>'}</div></div>
+          </div>`; }).join('')}
+      </div>
+    </div>
+    <p class="text-xs text-slate-400 mt-3">Conta alvaras com status <strong>Concluido</strong> ou <strong>Pago</strong>, creditados a quem fez a ultima edicao. ${ehAdmin?'Como gestor, voce ve o valor de todos.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
+    `}
+  </div>`;
+}
+
 // ============ Page Router ============
 function renderPage(){
   if (state.empresaAtiva) return renderEmpresaDetalhe();
@@ -740,6 +879,7 @@ function renderPage(){
     case 'resumo': return renderResumoDia();
     case 'empresas': return renderEmpresas();
     case 'dashboard': return renderDashboard();
+    case 'premiacao': return renderPremiacao();
     case 'alertas': return renderAlertas();
     case 'historico': return renderHistorico();
     case 'novas': return renderNovasEmpresas();

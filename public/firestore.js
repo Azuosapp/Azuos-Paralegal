@@ -30,6 +30,7 @@ function _fsCollectFromState() {
     historico: (state.historico || []).slice(0, 500),
     edicoes_alvaras: _semAnexosPesados(state.edicoes_alvaras || {}),
     edicoes_empresas: state.edicoes_empresas || {},
+    gamificacao: state.gamificacao || null,
     last_modified_by: state.sessao?.nome || 'desconhecido',
     last_modified_at: firebase.firestore.FieldValue.serverTimestamp()
   };
@@ -66,6 +67,12 @@ function _uniPorId(local, remoto){
 function _fsApplyToState(remote) {
   if (!remote) return false;
   let changed = false;
+  // v6.2.0 — config de premiacao (valor por alvara): adota a versao mais recente
+  if (remote && remote.gamificacao && typeof remote.gamificacao === 'object') {
+    var _lg = state.gamificacao || null; var _rg = remote.gamificacao;
+    var _tl = (_lg && _lg.atualizado_em) || ''; var _tr = _rg.atualizado_em || '';
+    if (!_lg || _tr > _tl) { state.gamificacao = _rg; changed = true; }
+  }
   // Campos simples: substitui se diferente
   // v6.0.8: merge por id — nao substitui arrays em bloco (evita perder itens criados em paralelo)
   ['empresas_manuais','historico'].forEach(k => {
