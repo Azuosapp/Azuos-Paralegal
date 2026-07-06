@@ -7417,6 +7417,6 @@ try{
   setInterval(tick,3000); setTimeout(tick,1500);
 })();
 </script>
-<script>/* v6.0.14 */(function _bootIDB(){var n=0;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){clearInterval(iv);try{_reidratarAnexosIDB();}catch(e){}}if(n>40)clearInterval(iv);},500);})();</script>
+<script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}}if(n>60)clearInterval(iv);},500);})();</script>
 </body>
 </html>
