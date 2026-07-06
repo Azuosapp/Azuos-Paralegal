@@ -25,16 +25,16 @@ test('script principal está fechado corretamente', () => {
   }
 });
 
+function _seedSource(){ if (existsSync('public/seed.js')) return readFileSync('public/seed.js','utf-8'); return readFileSync('index.html','utf-8'); }
 test('SEED tem campos obrigatórios', () => {
-  const html = readFileSync('index.html', 'utf-8');
-  assert.ok(/const SEED\s*=/.test(html), 'SEED não declarado');
-  assert.ok(html.includes('"status_options"'), 'SEED.status_options ausente');
-  assert.ok(html.includes('"tipos_alvara"'), 'SEED.tipos_alvara ausente');
+  const src=_seedSource();
+  assert.ok(/\bSEED\s*=/.test(src), 'SEED não declarado');
+  assert.ok(src.includes('"status_options"'), 'SEED.status_options ausente');
+  assert.ok(src.includes('"tipos_alvara"'), 'SEED.tipos_alvara ausente');
 });
-
 test('Aguardando cliente está no SEED.status_options', () => {
-  const html = readFileSync('index.html', 'utf-8');
-  assert.ok(html.includes('"Aguardando cliente"'));
+  const src=_seedSource();
+  assert.ok(src.includes('"Aguardando cliente"'));
 });
 
 test('Funções críticas existem', () => {
