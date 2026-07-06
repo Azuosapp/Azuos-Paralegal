@@ -154,6 +154,29 @@ const STORAGE_KEY = 'azuos_paralegal_v4';
 
 // ============ State ============
 let state = loadState();
+try { _prepararAnexosLazy(); } catch(e){}
+function _prepararAnexosLazy(){
+  // v6.1.8 — enxuga base64 pesado do estado ANTES de render/persistir (nunca trava); preserva no IndexedDB (async).
+  try{
+    if(typeof state==='undefined'||!state) return false;
+    var pend=[];
+    function scan(c){ if(c && Array.isArray(c.anexos)) c.anexos.forEach(function(a){ if(a && a.dados && String(a.dados).indexOf('data:')===0) pend.push(a); }); }
+    (state.alvaras||[]).forEach(scan);
+    if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan(state.edicoes_alvaras[k]); });
+    if(!pend.length) return false;
+    pend.forEach(function(a){
+      var b64=a.dados;
+      var id=a._idb || ('idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+      a.dados=''; a._local=true;
+      try{
+        _idbPut(id, b64).then(function(){ return _idbGet(id); }).then(function(v){
+          if(v && v.length===b64.length){ a._idb=id; } else if(!a._idb){ a.dados=b64; }
+        }).catch(function(){ if(!a._idb) a.dados=b64; });
+      }catch(e){ if(!a._idb) a.dados=b64; }
+    });
+    return true;
+  }catch(e){ return false; }
+}
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -260,7 +283,8 @@ async function _fsLoadInitial() {
     const changed = _fsApplyToState(remote);
     if (changed) {
       console.log('[FS] State local atualizado com dados da nuvem');
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+      try { _prepararAnexosLazy(); } catch(e){}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_estadoParaLocal())); } catch(e) {}
       try { render(); } catch(e) {}
     }
   } catch(e) {
@@ -279,7 +303,8 @@ function _fsSubscribeRealtime() {
     const changed = _fsApplyToState(remote);
     if (changed) {
       console.log('[FS] Mudança remota recebida — atualizando UI');
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+      try { _prepararAnexosLazy(); } catch(e){}
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_estadoParaLocal())); } catch(e) {}
       try { render(); } catch(e) {}
     }
   }, err => console.error('[FS] Erro no listener:', err.message));
