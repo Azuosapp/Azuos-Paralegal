@@ -6694,16 +6694,25 @@ try{
     try {
       var STATUS_OK_77 = ['conclu','formaliz','arquivado','sem obrigat','isento','em andamento','paralis'];
       function calcAnd77(emp){
+        // v6.1.5: usa EXATAMENTE o mesmo calculo do % exibido na coluna (senao a ordem nao bate)
         if (!emp || emp.id === undefined) return 0;
-        var alvaras = (state.alvaras||[]).filter(function(a){ return a && a.empresa_id === emp.id; });
-        if (alvaras.length === 0) return 0;
-        var validos = alvaras.filter(function(a){ return ((a.status||'').trim().length > 0); });
-        if (validos.length === 0) return 0;
-        var concl = validos.filter(function(a){
-          var s = (a.status||'').toLowerCase();
-          return STATUS_OK_77.some(function(k){ return s.indexOf(k) >= 0; });
+        var alvs = (state.alvaras||[]).filter(function(a){ return a && a.empresa_id === emp.id; });
+        var obrigatorios = alvs.filter(function(a){ return a.status && a.status !== 'Sem obrigatoriedade'; });
+        var total = obrigatorios.length;
+        if (!total) return 0;
+        var completos = obrigatorios.filter(function(a){
+          var s = a.status || '';
+          return (typeof CONCLUIDO !== 'undefined' && CONCLUIDO.indexOf(s) >= 0)
+            || s === 'Em vigor (vencimento)'
+            || /^formalizado/i.test(s)
+            || s === 'Pago'
+            || /^em andamento/i.test(s)
+            || s === 'Arquivado pelo cliente'
+            || s === 'Servico paralisado' || s === 'Serviço paralisado'
+            || s === 'Isento'
+            || /^aguardando cliente/i.test(s);
         }).length;
-        return Math.round((concl/validos.length)*100);
+        return Math.round(100 * completos / total);
       }
       function getValor77(emp, coluna){
         if (coluna === 'nome') return (emp.nome||'').toLowerCase();
