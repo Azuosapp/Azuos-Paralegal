@@ -875,28 +875,28 @@ function renderPremiacao(){
 
 /* ===== v6.4.0 — Menu separado: Tabela de Valores de Produtividade (por atividade) ===== */
 var _GAM_TABELA_PADRAO = [
-  {atividade:'Bombeiro', prazo:'9 Dias', valor:10, peso:5},
-  {atividade:'Funcionamento', prazo:'3 Meses', valor:10, peso:8},
-  {atividade:'Sanitário', prazo:'3 Meses', valor:10, peso:8},
-  {atividade:'Ambiental', prazo:'6 Meses', valor:10, peso:8},
-  {atividade:'H. Especial', prazo:'14 Dias', valor:5, peso:1},
-  {atividade:'Veículo', prazo:'21 Dias', valor:5, peso:3},
-  {atividade:'Inpi', prazo:'15 Meses', valor:50, peso:8},
-  {atividade:'Calçada', prazo:'6 Meses', valor:8, peso:5},
-  {atividade:'Constituição', prazo:'5 Dias', valor:6, peso:7},
-  {atividade:'Alteração', prazo:'7 Dias', valor:5, peso:9},
-  {atividade:'Baixa', prazo:'3 Dias', valor:4, peso:2},
-  {atividade:'Faturamento', prazo:'1 Dia', valor:2, peso:2}
-]
+  {atividade:'Bombeiro', valor:10},
+  {atividade:'Funcionamento', valor:10},
+  {atividade:'Sanitário', valor:10},
+  {atividade:'Ambiental', valor:10},
+  {atividade:'H. Especial', valor:5},
+  {atividade:'Veículo', valor:5},
+  {atividade:'Inpi', valor:50},
+  {atividade:'Calçada', valor:8},
+  {atividade:'Constituição', valor:6},
+  {atividade:'Alteração', valor:5},
+  {atividade:'Baixa', valor:4},
+  {atividade:'Faturamento', valor:2}
+];
 function _gamTabela(){ var g=state.gamificacao||{}; return (Array.isArray(g.tabela)&&g.tabela.length)?g.tabela:_GAM_TABELA_PADRAO; }
-function _gamTabelaWork(){ if(!Array.isArray(window._gamTabelaTmp)) window._gamTabelaTmp=_gamTabela().map(function(r){return {atividade:r.atividade,prazo:r.prazo||'',valor:(+r.valor||0),peso:(+r.peso||0)};}); return window._gamTabelaTmp; }
+function _gamTabelaWork(){ if(!Array.isArray(window._gamTabelaTmp)) window._gamTabelaTmp=_gamTabela().map(function(r){return {atividade:r.atividade,valor:(+r.valor||0)};}); return window._gamTabelaTmp; }
 function _gamSyncInputs(){ var w=_gamTabelaWork(); document.querySelectorAll('#gam-tab-body tr[data-idx]').forEach(function(tr){ var i=+tr.getAttribute('data-idx'); if(!w[i])return; var q=function(f){return tr.querySelector('[data-f="'+f+'"]');}; if(q('atividade'))w[i].atividade=q('atividade').value; if(q('prazo'))w[i].prazo=q('prazo').value; if(q('valor'))w[i].valor=parseFloat((q('valor').value||'0').toString().replace(',','.'))||0; if(q('peso'))w[i].peso=parseInt(q('peso').value)||0; }); }
-function _gamAddRow(){ _gamSyncInputs(); _gamTabelaWork().push({atividade:'',prazo:'',valor:0,peso:0}); render(); }
+function _gamAddRow(){ _gamSyncInputs(); _gamTabelaWork().push({atividade:'',valor:0}); render(); }
 function _gamRmRow(i){ _gamSyncInputs(); _gamTabelaWork().splice(i,1); render(); }
 function _gamSalvarValores(){
   if(!(state.sessao&&state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode alterar os valores.'); return; }
   _gamSyncInputs();
-  var tab=_gamTabelaWork().filter(function(r){return (r.atividade||'').trim();}).map(function(r){return {atividade:(r.atividade||'').trim(),prazo:r.prazo||'',valor:(+r.valor||0),peso:(+r.peso||0)};});
+  var tab=_gamTabelaWork().filter(function(r){return (r.atividade||'').trim();}).map(function(r){return {atividade:(r.atividade||'').trim(),valor:(+r.valor||0)};});
   var vEl=document.getElementById('gam-valor-input'); var v=vEl?parseFloat((vEl.value||'').toString().replace(',','.')):_gamValor(); if(isNaN(v)||v<0)v=0;
   var chks=Array.prototype.slice.call(document.querySelectorAll('.gam-status-chk')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
   state.gamificacao=state.gamificacao||{};
@@ -930,14 +930,12 @@ function renderValores(){
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100 bg-slate-50">
-            <th class="py-2 px-3">Atividade</th><th class="px-2">Prazo de conclusão</th><th class="px-2 w-32">Valor (R$)</th><th class="px-2 w-24">Peso</th><th class="px-2 w-10"></th>
+            <th class="py-2 px-3">Atividade</th><th class="px-2 w-48">Valor (R$)</th><th class="px-2 w-10"></th>
           </tr></thead>
           <tbody id="gam-tab-body">
             ${w.map(function(r,i){ return `<tr data-idx="${i}" class="border-b border-slate-50">
               <td class="py-1.5 px-3"><input data-f="atividade" value="${esc(r.atividade||'')}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none font-medium text-slate-700"></td>
-              <td class="px-2"><input data-f="prazo" value="${esc(r.prazo||'')}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none text-slate-500"></td>
               <td class="px-2"><div class="flex items-center gap-1"><span class="text-slate-400 text-xs">R$</span><input data-f="valor" type="number" step="0.01" min="0" value="${(+r.valor||0)}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none font-semibold text-emerald-700"></div></td>
-              <td class="px-2"><input data-f="peso" type="number" min="0" value="${(+r.peso||0)}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none text-center"></td>
               <td class="px-2 text-center"><button onclick="_gamRmRow(${i})" title="Remover" class="text-red-500 hover:bg-red-50 rounded px-1.5 py-1">🗑</button></td>
             </tr>`; }).join('')}
           </tbody>
