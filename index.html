@@ -747,8 +747,8 @@ function _gamConta(s){ return _gamStatusSet().indexOf(s||'')>=0; }
 function _gamUser(token){
   var t=(token==null?'':token).toString().trim().toLowerCase(); if(!t) return null;
   var us=state.usuarios||[];
-  for(var i=0;i<us.length;i++){ var u=us[i]; if(!u) continue; if((u.email||'').toLowerCase()===t||(u.nome||'').toLowerCase()===t) return {nome:u.nome,email:(u.email||''),cargo:u.cargo||''}; }
-  return {nome:(token||'').toString(), email:(t.indexOf('@')>=0?token:''), cargo:''};
+  for(var i=0;i<us.length;i++){ var u=us[i]; if(!u) continue; if((u.email||'').toLowerCase()===t||(u.nome||'').toLowerCase()===t) return {nome:u.nome,email:(u.email||''),cargo:u.cargo||'',foto:u.foto||''}; }
+  return {nome:(token||'').toString(), email:(t.indexOf('@')>=0?token:''), cargo:'', foto:''};
 }
 function _gamMeses(){ var s={}; Object.values(state.edicoes_alvaras||{}).forEach(function(e){ if(e&&e._editado_em&&e._editado_por&&_gamConta(e.status)) s[(e._editado_em||'').slice(0,7)]=1; }); var a=Object.keys(s).sort().reverse(); var atual=_gamMesAtual(); if(a.indexOf(atual)<0) a.unshift(atual); return a; }
 function _gamAgrega(mes){
@@ -759,7 +759,7 @@ function _gamAgrega(mes){
     if(mes && (e._editado_em||'').slice(0,7)!==mes) return;
     var u=_gamUser(e._editado_por); if(!u) return;
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
-    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,qtd:0};
+    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0};
     por[k].qtd++;
   });
   var val=_gamValor();
@@ -854,7 +854,7 @@ function renderPremiacao(){
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
         <div class="text-center">
-          <div class="mx-auto mb-2 w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${_gamIniciais(r.nome)}</div>
+          <div class="mx-auto mb-2 w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
           <div class="rounded-t-xl ${h} flex items-end justify-center pb-1 text-3xl" style="background:linear-gradient(180deg,rgba(245,158,11,0.15),rgba(245,158,11,0.55));">${medal}</div>
           <div class="bg-white rounded-b-xl border border-slate-200 p-2">
             <div class="font-bold text-slate-800 text-sm truncate">${esc(r.nome)}${_gamSouEu(r)?' (voce)':''}</div>
@@ -872,7 +872,7 @@ function renderPremiacao(){
         ${rank.map(function(r,i){ var podeVer=ehAdmin||_gamSouEu(r); var eu=_gamSouEu(r); var pct=maxQtd?Math.round(100*r.qtd/maxQtd):0; return `
           <div class="flex items-center gap-3 px-4 py-3 ${eu?'bg-amber-50':''}">
             <div class="w-7 text-center font-bold ${i<3?'text-amber-500':'text-slate-400'}">${i+1}º</div>
-            <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${_gamIniciais(r.nome)}</div>
+            <div class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
             <div class="flex-1 min-w-0">
               <div class="font-semibold text-slate-800 text-sm truncate">${esc(r.nome)}${eu?' <span class="text-[10px] text-amber-600 font-bold">(voce)</span>':''}</div>
               <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${_gamCor(r.nome)}"></div></div>
@@ -2829,7 +2829,7 @@ function renderUsuarios(){
         ${state.usuarios.map(u => `
           <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col">
             <div class="flex items-start justify-between mb-3">
-              <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg">${esc(u.nome[0])}</div>
+              <div class="w-12 h-12 rounded-full overflow-hidden bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg">${u.foto?`<img src="${u.foto}" class="w-full h-full" style="object-fit:cover">`:esc((u.nome&&u.nome[0])||"?")}</div>
               <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${u.ativo?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${u.ativo?'Ativo':'Inativo'}</span>
             </div>
             <div class="flex-1"><h3 class="font-semibold text-slate-800">${esc(u.nome)}</h3><p class="text-xs text-slate-500 mb-1">${esc(u.cargo)}</p><p class="text-xs text-slate-500 truncate">${esc(u.email)}</p></div>
@@ -2843,34 +2843,79 @@ function renderUsuarios(){
 }
 function attachUsuarios(){}
 
+/* ===== v6.3.0 — Reenquadramento de foto (arrastar + zoom antes de salvar) ===== */
+var _crop = null;
+function _fotoAbrirCropper(file){
+  if(!file) return;
+  if(file.size > 8*1024*1024){ alert('Foto muito grande (max 8MB).'); return; }
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    var img=new Image();
+    img.onload=function(){ _cropMostrar(img); };
+    img.onerror=function(){ alert('Nao foi possivel abrir a imagem.'); };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function _cropMostrar(img){
+  var VP=280;
+  var old=document.getElementById('crop-overlay'); if(old) old.remove();
+  var ov=document.createElement('div'); ov.id='crop-overlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:2147483000;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML=''+
+    '<div style="background:#fff;border-radius:16px;max-width:340px;width:100%;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.4);font-family:system-ui,Arial;">'+
+      '<div style="font-weight:800;color:#0f172a;font-size:15px;margin-bottom:4px;">Enquadre sua foto</div>'+
+      '<div style="font-size:12px;color:#64748b;margin-bottom:12px;">Arraste para posicionar e use a barra para dar zoom.</div>'+
+      '<div style="display:flex;justify-content:center;">'+
+        '<div id="crop-vp" style="position:relative;width:'+VP+'px;height:'+VP+'px;border-radius:50%;overflow:hidden;touch-action:none;cursor:grab;background:#e2e8f0;box-shadow:0 0 0 3px #f59e0b;">'+
+          '<canvas id="crop-cv" width="'+VP+'" height="'+VP+'" style="display:block;"></canvas>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin:14px 0 4px;">'+
+        '<span style="font-size:15px;">🔍➖</span>'+
+        '<input id="crop-zoom" type="range" min="1" max="4" step="0.01" value="1" style="flex:1;accent-color:#f59e0b;">'+
+        '<span style="font-size:15px;">🔍➕</span>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;">'+
+        '<button type="button" onclick="_cropFechar()" style="flex:1;padding:10px;border:0;border-radius:10px;background:#f1f5f9;color:#334155;font-weight:700;cursor:pointer;">Cancelar</button>'+
+        '<button type="button" onclick="_cropAplicar()" style="flex:1;padding:10px;border:0;border-radius:10px;background:#f59e0b;color:#fff;font-weight:800;cursor:pointer;">Aplicar</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(ov);
+  var mn=Math.min(img.width,img.height);
+  var minScale=VP/mn;
+  _crop={img:img, VP:VP, scale:minScale, minScale:minScale, x:(VP-img.width*minScale)/2, y:(VP-img.height*minScale)/2, drag:false, lx:0, ly:0, _cleanup:null};
+  var zoom=document.getElementById('crop-zoom');
+  zoom.oninput=function(){ var f=parseFloat(zoom.value)||1; var cx=_crop.VP/2, cy=_crop.VP/2; var ns=_crop.minScale*f; var k=ns/_crop.scale; _crop.x=cx-(cx-_crop.x)*k; _crop.y=cy-(cy-_crop.y)*k; _crop.scale=ns; _cropClamp(); _cropRedraw(); };
+  var vp=document.getElementById('crop-vp');
+  function down(e){ _crop.drag=true; vp.style.cursor='grabbing'; var p=_cropPt(e); _crop.lx=p.x; _crop.ly=p.y; if(e.cancelable)e.preventDefault(); }
+  function move(e){ if(!_crop||!_crop.drag) return; var p=_cropPt(e); _crop.x+=p.x-_crop.lx; _crop.y+=p.y-_crop.ly; _crop.lx=p.x; _crop.ly=p.y; _cropClamp(); _cropRedraw(); if(e.cancelable)e.preventDefault(); }
+  function up(){ if(_crop){ _crop.drag=false; } vp.style.cursor='grab'; }
+  vp.addEventListener('pointerdown',down); window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
+  _crop._cleanup=function(){ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+  _cropRedraw();
+}
+function _cropPt(e){ var r=document.getElementById('crop-vp').getBoundingClientRect(); var cx=(e.touches&&e.touches[0]?e.touches[0].clientX:e.clientX), cy=(e.touches&&e.touches[0]?e.touches[0].clientY:e.clientY); return {x:cx-r.left, y:cy-r.top}; }
+function _cropClamp(){ if(!_crop)return; var w=_crop.img.width*_crop.scale, h=_crop.img.height*_crop.scale; if(_crop.x>0)_crop.x=0; if(_crop.y>0)_crop.y=0; if(_crop.x<_crop.VP-w)_crop.x=_crop.VP-w; if(_crop.y<_crop.VP-h)_crop.y=_crop.VP-h; }
+function _cropRedraw(){ var cv=document.getElementById('crop-cv'); if(!cv||!_crop)return; var ctx=cv.getContext('2d'); ctx.clearRect(0,0,_crop.VP,_crop.VP); ctx.drawImage(_crop.img,_crop.x,_crop.y,_crop.img.width*_crop.scale,_crop.img.height*_crop.scale); }
+function _cropFechar(){ if(_crop&&_crop._cleanup)_crop._cleanup(); var ov=document.getElementById('crop-overlay'); if(ov)ov.remove(); _crop=null; }
+function _cropAplicar(){
+  if(!_crop) return;
+  var S=256; var cv=document.createElement('canvas'); cv.width=S; cv.height=S; var ctx=cv.getContext('2d');
+  var k=S/_crop.VP;
+  ctx.drawImage(_crop.img, _crop.x*k, _crop.y*k, _crop.img.width*_crop.scale*k, _crop.img.height*_crop.scale*k);
+  var url=cv.toDataURL('image/jpeg',0.82);
+  window._fotoTmp=url;
+  var prev=document.getElementById('fu-foto-preview'); if(prev) prev.innerHTML='<img src="'+url+'" class="w-full h-full object-cover">';
+  _cropFechar();
+}
+
 function openModalUsuario(id) {
   window._fotoTmp = null;
-  setTimeout(() => {
-    const inp = document.getElementById('fu-foto-file');
-    if (!inp) return;
-    inp.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 5*1024*1024) { alert('Foto muito grande (m?x 5MB)'); return; }
-      const img = new Image();
-      img.onload = () => {
-        const cv = document.createElement('canvas');
-        cv.width = 256; cv.height = 256;
-        const ctx = cv.getContext('2d');
-        const mn = Math.min(img.width, img.height);
-        const sx = (img.width - mn)/2, sy = (img.height - mn)/2;
-        ctx.drawImage(img, sx, sy, mn, mn, 0, 0, 256, 256);
-        const url = cv.toDataURL('image/jpeg', 0.78);
-        window._fotoTmp = url;
-        const prev = document.getElementById('fu-foto-preview');
-        if (prev) prev.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover">';
-      };
-      img.src = URL.createObjectURL(file);
-    };
-  }, 150);
-
-  window._fotoTmp = null;
-  setTimeout(() => { const inp = document.getElementById('fu-foto-file'); if (inp) inp.onchange = async (e) => { const file = e.target.files[0]; if (!file) return; if (file.size > 5*1024*1024) { alert('Foto muito grande (max 5MB)'); return; } const img = new Image(); img.onload = () => { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256; const ctx = cv.getContext('2d'); const mn = Math.min(img.width, img.height); const sx = (img.width - mn)/2, sy = (img.height - mn)/2; ctx.drawImage(img, sx, sy, mn, mn, 0, 0, 256, 256); const url = cv.toDataURL('image/jpeg', 0.78); window._fotoTmp = url; const prev = document.getElementById('fu-foto-preview'); if (prev) prev.innerHTML = '<img src="' + url + '" class="w-full h-full object-cover" style="border-radius:9999px">'; }; img.src = URL.createObjectURL(file); }; }, 100);
+  setTimeout(function(){
+    var inp = document.getElementById('fu-foto-file');
+    if (inp) inp.onchange = function(e){ var file = e.target.files && e.target.files[0]; if (file) _fotoAbrirCropper(file); e.target.value=''; };
+  }, 120);
   const u = id ? state.usuarios.find(x=>x.id===id) : {nome:'', email:'', cargo:'Paralegal', ativo:true};
   showModal(`
     <div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-semibold">${id?'Editar':'Novo'} Usuário</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button></div>
