@@ -414,6 +414,15 @@ function _azuosBannerErro(rec){
 window.addEventListener('error', function(ev){ _azuosRegistrarErro('js', (ev&&ev.error)||{message:ev&&ev.message}); });
 window.addEventListener('unhandledrejection', function(ev){ _azuosRegistrarErro('promise', (ev&&ev.reason)||{message:'rejeicao'}); });
 
+// v6.5.0 — preserva fotos por e-mail em qualquer reset de usuarios (usa mapa duravel state.fotos_usuarios)
+function _preservaFotosOficiais(lista){
+  var fotos = {};
+  try{ if(state.fotos_usuarios && typeof state.fotos_usuarios==='object'){ Object.keys(state.fotos_usuarios).forEach(function(k){ var v=state.fotos_usuarios[k]; if(v && String(v).length>30) fotos[(k||'').toLowerCase().trim()]=v; }); } }catch(e){}
+  try{ (state.usuarios||[]).forEach(function(u){ if(u&&u.email&&u.foto&&String(u.foto).length>30) fotos[(u.email||'').toLowerCase().trim()]=u.foto; }); }catch(e){}
+  try{
+    return JSON.parse(JSON.stringify(lista||[])).map(function(u){ var f=fotos[(u.email||'').toLowerCase().trim()]; if(f){ u.foto=f; } return u; });
+  }catch(e){ return lista||[]; }
+}
 function render() {
   var app = document.getElementById('app');
   if (!app) return;
@@ -1382,7 +1391,7 @@ async function handleSyncDriveAuto() {
       console.log(`[Sync] ${comVenc}/${state.alvaras.length} alvarás têm vencimento | ${comProx} têm próxima atualização`);
       if (comVenc === 0) console.warn('[Sync] NENHUM alvará tem vencimento! Re-deploy da Apps Script ou colunas fora de posição.');
     }
-    state.usuarios = dados.usuarios || [];
+    state.usuarios = _preservaFotosOficiais(dados.usuarios || []);
     if (dados.status_options && !dados.status_options.includes('Formalizado com o cliente')) {
       const idx = dados.status_options.indexOf('Em andamento');
       if (idx >= 0) dados.status_options.splice(idx, 0, 'Formalizado com o cliente');
@@ -1488,7 +1497,7 @@ async function handleSyncDrive() {
       console.log(`[Sync] ${comVenc}/${state.alvaras.length} alvarás têm vencimento | ${comProx} têm próxima atualização`);
       if (comVenc === 0) console.warn('[Sync] NENHUM alvará tem vencimento! Re-deploy da Apps Script ou colunas fora de posição.');
     }
-    state.usuarios = dados.usuarios || [];
+    state.usuarios = _preservaFotosOficiais(dados.usuarios || []);
     // Mesclar status_options do servidor com customizações locais
     if (dados.status_options && !dados.status_options.includes('Formalizado com o cliente')) {
       const idx = dados.status_options.indexOf('Em andamento');
@@ -3018,6 +3027,7 @@ function salvarUsuario(id){
   const nome = document.getElementById('fu-nome').value.trim();
   if (!nome) { alert('Nome é obrigatório'); return; }
   const data = {foto: (window._fotoTmp !== null ? window._fotoTmp : (u && u.foto) || ''), nome, email: document.getElementById('fu-email').value.trim(), cargo: document.getElementById('fu-cargo').value, ativo: document.getElementById('fu-ativo').value==='1'};
+  try{ state.fotos_usuarios = state.fotos_usuarios || {}; if(data.foto && data.email) state.fotos_usuarios[(data.email||'').toLowerCase().trim()] = data.foto; }catch(e){}
   if (id) {
     state.usuarios = state.usuarios.map(x => x.id===id ? {...x, ...data}:x);
     log('Editou usuário', nome);
@@ -4837,7 +4847,7 @@ function abrirBaselineDialog() {
       // Verificar se eh diferente
       var diferente = atuais.length !== oficiais.length || oficiais.some(function(e){ return atuais.indexOf(e) < 0; });
       if (diferente) {
-        state.usuarios = JSON.parse(JSON.stringify(USUARIOS_OFICIAIS));
+        state.usuarios = _preservaFotosOficiais(USUARIOS_OFICIAIS);
         try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
       }
     } catch(e) { console.warn('[v5.7.15 aplicar]', e); }
@@ -4975,7 +4985,7 @@ function abrirBaselineDialog() {
       var falta = oficiais.some(function(e){return atuais.indexOf(e)<0;});
       var sobra = atuais.some(function(e){return oficiais.indexOf(e)<0;});
       if (falta || sobra) {
-        state.usuarios = JSON.parse(JSON.stringify(USUARIOS_OFICIAIS));
+        state.usuarios = _preservaFotosOficiais(USUARIOS_OFICIAIS);
         salvarUsuariosFirestore();
         try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
       }
@@ -5269,13 +5279,13 @@ function abrirBaselineDialog() {
       var falta = oficiais.some(function(e){return atuais.indexOf(e)<0;});
       var sobra = atuais.some(function(e){return oficiais.indexOf(e)<0;});
       if (falta || sobra || idsDiferentes) {
-        state.usuarios = JSON.parse(JSON.stringify(USUARIOS_OFICIAIS));
+        state.usuarios = _preservaFotosOficiais(USUARIOS_OFICIAIS);
         try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
         // Salvar no Firestore
         try {
           if (firebase && firebase.firestore && state.sessao && state.sessao.email) {
             firebase.firestore().collection('azuos').doc('shared').update({
-              usuarios: JSON.parse(JSON.stringify(USUARIOS_OFICIAIS)),
+              usuarios: _preservaFotosOficiais(USUARIOS_OFICIAIS),
               last_modified_by: state.sessao.email.toLowerCase().trim(),
               last_modified_at: firebase.firestore.FieldValue.serverTimestamp(),
             }).catch(function(e){ console.warn('[v5.7.20 fs]', e.message); });

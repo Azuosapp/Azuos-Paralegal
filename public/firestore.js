@@ -37,7 +37,8 @@ function _fsPushFotosSeNecessario(remoteFotos){
 }
 function _coletarFotosUsuarios(){
   var m = {};
-  (state.usuarios||[]).forEach(function(u){ if(u && u.email && u.foto && String(u.foto).length>50){ m[(u.email||'').toLowerCase()] = u.foto; } });
+  try{ if(state.fotos_usuarios && typeof state.fotos_usuarios==='object'){ Object.keys(state.fotos_usuarios).forEach(function(k){ var v=state.fotos_usuarios[k]; if(v && String(v).length>30) m[(k||'').toLowerCase().trim()]=v; }); } }catch(e){}
+  (state.usuarios||[]).forEach(function(u){ if(u && u.email && u.foto && String(u.foto).length>30){ m[(u.email||'').toLowerCase().trim()] = u.foto; } });
   return m;
 }
 function _fsCollectFromState() {
@@ -93,9 +94,11 @@ function _fsApplyToState(remote) {
   let changed = false;
   // v6.3.1 — sincroniza fotos de usuarios entre dispositivos (por email)
   if (remote && remote.fotos_usuarios && typeof remote.fotos_usuarios === 'object') {
+    state.fotos_usuarios = state.fotos_usuarios || {};
+    Object.keys(remote.fotos_usuarios).forEach(function(k){ var kk=(k||'').toLowerCase().trim(); var v=remote.fotos_usuarios[k]; if(v && state.fotos_usuarios[kk]!==v){ state.fotos_usuarios[kk]=v; changed=true; } });
     (state.usuarios||[]).forEach(function(u){
       if(!u || !u.email) return;
-      var f = remote.fotos_usuarios[(u.email||'').toLowerCase()];
+      var f = state.fotos_usuarios[(u.email||'').toLowerCase().trim()];
       if(f && f !== u.foto){ u.foto = f; changed = true; }
     });
   }
