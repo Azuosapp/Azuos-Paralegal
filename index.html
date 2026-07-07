@@ -71,9 +71,7 @@ try {
     console.log('[v5.7.58] matou '+matos+' setIntervals empilhados (<5s)');
     // E reinstala apenas os ESSENCIAIS com frequência aumentada
     // 1. aplicarUsuariosOficiais (uma vez a cada 60s é suficiente)
-    if(typeof aplicarUsuariosOficiais === 'function'){
-      setInterval(aplicarUsuariosOficiais, 60000);
-    }
+    /* v6.8.0: consolidado */
     // 2. _detectarESalvarEdicoes54 (10s ao invés de 4s)
     if(typeof window._detectarESalvarEdicoes54 === 'function'){
       /* v6.0.11 perf: duplicata do detector removida (ja registrado 1x) */ void 0;
@@ -428,6 +426,31 @@ function _azuosOficialPorEmail(email){
   };
   return M[(email||'').toLowerCase().trim()]||null;
 }
+function _sincUsuariosOficiais(){
+  try{
+    if(!state || !Array.isArray(state.usuarios)) return;
+    if(typeof idDoEmail!=='function') return;
+    var OFICIAIS=['contato@azuoscontabil.com.br','comercial@azuoscontabil.com.br','thierrymforte@gmail.com','camila@azuoscontabil.com.br','ketrin@azuoscontabil.com.br','leyla@azuoscontabil.com.br','luanna@azuoscontabil.com.br','diogenes@azuoscontabil.com.br'];
+    var fotos={};
+    try{ if(state.fotos_usuarios) Object.keys(state.fotos_usuarios).forEach(function(k){ var v=state.fotos_usuarios[k]; if(v && String(v).length>30) fotos[(k||'').toLowerCase().trim()]=v; }); }catch(e){}
+    (state.usuarios||[]).forEach(function(u){ if(u&&u.email&&u.foto&&String(u.foto).length>30) fotos[(u.email||'').toLowerCase().trim()]=u.foto; });
+    // dedup por email (mantem o registro com mais info)
+    var porEmail={};
+    (state.usuarios||[]).forEach(function(u){ if(!u||!u.email) return; var em=(u.email||'').toLowerCase().trim(); var p=porEmail[em]; if(!p){ porEmail[em]=u; } else if((u.foto&&!p.foto)||(u.cargo&&!p.cargo)){ porEmail[em]=u; } });
+    var lista=[]; var vistos={};
+    OFICIAIS.forEach(function(em){ vistos[em]=1; var of=_azuosOficialPorEmail(em)||{}; var atual=porEmail[em]; lista.push({ id: idDoEmail(em), nome: of.nome||em, email: em, cargo: (atual&&atual.cargo)||of.cargo||'Paralegal', foto: fotos[em]||'', ativo: atual?(atual.ativo!==false):true }); });
+    // mantem usuarios extras (nao-oficiais) que existam de verdade
+    Object.keys(porEmail).forEach(function(em){ if(vistos[em]) return; var u=porEmail[em]; lista.push({ id: u.id||idDoEmail(em), nome: u.nome||em, email: u.email, cargo: u.cargo||'Paralegal', foto: fotos[em]||u.foto||'', ativo: u.ativo!==false }); });
+    function assinatura(arr){ return JSON.stringify((arr||[]).map(function(u){ return [u.id,(u.email||'').toLowerCase(),u.nome,u.cargo,(u.foto||'').length,u.ativo!==false]; }).sort()); }
+    if(assinatura(state.usuarios)!==assinatura(lista)){
+      state.usuarios=lista;
+      try{ if(typeof saveState==='function') saveState(); }catch(e){}
+      try{ if(typeof render==='function') render(); }catch(e){}
+    }
+  }catch(e){}
+}
+setTimeout(function(){ try{ _sincUsuariosOficiais(); }catch(e){} }, 4000);
+setInterval(function(){ try{ _sincUsuariosOficiais(); }catch(e){} }, 20000);
 // v6.5.0 — preserva fotos por e-mail em qualquer reset de usuarios (usa mapa duravel state.fotos_usuarios)
 function _preservaFotosOficiais(lista){
   var fotos = {};
@@ -4937,9 +4960,9 @@ function abrirBaselineDialog() {
   }, 4000);
 
   // Aplicar usuarios oficiais a cada 3s
-  setInterval(aplicarUsuarios, 3000);
-  setTimeout(aplicarUsuarios, 5000);
-  setTimeout(aplicarUsuarios, 10000);
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
 
   // [v6.0.5] Auto-save reduzido de 30s para 5min (era spam de CPU)
   setInterval(function(){
@@ -5083,9 +5106,9 @@ function abrirBaselineDialog() {
   }, 4000);
 
   // Aplicar usuarios oficiais periodicamente
-  setInterval(aplicarUsuarios, 4000);
-  setTimeout(aplicarUsuarios, 6000);
-  setTimeout(aplicarUsuarios, 12000);
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
 
   // Botões matcher
   setInterval(function(){
@@ -5311,9 +5334,9 @@ function abrirBaselineDialog() {
       }
     } catch(e) { console.warn('[v5.7.20]', e); }
   }
-  setInterval(aplicarUsuariosOficiais, 3000);
-  setTimeout(aplicarUsuariosOficiais, 5000);
-  setTimeout(aplicarUsuariosOficiais, 12000);
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
+  /* v6.8.0: consolidado em _sincUsuariosOficiais */
   console.log('[v5.7.20] IDs numericos aplicados');
 })();
 
