@@ -2403,6 +2403,11 @@ function salvarAlvara(id, empresaId){
         alert('A "Proxima atualizacao" nao pode ser uma data anterior a hoje.\n\nData informada: ' + _proxInput + '\nHoje: ' + _hojeR.toLocaleDateString('pt-BR') + '\n\nInforme hoje ou uma data futura.');
         return;
       }
+      var _min5R = new Date(_hojeR); _min5R.setDate(_min5R.getDate()+5);
+      if (_dpR < _min5R) {
+        alert('A "Proxima atualizacao" precisa ser de pelo menos 5 dias a partir de hoje.\n\nData informada: ' + _proxInput + '\nData minima: ' + _min5R.toLocaleDateString('pt-BR') + '\n\nInforme uma data a partir de ' + _min5R.toLocaleDateString('pt-BR') + '.');
+        return;
+      }
     }
   }
   const empresa = state.empresas.find(x => x.id === empresaId);
