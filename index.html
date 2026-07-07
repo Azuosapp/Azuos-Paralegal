@@ -414,6 +414,20 @@ function _azuosBannerErro(rec){
 window.addEventListener('error', function(ev){ _azuosRegistrarErro('js', (ev&&ev.error)||{message:ev&&ev.message}); });
 window.addEventListener('unhandledrejection', function(ev){ _azuosRegistrarErro('promise', (ev&&ev.reason)||{message:'rejeicao'}); });
 
+// v6.7.0 — fonte unica dos usuarios oficiais (nome/cargo corretos por e-mail)
+function _azuosOficialPorEmail(email){
+  var M={
+    'contato@azuoscontabil.com.br':{nome:'AZUOS Admin',cargo:'Administrador'},
+    'comercial@azuoscontabil.com.br':{nome:'Comercial',cargo:'Administrador'},
+    'thierrymforte@gmail.com':{nome:'Thierry',cargo:'Administrador'},
+    'camila@azuoscontabil.com.br':{nome:'Camila',cargo:'Paralegal'},
+    'ketrin@azuoscontabil.com.br':{nome:'Ketrin',cargo:'Paralegal'},
+    'leyla@azuoscontabil.com.br':{nome:'Leyla',cargo:'Paralegal'},
+    'luanna@azuoscontabil.com.br':{nome:'Luanna',cargo:'Paralegal'},
+    'diogenes@azuoscontabil.com.br':{nome:'Diogenes',cargo:'Paralegal'}
+  };
+  return M[(email||'').toLowerCase().trim()]||null;
+}
 // v6.5.0 — preserva fotos por e-mail em qualquer reset de usuarios (usa mapa duravel state.fotos_usuarios)
 function _preservaFotosOficiais(lista){
   var fotos = {};
@@ -626,11 +640,12 @@ function mapearFirebaseUserParaSessao(fbUser) {
   let u = (state.usuarios || []).find(x => (x.email || '').toLowerCase() === email);
   if (u) return { ...u, _firebase_uid: fbUser.uid };
   // Se não achou, criar perfil "guest" baseado no email
+  const _of = (typeof _azuosOficialPorEmail==='function') ? _azuosOficialPorEmail(email) : null;
   return {
     id: 'fb_' + fbUser.uid.slice(0, 6),
-    nome: fbUser.displayName || email.split('@')[0],
+    nome: _of ? _of.nome : (fbUser.displayName || email.split('@')[0]),
     email,
-    cargo: 'Paralegal',
+    cargo: _of ? _of.cargo : 'Paralegal',
     ativo: true,
     _firebase_uid: fbUser.uid
   };
@@ -4661,10 +4676,12 @@ function abrirBaselineDialog() {
         }
         return;
       }
-      var nome = user.displayName || email.split('@')[0].replace(/[._-]/g,' ');
-      nome = nome.split(' ').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+      var _of = (typeof _azuosOficialPorEmail==='function') ? _azuosOficialPorEmail(email) : null;
+      var nome;
+      if (_of) { nome = _of.nome; }
+      else { nome = user.displayName || email.split('@')[0].replace(/[._-]/g,' '); nome = nome.split(' ').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
       state.usuarios.push({
-        id: idEstavel, nome: nome, email: email, cargo: 'Paralegal',
+        id: idEstavel, nome: nome, email: email, cargo: (_of?_of.cargo:'Paralegal'),
         foto: '', criadoEm: new Date().toISOString(), autoCriado: true
       });
       console.log('[v5.7.12] usuario auto-criado:', email);
