@@ -786,7 +786,6 @@ function _gamAgrega(mes){
     if(!_gamConta(e.status)) return;
     var _cm=(e._editado_em||'').slice(0,7);
     if(mes && _cm!==mes) return;
-    if(!_alvaraValidadoNoMes(aid, _cm)) return;
     var u=_gamUser(e._editado_por); if(!u) return;
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
     if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,chave:k};
