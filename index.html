@@ -734,13 +734,16 @@ function attachLayout(){
   };
 }
 
-/* ===== v6.2.0 — Premiacao / Gamificacao por produtividade (alvaras concluidos) ===== */
+/* ===== v6.2.1 — Premiacao / Gamificacao por produtividade (alvaras concluidos) ===== */
 var _gamMes = null; // 'YYYY-MM' selecionado; null = mes atual
+var _GAM_STATUS_PADRAO = ['Concluído','Pago','Formalizado','Formalizado com o cliente','Em vigor (vencimento)'];
+var _GAM_STATUS_CANDIDATOS = ['Concluído','Pago','Formalizado','Formalizado com o cliente','Em vigor (vencimento)','Isento','Arquivado pelo cliente','Arquivado com pendências','Encaminhado'];
 function _gamFmt(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); }
 function _gamMesAtual(){ return new Date().toISOString().slice(0,7); }
 function _gamMesLabel(m){ var M=['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']; var p=(m||'').split('-'); if(p.length<2) return m; return M[(parseInt(p[1],10)||1)-1]+' / '+p[0]; }
 function _gamValor(){ var g=state.gamificacao||{}; var v=parseFloat(g.valorPorAlvara); return isNaN(v)?0:v; }
-function _gamConta(s){ return (typeof CONCLUIDO!=='undefined' && CONCLUIDO.indexOf(s||'')>=0); }
+function _gamStatusSet(){ var g=state.gamificacao||{}; return (Array.isArray(g.statusConcluido)&&g.statusConcluido.length)?g.statusConcluido:_GAM_STATUS_PADRAO; }
+function _gamConta(s){ return _gamStatusSet().indexOf(s||'')>=0; }
 function _gamUser(token){
   var t=(token==null?'':token).toString().trim().toLowerCase(); if(!t) return null;
   var us=state.usuarios||[];
@@ -768,18 +771,20 @@ function _gamCor(nome){ var cores=['#2563eb','#059669','#7c3aed','#db2777','#d97
 function _gamIniciais(nome){ return (nome||'?').split(' ').filter(Boolean).map(function(x){return x[0];}).slice(0,2).join('').toUpperCase(); }
 function _gamSouEu(row){ var me=state.sessao||{}; var e=(me.email||'').toLowerCase(), n=(me.nome||'').toLowerCase(); return !!((row.email&&row.email.toLowerCase()===e)||(row.nome&&row.nome.toLowerCase()===n)); }
 function _gamSetMes(m){ _gamMes=m||null; render(); }
-function _gamSalvarValor(){
-  if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar o valor.'); return; }
+function _gamSalvar(){
+  if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar.'); return; }
   var el=document.getElementById('gam-valor-input'); if(!el) return;
   var v=parseFloat((el.value||'').toString().replace(',','.'));
   if(isNaN(v)||v<0){ alert('Informe um valor valido (ex: 5,00).'); return; }
+  var chks=Array.prototype.slice.call(document.querySelectorAll('.gam-status-chk')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
   state.gamificacao=state.gamificacao||{};
   state.gamificacao.valorPorAlvara=v;
+  if(chks.length) state.gamificacao.statusConcluido=chks;
   state.gamificacao.atualizado_em=new Date().toISOString();
   state.gamificacao.atualizado_por=state.sessao?(state.sessao.email||state.sessao.nome):'';
-  try{ if(typeof log==='function') log('Config premiacao','valor','R$ '+v.toFixed(2)); }catch(e){}
+  try{ if(typeof log==='function') log('Config premiacao','valor','R$ '+v.toFixed(2)+' / '+chks.length+' status'); }catch(e){}
   saveState(); render();
-  if(typeof toast==='function') toast('Valor por alvara: '+_gamFmt(v),'emerald');
+  if(typeof toast==='function') toast('Premiacao atualizada: '+_gamFmt(v)+' por alvara','emerald');
 }
 function renderPremiacao(){
   var ehAdmin = state.sessao && state.sessao.cargo==='Administrador';
@@ -792,6 +797,7 @@ function renderPremiacao(){
   var maxQtd=rank.length?rank[0].qtd:0;
   var top3=rank.slice(0,3);
   var meuGanho=(rank.filter(_gamSouEu)[0]||{}).valor||0;
+  var setAtual=_gamStatusSet();
   return `
   <div class="p-6 max-w-5xl mx-auto">
     <header class="mb-5">
@@ -827,13 +833,22 @@ function renderPremiacao(){
         </div>
       </div>
     </header>
-    ${ehAdmin ? `<div class="bg-white rounded-xl border border-slate-200 p-4 mb-5 flex items-end gap-3 flex-wrap">
-      <div>
-        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Valor por alvara concluido (R$)</label>
-        <input id="gam-valor-input" type="number" step="0.01" min="0" value="${val}" class="w-40 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-amber-500 outline-none" />
+    ${ehAdmin ? `<div class="bg-white rounded-xl border border-slate-200 p-4 mb-5">
+      <div class="flex items-end gap-3 flex-wrap">
+        <div>
+          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Valor por alvara concluido (R$)</label>
+          <input id="gam-valor-input" type="number" step="0.01" min="0" value="${val}" class="w-40 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-amber-500 outline-none" />
+        </div>
+        <button onclick="_gamSalvar()" class="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold text-sm hover:bg-amber-700 shadow">Salvar</button>
+        <span class="text-xs text-slate-400">Somente o administrador ve e altera.</span>
       </div>
-      <button onclick="_gamSalvarValor()" class="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold text-sm hover:bg-amber-700 shadow">Salvar valor</button>
-      <span class="text-xs text-slate-400">Somente o administrador ve e altera este valor.</span>
+      <div class="mt-3">
+        <div class="text-xs font-bold text-slate-600 uppercase mb-2">Status que contam como concluido (pagam)</div>
+        <div class="flex flex-wrap gap-2">
+          ${_GAM_STATUS_CANDIDATOS.map(function(s){ var on=setAtual.indexOf(s)>=0; return '<label class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer '+(on?'border-amber-400 bg-amber-50 text-amber-800':'border-slate-200 text-slate-500')+'"><input type="checkbox" class="gam-status-chk" value="'+esc(s)+'" '+(on?'checked':'')+'/> '+esc(s)+'</label>'; }).join('')}
+        </div>
+        <div class="text-[11px] text-slate-400 mt-2">Marque quais status contam. Depois clique em <strong>Salvar</strong>. Vale para todos e sincroniza.</div>
+      </div>
     </div>` : ''}
     ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_gamMesLabel(mesSel)} ainda.</div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
@@ -867,7 +882,7 @@ function renderPremiacao(){
           </div>`; }).join('')}
       </div>
     </div>
-    <p class="text-xs text-slate-400 mt-3">Conta alvaras com status <strong>Concluido</strong> ou <strong>Pago</strong>, creditados a quem fez a ultima edicao. ${ehAdmin?'Como gestor, voce ve o valor de todos.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
+    <p class="text-xs text-slate-400 mt-3">Conta quem marcou o alvara como concluido no mes. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
     `}
   </div>`;
 }
