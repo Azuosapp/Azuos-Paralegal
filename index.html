@@ -876,15 +876,9 @@ function renderPremiacao(){
 /* ===== v6.4.0 — Menu separado: Tabela de Valores de Produtividade (por atividade) ===== */
 var _GAM_TABELA_PADRAO = [
   {atividade:'Bombeiro', prazo:'9 Dias', valor:10, peso:5},
-  {atividade:'Funcionamento - Aparecida', prazo:'2 Meses', valor:10, peso:8},
-  {atividade:'Funcionamento - Outros', prazo:'1 Mês e Meio', valor:10, peso:8},
   {atividade:'Funcionamento', prazo:'3 Meses', valor:10, peso:8},
-  {atividade:'Sanitário - Aparecida', prazo:'2 Meses', valor:10, peso:8},
-  {atividade:'Sanitário - Outros', prazo:'1 Mês e Meio', valor:10, peso:8},
-  {atividade:'Sanitário', prazo:'3 Meses', valor:5, peso:5},
-  {atividade:'Ambiental - Aparecida', prazo:'2 Meses', valor:10, peso:6},
-  {atividade:'Ambiental - Outros', prazo:'1 Mês e Meio', valor:10, peso:8},
-  {atividade:'Ambiental', prazo:'6 Meses', valor:5, peso:4},
+  {atividade:'Sanitário', prazo:'3 Meses', valor:10, peso:8},
+  {atividade:'Ambiental', prazo:'6 Meses', valor:10, peso:8},
   {atividade:'H. Especial', prazo:'14 Dias', valor:5, peso:1},
   {atividade:'Veículo', prazo:'21 Dias', valor:5, peso:3},
   {atividade:'Inpi', prazo:'15 Meses', valor:50, peso:8},
@@ -893,7 +887,7 @@ var _GAM_TABELA_PADRAO = [
   {atividade:'Alteração', prazo:'7 Dias', valor:5, peso:9},
   {atividade:'Baixa', prazo:'3 Dias', valor:4, peso:2},
   {atividade:'Faturamento', prazo:'1 Dia', valor:2, peso:2}
-];
+]
 function _gamTabela(){ var g=state.gamificacao||{}; return (Array.isArray(g.tabela)&&g.tabela.length)?g.tabela:_GAM_TABELA_PADRAO; }
 function _gamTabelaWork(){ if(!Array.isArray(window._gamTabelaTmp)) window._gamTabelaTmp=_gamTabela().map(function(r){return {atividade:r.atividade,prazo:r.prazo||'',valor:(+r.valor||0),peso:(+r.peso||0)};}); return window._gamTabelaTmp; }
 function _gamSyncInputs(){ var w=_gamTabelaWork(); document.querySelectorAll('#gam-tab-body tr[data-idx]').forEach(function(tr){ var i=+tr.getAttribute('data-idx'); if(!w[i])return; var q=function(f){return tr.querySelector('[data-f="'+f+'"]');}; if(q('atividade'))w[i].atividade=q('atividade').value; if(q('prazo'))w[i].prazo=q('prazo').value; if(q('valor'))w[i].valor=parseFloat((q('valor').value||'0').toString().replace(',','.'))||0; if(q('peso'))w[i].peso=parseInt(q('peso').value)||0; }); }
