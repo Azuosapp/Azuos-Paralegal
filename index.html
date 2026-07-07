@@ -676,9 +676,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function renderLayout(content){
   const ehAdmin = state.sessao && state.sessao.cargo === 'Administrador';
   // Contar empresas novas para o usuário ATUAL — apenas ATIVO
-  const usrSes = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
-  const cienciasUsrAtual = (state.ciencias_por_usuario && state.ciencias_por_usuario[usrSes]) || [];
-  const conhecidasKeys = cienciasUsrAtual.map(c => c.key);
+  const conhecidasKeys = _cienciasUsr().map(c => c.key);
   const novas = (state.empresas || []).filter(e => (e.status||'').toUpperCase() === 'ATIVO' && !conhecidasKeys.includes(empresaKey(e)));
   const badgeNovas = novas.length > 0 ? `<span class="ml-auto bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-red-500/40 pulse-soft">${novas.length}</span>` : '';
   // Calcula badge do resumo (pendências do dia) — paralegal vê só do dele; admin vê tudo
@@ -3579,11 +3577,18 @@ function replicarCienciasAdminParaTodos() {
 }
 
 // Ciências do usuário ATUALMENTE logado
+function _cienciasUsr(){
+  // v6.11.0 — UNIAO das ciencias do usuario atual (chaves por nome E por e-mail), evita "todas viram novas"
+  if (!state.sessao) return [];
+  var cpu = state.ciencias_por_usuario || {};
+  var keys = [state.sessao.nome, state.sessao.email].filter(Boolean);
+  var seen={}, out=[];
+  keys.forEach(function(k){ var arr=cpu[k]; if(Array.isArray(arr)) arr.forEach(function(c){ if(c && c.key && !seen[c.key]){ seen[c.key]=1; out.push(c); } }); });
+  return out;
+}
 function cienciasDoUsuarioAtual() {
   migrarConhecidasParaCiencia();
-  if (!state.sessao) return [];
-  const nome = state.sessao.nome;
-  return (state.ciencias_por_usuario && state.ciencias_por_usuario[nome]) || [];
+  return _cienciasUsr();
 }
 
 // Helper: keys das ciencias do usuário atual
@@ -3641,20 +3646,10 @@ function renderNovasEmpresas() {
   // Apenas empresas com status ATIVO entram no fluxo
   const empresasAtivo = state.empresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
   // Inicializa estrutura se ainda não existir para o usuário
-  const usr = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   state.ciencias_por_usuario = state.ciencias_por_usuario || {};
-  if (state.ciencias_por_usuario[usr] === undefined) {
-    state.ciencias_por_usuario[usr] = [];
-  }
-  // Auto-limpa: mantém só ciências de empresas que ainda existem
   const atuaisKeysAtivo = empresasAtivo.map(empresaKey);
   const atuaisSet = new Set(atuaisKeysAtivo);
-  state.ciencias_por_usuario[usr] = state.ciencias_por_usuario[usr] || [];
-  const cienciasLimpas = state.ciencias_por_usuario[usr].filter(c => atuaisSet.has(c.key));
-  if (cienciasLimpas.length !== state.ciencias_por_usuario[usr].length) {
-    state.ciencias_por_usuario[usr] = cienciasLimpas;
-    saveState();
-  }
+  const cienciasLimpas = _cienciasUsr().filter(c => atuaisSet.has(c.key));
   const conhecidasKeys = cienciasLimpas.map(c => c.key);
   const novasFinal = empresasAtivo.filter(e => !conhecidasKeys.includes(empresaKey(e)));
   const conhecidasFinal = cienciasLimpas;
@@ -3864,7 +3859,7 @@ function renderResumoDia() {
   });
 
   // Novas empresas (paralegal vê só as que tem alvará dele OU sem responsável definido)
-  const conhecidas = state.empresas_conhecidas || [];
+  const conhecidas = _cienciasUsr().map(c=>c.key);
   let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !conhecidas.includes(empresaKey(e)));
   if (!ehAdmin) {
     novasEmp = novasEmp.filter(e => (e.responsavel||'') === meuNome);
@@ -4281,7 +4276,7 @@ function mostrarPopupResumoDia() {
     else if (dias <= 30) proximos30.push(a);
   });
 
-  const conhecidasKeys = (state.empresas_conhecidas || []).map(item => typeof item === 'object' ? item.key : item);
+  const conhecidasKeys = _cienciasUsr().map(c => c.key);
   let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !conhecidasKeys.includes(empresaKey(e)));
   if (!ehAdmin) novasEmp = novasEmp.filter(e => (e.responsavel||'') === meuNome);
   // novasEmp já é por responsavel da empresa (correto)
