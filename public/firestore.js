@@ -22,6 +22,19 @@ function _semAnexosPesados(edicoes) {
   return out;
 }
 
+function _fsPushFotosSeNecessario(remoteFotos){
+  // v6.3.2 — se este navegador tem foto que a nuvem ainda nao tem, empurra automaticamente.
+  try{
+    remoteFotos = remoteFotos || {};
+    var precisa=false;
+    (state.usuarios||[]).forEach(function(u){
+      if(u && u.email && u.foto && String(u.foto).length>50){
+        if(remoteFotos[(u.email||'').toLowerCase()] !== u.foto) precisa=true;
+      }
+    });
+    if(precisa && typeof saveState==='function'){ saveState(); }
+  }catch(e){}
+}
 function _coletarFotosUsuarios(){
   var m = {};
   (state.usuarios||[]).forEach(function(u){ if(u && u.email && u.foto && String(u.foto).length>50){ m[(u.email||'').toLowerCase()] = u.foto; } });

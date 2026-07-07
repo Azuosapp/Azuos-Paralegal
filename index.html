@@ -281,6 +281,7 @@ async function _fsLoadInitial() {
     }
     const remote = snap.data();
     const changed = _fsApplyToState(remote);
+    try { _fsPushFotosSeNecessario(remote && remote.fotos_usuarios); } catch(e){}
     if (changed) {
       console.log('[FS] State local atualizado com dados da nuvem');
       try { _prepararAnexosLazy(); } catch(e){}
