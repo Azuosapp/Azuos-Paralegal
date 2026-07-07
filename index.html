@@ -786,7 +786,7 @@ function _gamAgrega(mes){
     if(mes && (e._editado_em||'').slice(0,7)!==mes) return;
     var u=_gamUser(e._editado_por); if(!u) return;
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
-    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0};
+    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,chave:k};
     por[k].qtd++;
   });
   var val=_gamValor();
@@ -812,6 +812,33 @@ function _gamSalvar(){
   try{ if(typeof log==='function') log('Config premiacao','valor','R$ '+v.toFixed(2)+' / '+chks.length+' status'); }catch(e){}
   saveState(); render();
   if(typeof toast==='function') toast('Premiacao atualizada: '+_gamFmt(v)+' por alvara','emerald');
+}
+function _gamListaConcluidos(chave, mes){
+  chave=(chave||'').toLowerCase().trim();
+  var out=[]; var eds=state.edicoes_alvaras||{};
+  Object.keys(eds).forEach(function(aid){
+    var e=eds[aid]; if(!e||!e._editado_por||!e._editado_em) return;
+    if(!_gamConta(e.status)) return;
+    if(mes && (e._editado_em||'').slice(0,7)!==mes) return;
+    var u=_gamUser(e._editado_por); var k=((u&&(u.email||u.nome))||'').toLowerCase().trim();
+    if(k!==chave) return;
+    var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); });
+    out.push({ empresa:(alv&&(alv.empresa||alv.empresa_nome))||'—', tipo:(alv&&alv.tipo)||'—', status:e.status, data:e._editado_em });
+  });
+  out.sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
+  return out;
+}
+function _gamAbrirDetalhe(chave, mes, nome){
+  var lista=_gamListaConcluidos(chave, mes);
+  if(!nome){ var rr=_gamAgrega(mes).find(function(x){return (x.chave||'').toLowerCase()===(chave||'').toLowerCase();}); nome=rr?rr.nome:chave; }
+  var linhas = lista.map(function(r){
+    var d=r.data?new Date(r.data):null; var ds=(d&&!isNaN(d))?d.toLocaleDateString('pt-BR'):'—';
+    return '<tr class="border-b border-slate-50"><td class="py-2 pr-2 font-medium text-slate-700">'+esc(r.empresa)+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2"><span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700">'+esc(r.status)+'</span></td><td class="text-right text-slate-400 text-xs whitespace-nowrap">'+ds+'</td></tr>';
+  }).join('');
+  var corpo = lista.length
+    ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Status</th><th class="text-right">Concluído</th></tr></thead><tbody>'+linhas+'</tbody></table>'
+    : '<div class="text-center text-slate-400 py-10">Nenhum alvará concluído neste mês.</div>';
+  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><div><h3 class="text-lg font-bold text-slate-800">✅ Alvarás concluídos</h3><p class="text-xs text-slate-500">'+esc(nome)+' · '+_gamMesLabel(mes)+' · <strong>'+lista.length+'</strong> alvará(s)</p></div><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button></div><div class="p-5 max-h-[60vh] overflow-auto">'+corpo+'</div>');
 }
 function renderPremiacao(){
   var ehAdmin = state.sessao && state.sessao.cargo==='Administrador';
@@ -864,7 +891,7 @@ function renderPremiacao(){
     ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_gamMesLabel(mesSel)} ainda.</div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
-        <div class="text-center">
+        <div onclick="_gamAbrirDetalhe('${r.chave}','${mesSel}','${(r.nome||'').replace(/'/g,'')}')" class="text-center cursor-pointer">
           <div class="mx-auto mb-2 w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
           <div class="rounded-t-xl ${h} flex items-end justify-center pb-1 text-3xl" style="background:linear-gradient(180deg,rgba(245,158,11,0.15),rgba(245,158,11,0.55));">${medal}</div>
           <div class="bg-white rounded-b-xl border border-slate-200 p-2">
@@ -876,12 +903,12 @@ function renderPremiacao(){
     </div>
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-        <h2 class="font-bold text-slate-800">Ranking completo</h2>
+        <h2 class="font-bold text-slate-800">Ranking completo <span class="text-[11px] font-normal text-slate-400">(clique numa pessoa para ver os alvarás)</span></h2>
         <span class="text-xs text-slate-400">${rank.length} pessoas</span>
       </div>
       <div class="divide-y divide-slate-100">
         ${rank.map(function(r,i){ var podeVer=ehAdmin||_gamSouEu(r); var eu=_gamSouEu(r); var pct=maxQtd?Math.round(100*r.qtd/maxQtd):0; return `
-          <div class="flex items-center gap-3 px-4 py-3 ${eu?'bg-amber-50':''}">
+          <div onclick="_gamAbrirDetalhe('${r.chave}','${mesSel}','${(r.nome||'').replace(/'/g,'')}')" class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 ${eu?'bg-amber-50':''}">
             <div class="w-7 text-center font-bold ${i<3?'text-amber-500':'text-slate-400'}">${i+1}º</div>
             <div class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
             <div class="flex-1 min-w-0">
