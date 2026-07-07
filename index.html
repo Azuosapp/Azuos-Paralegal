@@ -2392,6 +2392,19 @@ function salvarAlvara(id, empresaId){
       }
     }
   }
+  // v6.12.0 — "Proxima atualizacao" nao pode ser retroativa (anterior a hoje) ao colocar/alterar
+  var _origProx = id ? ((state.alvaras.find(function(x){return String(x.id)===String(id);})||{}).proxima_atualizacao||'') : '';
+  if (_proxInput && String(_proxInput).trim() !== String(_origProx).trim()) {
+    var _dProxR = (typeof parseDataBR==='function') ? parseDataBR(_proxInput) : null;
+    if (_dProxR) {
+      var _hojeR = new Date(); _hojeR.setHours(0,0,0,0);
+      var _dpR = new Date(_dProxR); _dpR.setHours(0,0,0,0);
+      if (_dpR < _hojeR) {
+        alert('A "Proxima atualizacao" nao pode ser uma data anterior a hoje.\n\nData informada: ' + _proxInput + '\nHoje: ' + _hojeR.toLocaleDateString('pt-BR') + '\n\nInforme hoje ou uma data futura.');
+        return;
+      }
+    }
+  }
   const empresa = state.empresas.find(x => x.id === empresaId);
   let conversas = [], anexos = [];
   try { conversas = JSON.parse(document.getElementById('fa-conversas-data').value || '[]'); } catch(e) {}
