@@ -10,6 +10,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>try{ if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } }catch(e){}</script>
 <!-- Firebase v10 (modular via compat para uso em script clássico) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
@@ -777,11 +779,14 @@ function _gamUser(token){
 }
 function _gamMeses(){ var s={}; Object.values(state.edicoes_alvaras||{}).forEach(function(e){ if(e&&e._editado_em&&e._editado_por&&_gamConta(e.status)) s[(e._editado_em||'').slice(0,7)]=1; }); var a=Object.keys(s).sort().reverse(); var atual=_gamMesAtual(); if(a.indexOf(atual)<0) a.unshift(atual); return a; }
 function _gamAgrega(mes){
-  var por={};
-  Object.values(state.edicoes_alvaras||{}).forEach(function(e){
+  var por={}; var _eds=state.edicoes_alvaras||{};
+  Object.keys(_eds).forEach(function(aid){
+    var e=_eds[aid];
     if(!e||!e._editado_por||!e._editado_em) return;
     if(!_gamConta(e.status)) return;
-    if(mes && (e._editado_em||'').slice(0,7)!==mes) return;
+    var _cm=(e._editado_em||'').slice(0,7);
+    if(mes && _cm!==mes) return;
+    if(!_alvaraValidadoNoMes(aid, _cm)) return;
     var u=_gamUser(e._editado_por); if(!u) return;
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
     if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,chave:k};
@@ -811,33 +816,133 @@ function _gamSalvar(){
   saveState(); render();
   if(typeof toast==='function') toast('Premiacao atualizada: '+_gamFmt(v)+' por alvara','emerald');
 }
+/* ===== v6.16.0 — Validacao de anexo por IA (OCR + PDF) para a Premiacao ===== */
+var _gamDetChave=null, _gamDetNome=null;
+function _b64ToBytes(dataUrl){
+  try{ var s=String(dataUrl||''); var i=s.indexOf('base64,'); if(i>=0) s=s.slice(i+7); var bin=atob(s); var arr=new Uint8Array(bin.length); for(var j=0;j<bin.length;j++) arr[j]=bin.charCodeAt(j); return arr; }catch(e){ return null; }
+}
+async function _iaOcrAnexo(dataUrl, tipo){
+  try{
+    tipo=(tipo||'').toLowerCase();
+    var ehPdf = tipo.indexOf('pdf')>=0 || /\.pdf/.test(tipo);
+    if(!ehPdf && tipo.indexOf('image')>=0 && typeof Tesseract!=='undefined'){
+      var r=await Tesseract.recognize(dataUrl,'por'); return (r&&r.data&&r.data.text)||'';
+    }
+    if(typeof pdfjsLib!=='undefined'){
+      var bytes=_b64ToBytes(dataUrl); if(!bytes) return '';
+      var pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+      var texto=''; var nP=Math.min(pdf.numPages||1,2);
+      for(var p=1;p<=nP;p++){
+        var page=await pdf.getPage(p);
+        try{ var tc=await page.getTextContent(); texto+=' '+tc.items.map(function(it){return it.str;}).join(' '); }catch(e){}
+        if(texto.replace(/\s/g,'').length<40 && typeof Tesseract!=='undefined'){
+          var vp=page.getViewport({scale:1.5}); var cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+          await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+          var r2=await Tesseract.recognize(cv,'por'); texto+=' '+((r2&&r2.data&&r2.data.text)||'');
+        }
+      }
+      return texto;
+    }
+  }catch(e){ console.warn('[IA OCR]',e); }
+  return '';
+}
+function _iaAnalisar(texto, mesRef){
+  texto=(texto||'').toLowerCase();
+  var kws=['alvar','licen','funcionamento','bombeiro','sanitar','ambiental','vigil','localiza','corpo de bombeiros','protocolo','certificad','vistoria','prefeitura'];
+  var temKw=kws.some(function(k){return texto.indexOf(k)>=0;});
+  var achouMes=null;
+  (texto.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/g)||[]).forEach(function(ds){
+    var m=ds.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/); if(!m) return;
+    var yy=m[3].length===2?('20'+m[3]):m[3]; var mm=('0'+m[2]).slice(-2);
+    if(yy+'-'+mm===mesRef) achouMes=ds;
+  });
+  return { temKw:temKw, dataNoMes:achouMes, ok:(temKw && !!achouMes) };
+}
+async function _iaConteudoAnexo(anexo){
+  var dataUrl=anexo.dados;
+  if((!dataUrl||String(dataUrl).length<50) && anexo._idb && typeof _idbGet==='function'){ try{ dataUrl=await _idbGet(anexo._idb); }catch(e){} }
+  if(!dataUrl) return '';
+  return await _iaOcrAnexo(dataUrl, anexo.tipo||anexo.nome||'');
+}
+function _anexosDoAlvara(aid){
+  var e=(state.edicoes_alvaras||{})[aid];
+  var alv=(state.alvaras||[]).find(function(a){return String(a.id)===String(aid);});
+  var a1=(e&&Array.isArray(e.anexos))?e.anexos:[];
+  var a2=(alv&&Array.isArray(alv.anexos))?alv.anexos:[];
+  return a1.length?a1:a2;
+}
+function _alvaraValidadoNoMes(aid, mes){
+  return _anexosDoAlvara(aid).some(function(a){ return a && a._validacao && a._validacao.ok && a._validacao.mes===mes; });
+}
+async function _gamValidarAlvaraIA(aid, mes){
+  var anexos=_anexosDoAlvara(aid);
+  if(!anexos.length){ if(typeof toast==='function') toast('Este alvará não tem anexo para validar.','amber'); return; }
+  if(typeof toast==='function') toast('🤖 Lendo o anexo... aguarde alguns segundos','blue');
+  var algum=false;
+  for(var i=0;i<anexos.length;i++){
+    var a=anexos[i];
+    var texto=''; try{ texto=await _iaConteudoAnexo(a); }catch(e){}
+    var an=_iaAnalisar(texto, mes);
+    a._validacao={ ok:an.ok, mes:mes, data:an.dataNoMes||'', temKw:an.temKw, motivo:(an.ok?'IA':(!an.temKw?'não parece alvará':'sem data em '+_gamMesLabel(mes))), em:new Date().toISOString(), por:((state.sessao&&(state.sessao.email||state.sessao.nome))||''), manual:false };
+    if(an.ok) algum=true;
+  }
+  try{ saveState(); }catch(e){}
+  if(typeof toast==='function') toast(algum?'✅ Anexo validado pela IA':'⚠️ IA não confirmou. Se estiver correto, use "Confirmar".', algum?'emerald':'amber');
+  _gamAbrirDetalhe(_gamDetChave, mes, _gamDetNome);
+}
+function _gamConfirmarAnexoManual(aid, mes){
+  if(!(state.sessao&&state.sessao.cargo==='Administrador')){ alert('Só o administrador pode confirmar manualmente.'); return; }
+  var anexos=_anexosDoAlvara(aid);
+  if(!anexos.length){ alert('Este alvará não tem anexo. Anexe o documento primeiro.'); return; }
+  anexos.forEach(function(a){ a._validacao={ ok:true, mes:mes, data:'', motivo:'confirmado manualmente pelo admin', em:new Date().toISOString(), por:(state.sessao.email||state.sessao.nome), manual:true }; });
+  try{ saveState(); }catch(e){}
+  if(typeof toast==='function') toast('✔ Confirmado manualmente','emerald');
+  _gamAbrirDetalhe(_gamDetChave, mes, _gamDetNome);
+}
+
 function _gamListaConcluidos(chave, mes){
   chave=(chave||'').toLowerCase().trim();
   var out=[]; var eds=state.edicoes_alvaras||{};
   Object.keys(eds).forEach(function(aid){
     var e=eds[aid]; if(!e||!e._editado_por||!e._editado_em) return;
     if(!_gamConta(e.status)) return;
-    if(mes && (e._editado_em||'').slice(0,7)!==mes) return;
+    var cm=(e._editado_em||'').slice(0,7);
+    if(mes && cm!==mes) return;
     var u=_gamUser(e._editado_por); var k=((u&&(u.email||u.nome))||'').toLowerCase().trim();
     if(k!==chave) return;
     var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); });
-    out.push({ empresa:(alv&&(alv.empresa||alv.empresa_nome))||'—', tipo:(alv&&alv.tipo)||'—', status:e.status, data:e._editado_em });
+    var anx=_anexosDoAlvara(aid);
+    out.push({ aid:aid, empresa:(alv&&(alv.empresa||alv.empresa_nome))||'—', tipo:(alv&&alv.tipo)||'—', status:e.status, data:e._editado_em, mesConc:cm, temAnexo:anx.length>0, validado:_alvaraValidadoNoMes(aid, cm) });
   });
   out.sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
   return out;
 }
 function _gamAbrirDetalhe(chave, mes, nome){
+  _gamDetChave=chave;
   var lista=_gamListaConcluidos(chave, mes);
   if(!nome){ var rr=_gamAgrega(mes).find(function(x){return (x.chave||'').toLowerCase()===(chave||'').toLowerCase();}); nome=rr?rr.nome:chave; }
+  _gamDetNome=nome;
+  var ehAdmin=state.sessao&&state.sessao.cargo==='Administrador';
+  var validados=lista.filter(function(r){return r.validado;}).length;
   var linhas = lista.map(function(r){
     var d=r.data?new Date(r.data):null; var ds=(d&&!isNaN(d))?d.toLocaleDateString('pt-BR'):'—';
-    return '<tr class="border-b border-slate-50"><td class="py-2 pr-2 font-medium text-slate-700">'+esc(r.empresa)+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2"><span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-50 text-emerald-700">'+esc(r.status)+'</span></td><td class="text-right text-slate-400 text-xs whitespace-nowrap">'+ds+'</td></tr>';
+    var badge = r.validado ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 text-emerald-700 font-bold">✅ validado</span>'
+      : (r.temAnexo ? '<span class="px-2 py-0.5 rounded-full text-[11px] bg-amber-100 text-amber-700 font-bold">⚠ pendente</span>'
+                    : '<span class="px-2 py-0.5 rounded-full text-[11px] bg-red-100 text-red-600 font-bold">✗ sem anexo</span>');
+    var acoes='';
+    if(!r.validado){
+      if(r.temAnexo) acoes+='<button onclick="_gamValidarAlvaraIA(\''+r.aid+'\',\''+r.mesConc+'\')" class="px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 mr-1">🤖 Validar</button>';
+      if(ehAdmin) acoes+='<button onclick="_gamConfirmarAnexoManual(\''+r.aid+'\',\''+r.mesConc+'\')" class="px-2 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700" title="Confirmar manualmente (admin)">✔</button>';
+    }
+    return '<tr class="border-b border-slate-50 '+(r.validado?'':'bg-amber-50/40')+'"><td class="py-2 pr-2 font-medium text-slate-700">'+esc(r.empresa)+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2">'+badge+'</td><td class="text-right text-slate-400 text-xs whitespace-nowrap pr-2">'+ds+'</td><td class="text-right whitespace-nowrap">'+acoes+'</td></tr>';
   }).join('');
   var corpo = lista.length
-    ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Status</th><th class="text-right">Concluído</th></tr></thead><tbody>'+linhas+'</tbody></table>'
+    ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Anexo</th><th class="text-right pr-2">Concluído</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table>'
     : '<div class="text-center text-slate-400 py-10">Nenhum alvará concluído neste mês.</div>';
-  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><div><h3 class="text-lg font-bold text-slate-800">✅ Alvarás concluídos</h3><p class="text-xs text-slate-500">'+esc(nome)+' · '+_gamMesLabel(mes)+' · <strong>'+lista.length+'</strong> alvará(s)</p></div><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button></div><div class="p-5 max-h-[60vh] overflow-auto">'+corpo+'</div>');
+  var resumo = lista.length ? ('<strong>'+validados+'</strong> de <strong>'+lista.length+'</strong> validados (só validados contam no ranking)') : '';
+  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><div><h3 class="text-lg font-bold text-slate-800">✅ Alvarás concluídos</h3><p class="text-xs text-slate-500">'+esc(nome)+' · '+_gamMesLabel(mes)+' · '+resumo+'</p></div><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button></div><div class="p-5 max-h-[60vh] overflow-auto">'+corpo+'</div>');
 }
+
 /* ===== v6.15.0 — Corrida da Produtividade em PISTA (circuito) — modo monitor/TV ===== */
 function _gamAbrirCorrida(){
   var mes=(typeof _gamMes!=='undefined'&&_gamMes)?_gamMes:_gamMesAtual();
