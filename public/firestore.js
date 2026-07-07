@@ -22,6 +22,11 @@ function _semAnexosPesados(edicoes) {
   return out;
 }
 
+function _coletarFotosUsuarios(){
+  var m = {};
+  (state.usuarios||[]).forEach(function(u){ if(u && u.email && u.foto && String(u.foto).length>50){ m[(u.email||'').toLowerCase()] = u.foto; } });
+  return m;
+}
 function _fsCollectFromState() {
   var out = {
     ciencias_por_usuario: state.ciencias_por_usuario || {},
@@ -30,6 +35,7 @@ function _fsCollectFromState() {
     historico: (state.historico || []).slice(0, 500),
     edicoes_alvaras: _semAnexosPesados(state.edicoes_alvaras || {}),
     edicoes_empresas: state.edicoes_empresas || {},
+    fotos_usuarios: _coletarFotosUsuarios(),
     last_modified_by: state.sessao?.nome || 'desconhecido',
     last_modified_at: firebase.firestore.FieldValue.serverTimestamp()
   };
@@ -72,6 +78,14 @@ function _uniPorId(local, remoto){
 function _fsApplyToState(remote) {
   if (!remote) return false;
   let changed = false;
+  // v6.3.1 — sincroniza fotos de usuarios entre dispositivos (por email)
+  if (remote && remote.fotos_usuarios && typeof remote.fotos_usuarios === 'object') {
+    (state.usuarios||[]).forEach(function(u){
+      if(!u || !u.email) return;
+      var f = remote.fotos_usuarios[(u.email||'').toLowerCase()];
+      if(f && f !== u.foto){ u.foto = f; changed = true; }
+    });
+  }
   // v6.2.0 — config de premiacao (valor por alvara): adota a versao mais recente
   if (remote && remote.gamificacao && typeof remote.gamificacao === 'object') {
     var _lg = state.gamificacao || null; var _rg = remote.gamificacao;
