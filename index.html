@@ -676,6 +676,7 @@ function renderLayout(content){
     {key:'execucao', label:'Em Execução', icon:'▶️'},
     {key:'dashboard', label:'Dashboard', icon:'📊'},
     {key:'premiacao', label:'Premiação', icon:'🏆'},
+    ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
     {key:'alertas', label:'Alertas', icon:'🔔'},
     {key:'historico', label:'Histórico', icon:'🕒'},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
@@ -834,23 +835,7 @@ function renderPremiacao(){
         </div>
       </div>
     </header>
-    ${ehAdmin ? `<div class="bg-white rounded-xl border border-slate-200 p-4 mb-5">
-      <div class="flex items-end gap-3 flex-wrap">
-        <div>
-          <label class="block text-xs font-bold text-slate-600 uppercase mb-1">⚙️ Valor por alvara concluido (R$)</label>
-          <input id="gam-valor-input" type="number" step="0.01" min="0" value="${val}" class="w-40 px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-amber-500 outline-none" />
-        </div>
-        <button onclick="_gamSalvar()" class="px-4 py-2 bg-amber-600 text-white rounded-lg font-semibold text-sm hover:bg-amber-700 shadow">Salvar</button>
-        <span class="text-xs text-slate-400">Somente o administrador ve e altera.</span>
-      </div>
-      <div class="mt-3">
-        <div class="text-xs font-bold text-slate-600 uppercase mb-2">Status que contam como concluido (pagam)</div>
-        <div class="flex flex-wrap gap-2">
-          ${_GAM_STATUS_CANDIDATOS.map(function(s){ var on=setAtual.indexOf(s)>=0; return '<label class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer '+(on?'border-amber-400 bg-amber-50 text-amber-800':'border-slate-200 text-slate-500')+'"><input type="checkbox" class="gam-status-chk" value="'+esc(s)+'" '+(on?'checked':'')+'/> '+esc(s)+'</label>'; }).join('')}
-        </div>
-        <div class="text-[11px] text-slate-400 mt-2">Marque quais status contam. Depois clique em <strong>Salvar</strong>. Vale para todos e sincroniza.</div>
-      </div>
-    </div>` : ''}
+    ${ehAdmin ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800 flex items-center justify-between flex-wrap gap-2"><span>⚙️ Os valores e regras ficam em um menu separado.</span><button onclick="setState({page:'valores'})" class="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-semibold text-xs hover:bg-amber-700">Abrir 💰 Valores</button></div>` : ''}
     ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_gamMesLabel(mesSel)} ainda.</div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
@@ -888,6 +873,101 @@ function renderPremiacao(){
   </div>`;
 }
 
+/* ===== v6.4.0 — Menu separado: Tabela de Valores de Produtividade (por atividade) ===== */
+var _GAM_TABELA_PADRAO = [
+  {atividade:'Bombeiro', prazo:'9 Dias', valor:10, peso:5},
+  {atividade:'Funcionamento - Aparecida', prazo:'2 Meses', valor:10, peso:8},
+  {atividade:'Funcionamento - Outros', prazo:'1 Mês e Meio', valor:10, peso:8},
+  {atividade:'Funcionamento', prazo:'3 Meses', valor:10, peso:8},
+  {atividade:'Sanitário - Aparecida', prazo:'2 Meses', valor:10, peso:8},
+  {atividade:'Sanitário - Outros', prazo:'1 Mês e Meio', valor:10, peso:8},
+  {atividade:'Sanitário', prazo:'3 Meses', valor:5, peso:5},
+  {atividade:'Ambiental - Aparecida', prazo:'2 Meses', valor:10, peso:6},
+  {atividade:'Ambiental - Outros', prazo:'1 Mês e Meio', valor:10, peso:8},
+  {atividade:'Ambiental', prazo:'6 Meses', valor:5, peso:4},
+  {atividade:'H. Especial', prazo:'14 Dias', valor:5, peso:1},
+  {atividade:'Veículo', prazo:'21 Dias', valor:5, peso:3},
+  {atividade:'Inpi', prazo:'15 Meses', valor:50, peso:8},
+  {atividade:'Calçada', prazo:'6 Meses', valor:8, peso:5},
+  {atividade:'Constituição', prazo:'5 Dias', valor:6, peso:7},
+  {atividade:'Alteração', prazo:'7 Dias', valor:5, peso:9},
+  {atividade:'Baixa', prazo:'3 Dias', valor:4, peso:2},
+  {atividade:'Faturamento', prazo:'1 Dia', valor:2, peso:2}
+];
+function _gamTabela(){ var g=state.gamificacao||{}; return (Array.isArray(g.tabela)&&g.tabela.length)?g.tabela:_GAM_TABELA_PADRAO; }
+function _gamTabelaWork(){ if(!Array.isArray(window._gamTabelaTmp)) window._gamTabelaTmp=_gamTabela().map(function(r){return {atividade:r.atividade,prazo:r.prazo||'',valor:(+r.valor||0),peso:(+r.peso||0)};}); return window._gamTabelaTmp; }
+function _gamSyncInputs(){ var w=_gamTabelaWork(); document.querySelectorAll('#gam-tab-body tr[data-idx]').forEach(function(tr){ var i=+tr.getAttribute('data-idx'); if(!w[i])return; var q=function(f){return tr.querySelector('[data-f="'+f+'"]');}; if(q('atividade'))w[i].atividade=q('atividade').value; if(q('prazo'))w[i].prazo=q('prazo').value; if(q('valor'))w[i].valor=parseFloat((q('valor').value||'0').toString().replace(',','.'))||0; if(q('peso'))w[i].peso=parseInt(q('peso').value)||0; }); }
+function _gamAddRow(){ _gamSyncInputs(); _gamTabelaWork().push({atividade:'',prazo:'',valor:0,peso:0}); render(); }
+function _gamRmRow(i){ _gamSyncInputs(); _gamTabelaWork().splice(i,1); render(); }
+function _gamSalvarValores(){
+  if(!(state.sessao&&state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode alterar os valores.'); return; }
+  _gamSyncInputs();
+  var tab=_gamTabelaWork().filter(function(r){return (r.atividade||'').trim();}).map(function(r){return {atividade:(r.atividade||'').trim(),prazo:r.prazo||'',valor:(+r.valor||0),peso:(+r.peso||0)};});
+  var vEl=document.getElementById('gam-valor-input'); var v=vEl?parseFloat((vEl.value||'').toString().replace(',','.')):_gamValor(); if(isNaN(v)||v<0)v=0;
+  var chks=Array.prototype.slice.call(document.querySelectorAll('.gam-status-chk')).filter(function(c){return c.checked;}).map(function(c){return c.value;});
+  state.gamificacao=state.gamificacao||{};
+  state.gamificacao.tabela=tab;
+  state.gamificacao.valorPorAlvara=v;
+  if(chks.length) state.gamificacao.statusConcluido=chks;
+  state.gamificacao.atualizado_em=new Date().toISOString();
+  state.gamificacao.atualizado_por=state.sessao?(state.sessao.email||state.sessao.nome):'';
+  try{ if(typeof log==='function') log('Config valores produtividade','tabela',tab.length+' atividades'); }catch(e){}
+  window._gamTabelaTmp=null;
+  saveState(); render();
+  if(typeof toast==='function') toast('Tabela de valores salva ('+tab.length+' atividades)','emerald');
+}
+function renderValores(){
+  if(!(state.sessao&&state.sessao.cargo==='Administrador')) return '<div class="p-10 text-center text-slate-400">🔒 Acesso restrito ao administrador.</div>';
+  var w=_gamTabelaWork(); var setAtual=_gamStatusSet(); var val=_gamValor();
+  return `
+  <div class="p-6 max-w-4xl mx-auto">
+    <header class="mb-5 flex items-start justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">💰 Valores de Produtividade</h1>
+        <p class="text-sm text-slate-500 mt-1">Defina o valor pago por atividade concluída. Só o administrador vê e altera — vale para todos e sincroniza.</p>
+      </div>
+      <button onclick="_gamSalvarValores()" class="px-5 py-2.5 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 shadow-lg shadow-amber-500/30">💾 Salvar tudo</button>
+    </header>
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-5">
+      <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+        <h2 class="font-bold text-slate-800">Tabela de atividades</h2>
+        <span class="text-xs text-slate-400">${w.length} atividades</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100 bg-slate-50">
+            <th class="py-2 px-3">Atividade</th><th class="px-2">Prazo de conclusão</th><th class="px-2 w-32">Valor (R$)</th><th class="px-2 w-24">Peso</th><th class="px-2 w-10"></th>
+          </tr></thead>
+          <tbody id="gam-tab-body">
+            ${w.map(function(r,i){ return `<tr data-idx="${i}" class="border-b border-slate-50">
+              <td class="py-1.5 px-3"><input data-f="atividade" value="${esc(r.atividade||'')}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none font-medium text-slate-700"></td>
+              <td class="px-2"><input data-f="prazo" value="${esc(r.prazo||'')}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none text-slate-500"></td>
+              <td class="px-2"><div class="flex items-center gap-1"><span class="text-slate-400 text-xs">R$</span><input data-f="valor" type="number" step="0.01" min="0" value="${(+r.valor||0)}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none font-semibold text-emerald-700"></div></td>
+              <td class="px-2"><input data-f="peso" type="number" min="0" value="${(+r.peso||0)}" class="w-full px-2 py-1.5 border border-slate-200 rounded-lg focus:border-amber-500 outline-none text-center"></td>
+              <td class="px-2 text-center"><button onclick="_gamRmRow(${i})" title="Remover" class="text-red-500 hover:bg-red-50 rounded px-1.5 py-1">🗑</button></td>
+            </tr>`; }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="p-3"><button onclick="_gamAddRow()" class="px-3 py-2 text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg">➕ Adicionar atividade</button></div>
+    </div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Valor padrão (fallback)</label>
+        <p class="text-[11px] text-slate-400 mb-2">Usado quando o tipo do alvará não estiver na tabela acima.</p>
+        <div class="flex items-center gap-1 w-40"><span class="text-slate-400 text-sm">R$</span><input id="gam-valor-input" type="number" step="0.01" min="0" value="${val}" class="w-full px-3 py-2 border-2 border-slate-200 rounded-lg focus:border-amber-500 outline-none"></div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-4">
+        <div class="text-xs font-bold text-slate-600 uppercase mb-2">Status que contam como concluído (pagam)</div>
+        <div class="flex flex-wrap gap-2">
+          ${_GAM_STATUS_CANDIDATOS.map(function(s){ var on=setAtual.indexOf(s)>=0; return '<label class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border cursor-pointer '+(on?'border-amber-400 bg-amber-50 text-amber-800':'border-slate-200 text-slate-500')+'"><input type="checkbox" class="gam-status-chk" value="'+esc(s)+'" '+(on?'checked':'')+'/> '+esc(s)+'</label>'; }).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="mt-5 text-center"><button onclick="_gamSalvarValores()" class="px-6 py-2.5 bg-amber-600 text-white rounded-lg font-bold text-sm hover:bg-amber-700 shadow-lg shadow-amber-500/30">💾 Salvar tudo</button></div>
+  </div>`;
+}
+
 // ============ Page Router ============
 function renderPage(){
   if (state.empresaAtiva) return renderEmpresaDetalhe();
@@ -896,6 +976,7 @@ function renderPage(){
     case 'empresas': return renderEmpresas();
     case 'dashboard': return renderDashboard();
     case 'premiacao': return renderPremiacao();
+    case 'valores': return renderValores();
     case 'alertas': return renderAlertas();
     case 'historico': return renderHistorico();
     case 'novas': return renderNovasEmpresas();
