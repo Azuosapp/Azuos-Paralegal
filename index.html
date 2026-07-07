@@ -71,9 +71,7 @@ try {
     console.log('[v5.7.58] matou '+matos+' setIntervals empilhados (<5s)');
     // E reinstala apenas os ESSENCIAIS com frequência aumentada
     // 1. aplicarUsuariosOficiais (uma vez a cada 60s é suficiente)
-    if(typeof aplicarUsuariosOficiais === 'function'){
-      setInterval(aplicarUsuariosOficiais, 60000);
-    }
+    /* v6.6.0: consolidado em _sincUsuariosOficiais (driver unico acima) */
     // 2. _detectarESalvarEdicoes54 (10s ao invés de 4s)
     if(typeof window._detectarESalvarEdicoes54 === 'function'){
       /* v6.0.11 perf: duplicata do detector removida (ja registrado 1x) */ void 0;
@@ -413,6 +411,46 @@ function _azuosBannerErro(rec){
 }
 window.addEventListener('error', function(ev){ _azuosRegistrarErro('js', (ev&&ev.error)||{message:ev&&ev.message}); });
 window.addEventListener('unhandledrejection', function(ev){ _azuosRegistrarErro('promise', (ev&&ev.reason)||{message:'rejeicao'}); });
+
+// v6.6.0 — rotina UNICA e canonica de usuarios oficiais (substitui as 4 rotinas antigas que brigavam entre si e apagavam fotos)
+var _AZUOS_USUARIOS_OFICIAIS = [
+  {email:'contato@azuoscontabil.com.br', nome:'AZUOS Admin', cargo:'Administrador'},
+  {email:'comercial@azuoscontabil.com.br', nome:'Comercial', cargo:'Administrador'},
+  {email:'thierrymforte@gmail.com', nome:'Thierry', cargo:'Administrador'},
+  {email:'camila@azuoscontabil.com.br', nome:'Camila', cargo:'Paralegal'},
+  {email:'ketrin@azuoscontabil.com.br', nome:'Ketrin', cargo:'Paralegal'},
+  {email:'leyla@azuoscontabil.com.br', nome:'Leyla', cargo:'Paralegal'},
+  {email:'luanna@azuoscontabil.com.br', nome:'Luanna', cargo:'Paralegal'},
+  {email:'diogenes@azuoscontabil.com.br', nome:'Diogenes', cargo:'Paralegal'}
+];
+function _sincUsuariosOficiais(){
+  try{
+    if(!state || !Array.isArray(state.usuarios)) return;
+    // mapa de fotos: duravel (nunca some) + atuais
+    var fotos = {};
+    try{ if(state.fotos_usuarios) Object.keys(state.fotos_usuarios).forEach(function(k){ var v=state.fotos_usuarios[k]; if(v && String(v).length>30) fotos[(k||'').toLowerCase().trim()]=v; }); }catch(e){}
+    (state.usuarios||[]).forEach(function(u){ if(u&&u.email&&u.foto&&String(u.foto).length>30) fotos[(u.email||'').toLowerCase().trim()]=u.foto; });
+    var canon = _AZUOS_USUARIOS_OFICIAIS.map(function(o){
+      var em=o.email.toLowerCase().trim();
+      var atual=(state.usuarios||[]).find(function(u){ return u&&(u.email||'').toLowerCase().trim()===em; });
+      return {
+        id: (typeof idDoEmail==='function')?idDoEmail(o.email):((atual&&atual.id)||em),
+        nome:o.nome, email:o.email,
+        cargo:(atual&&atual.cargo)||o.cargo,
+        foto: fotos[em]||'',
+        ativo: atual?(atual.ativo!==false):true
+      };
+    });
+    function assinatura(arr){ return JSON.stringify((arr||[]).map(function(u){ return [u.id,(u.email||'').toLowerCase(),u.nome,u.cargo,(u.foto||'').length,u.ativo!==false]; })); }
+    if(assinatura(state.usuarios)!==assinatura(canon)){
+      state.usuarios = canon;
+      try{ if(typeof saveState==='function') saveState(); }catch(e){}
+      try{ if(typeof render==='function') render(); }catch(e){}
+    }
+  }catch(e){}
+}
+setTimeout(function(){ try{ _sincUsuariosOficiais(); }catch(e){} }, 4000);
+setInterval(function(){ try{ _sincUsuariosOficiais(); }catch(e){} }, 60000);
 
 // v6.5.0 — preserva fotos por e-mail em qualquer reset de usuarios (usa mapa duravel state.fotos_usuarios)
 function _preservaFotosOficiais(lista){
@@ -4920,9 +4958,9 @@ function abrirBaselineDialog() {
   }, 4000);
 
   // Aplicar usuarios oficiais a cada 3s
-  setInterval(aplicarUsuarios, 3000);
-  setTimeout(aplicarUsuarios, 5000);
-  setTimeout(aplicarUsuarios, 10000);
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
 
   // [v6.0.5] Auto-save reduzido de 30s para 5min (era spam de CPU)
   setInterval(function(){
@@ -5066,9 +5104,9 @@ function abrirBaselineDialog() {
   }, 4000);
 
   // Aplicar usuarios oficiais periodicamente
-  setInterval(aplicarUsuarios, 4000);
-  setTimeout(aplicarUsuarios, 6000);
-  setTimeout(aplicarUsuarios, 12000);
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
 
   // Botões matcher
   setInterval(function(){
@@ -5294,9 +5332,9 @@ function abrirBaselineDialog() {
       }
     } catch(e) { console.warn('[v5.7.20]', e); }
   }
-  setInterval(aplicarUsuariosOficiais, 3000);
-  setTimeout(aplicarUsuariosOficiais, 5000);
-  setTimeout(aplicarUsuariosOficiais, 12000);
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
+  /* v6.6.0: consolidado em _sincUsuariosOficiais */
   console.log('[v5.7.20] IDs numericos aplicados');
 })();
 
