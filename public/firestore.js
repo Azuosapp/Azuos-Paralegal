@@ -49,6 +49,7 @@ function _fsCollectFromState() {
     historico: (state.historico || []).slice(0, 500),
     edicoes_alvaras: _semAnexosPesados(state.edicoes_alvaras || {}),
     edicoes_empresas: state.edicoes_empresas || {},
+    usuarios_removidos: state.usuarios_removidos || [],
     fotos_usuarios: _coletarFotosUsuarios(),
     last_modified_by: state.sessao?.nome || 'desconhecido',
     last_modified_at: firebase.firestore.FieldValue.serverTimestamp()
@@ -92,6 +93,11 @@ function _uniPorId(local, remoto){
 function _fsApplyToState(remote) {
   if (!remote) return false;
   let changed = false;
+  // v6.9.0 — sincroniza lista de usuarios removidos (uniao) para exclusao valer em todos
+  if (remote && Array.isArray(remote.usuarios_removidos)) {
+    state.usuarios_removidos = state.usuarios_removidos || [];
+    remote.usuarios_removidos.forEach(function(e){ var em=(e||'').toLowerCase().trim(); if(em && state.usuarios_removidos.indexOf(em)<0){ state.usuarios_removidos.push(em); changed=true; } });
+  }
   // v6.3.1 — sincroniza fotos de usuarios entre dispositivos (por email)
   if (remote && remote.fotos_usuarios && typeof remote.fotos_usuarios === 'object') {
     state.fotos_usuarios = state.fotos_usuarios || {};

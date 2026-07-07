@@ -434,7 +434,8 @@ function _preservaFotosOficiais(lista){
   try{ if(state.fotos_usuarios && typeof state.fotos_usuarios==='object'){ Object.keys(state.fotos_usuarios).forEach(function(k){ var v=state.fotos_usuarios[k]; if(v && String(v).length>30) fotos[(k||'').toLowerCase().trim()]=v; }); } }catch(e){}
   try{ (state.usuarios||[]).forEach(function(u){ if(u&&u.email&&u.foto&&String(u.foto).length>30) fotos[(u.email||'').toLowerCase().trim()]=u.foto; }); }catch(e){}
   try{
-    return JSON.parse(JSON.stringify(lista||[])).map(function(u){ var f=fotos[(u.email||'').toLowerCase().trim()]; if(f){ u.foto=f; } return u; });
+    var _rem=(state.usuarios_removidos||[]).map(function(e){return (e||'').toLowerCase().trim();});
+    return JSON.parse(JSON.stringify(lista||[])).map(function(u){ var f=fotos[(u.email||'').toLowerCase().trim()]; if(f){ u.foto=f; } return u; }).filter(function(u){ return _rem.indexOf((u.email||'').toLowerCase().trim())<0; });
   }catch(e){ return lista||[]; }
 }
 function render() {
@@ -2932,8 +2933,8 @@ function renderUsuarios(){
             </div>
             <div class="flex-1"><h3 class="font-semibold text-slate-800">${esc(u.nome)}</h3><p class="text-xs text-slate-500 mb-1">${esc(u.cargo)}</p><p class="text-xs text-slate-500 truncate">${esc(u.email)}</p></div>
             <div class="flex gap-1 mt-3 pt-3 border-t border-slate-100">
-              <button onclick="openModalUsuario(${u.id})" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50">Editar</button>
-              <button onclick="excluirUsuario(${u.id})" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50">Excluir</button>
+              <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50">Editar</button>
+              <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50">Excluir</button>
             </div>
           </div>`).join('')}
       </div>
@@ -3014,7 +3015,7 @@ function openModalUsuario(id) {
     var inp = document.getElementById('fu-foto-file');
     if (inp) inp.onchange = function(e){ var file = e.target.files && e.target.files[0]; if (file) _fotoAbrirCropper(file); e.target.value=''; };
   }, 120);
-  const u = id ? state.usuarios.find(x=>x.id===id) : {nome:'', email:'', cargo:'Paralegal', ativo:true};
+  const u = id ? state.usuarios.find(x=>String(x.id)===String(id)) : {nome:'', email:'', cargo:'Paralegal', ativo:true};
   showModal(`
     <div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-semibold">${id?'Editar':'Novo'} Usuário</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button></div>
     <div class="p-5 space-y-4">
@@ -3034,7 +3035,7 @@ function openModalUsuario(id) {
     </div>
     <div class="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
       <button onclick="closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Cancelar</button>
-      <button onclick="salvarUsuario(${id||'null'})" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Salvar</button>
+      <button onclick="salvarUsuario(${id?("'"+String(id)+"'"):'null'})" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Salvar</button>
     </div>
   `);
 }
@@ -3042,9 +3043,10 @@ function salvarUsuario(id){
   const nome = document.getElementById('fu-nome').value.trim();
   if (!nome) { alert('Nome é obrigatório'); return; }
   const data = {foto: (window._fotoTmp !== null ? window._fotoTmp : (u && u.foto) || ''), nome, email: document.getElementById('fu-email').value.trim(), cargo: document.getElementById('fu-cargo').value, ativo: document.getElementById('fu-ativo').value==='1'};
+  try{ if(data.email && Array.isArray(state.usuarios_removidos)){ var _e=(data.email||'').toLowerCase().trim(); state.usuarios_removidos = state.usuarios_removidos.filter(function(x){return x!==_e;}); } }catch(e){}
   try{ state.fotos_usuarios = state.fotos_usuarios || {}; if(data.foto && data.email) state.fotos_usuarios[(data.email||'').toLowerCase().trim()] = data.foto; }catch(e){}
   if (id) {
-    state.usuarios = state.usuarios.map(x => x.id===id ? {...x, ...data}:x);
+    state.usuarios = state.usuarios.map(x => String(x.id)===String(id) ? {...x, ...data}:x);
     log('Editou usuário', nome);
   } else {
     state.usuarios.push({id: uid(state.usuarios), ...data});
@@ -3053,10 +3055,12 @@ function salvarUsuario(id){
   closeModal(); saveState(); render();
 }
 function excluirUsuario(id){
-  const u = state.usuarios.find(x=>x.id===id);
+  const u = state.usuarios.find(x=>String(x.id)===String(id));
+  if (!u) { alert('Usuário não encontrado. Recarregue a página (Ctrl+Shift+R) e tente de novo.'); return; }
   if (confirm(`Excluir usuário "${u.nome}"?`)) {
     log('Excluiu usuário', u.nome);
-    state.usuarios = state.usuarios.filter(x=>x.id!==id);
+    if (u.email) { state.usuarios_removidos = state.usuarios_removidos || []; var _em=(u.email||'').toLowerCase().trim(); if(state.usuarios_removidos.indexOf(_em)<0) state.usuarios_removidos.push(_em); }
+    state.usuarios = state.usuarios.filter(x=>String(x.id)!==String(id));
     saveState(); render();
   }
 }
@@ -4666,6 +4670,7 @@ function abrirBaselineDialog() {
     try {
       if (!user || !user.email || !state || !Array.isArray(state.usuarios)) return;
       var email = String(user.email).toLowerCase().trim();
+      if(Array.isArray(state.usuarios_removidos) && state.usuarios_removidos.indexOf(email)>=0) return;
       var idEstavel = _idDoEmail(email);
       var existente = state.usuarios.find(function(u){
         return u && String(u.email||'').toLowerCase() === email;
@@ -6853,6 +6858,7 @@ window._autoSyncUsuarios = async function(){
         }
         return uFS;
       });
+      usrsMerged = usrsMerged.filter(function(u){ return !Array.isArray(state.usuarios_removidos) || state.usuarios_removidos.indexOf((u.email||'').toLowerCase().trim())<0; });
       state.usuarios = JSON.parse(JSON.stringify(usrsMerged));
       try{ if(typeof saveState==='function') saveState(); }catch(e){}
       try{ if(typeof renderApp==='function') renderApp(); }catch(e){}
