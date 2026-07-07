@@ -23,17 +23,22 @@ function _semAnexosPesados(edicoes) {
 }
 
 function _fsCollectFromState() {
-  return {
+  var out = {
     ciencias_por_usuario: state.ciencias_por_usuario || {},
     empresas_manuais: state.empresas_manuais || [],
     resumo_visto_por_usuario: state.resumo_visto_por_usuario || {},
     historico: (state.historico || []).slice(0, 500),
     edicoes_alvaras: _semAnexosPesados(state.edicoes_alvaras || {}),
     edicoes_empresas: state.edicoes_empresas || {},
-    gamificacao: state.gamificacao || null,
     last_modified_by: state.sessao?.nome || 'desconhecido',
     last_modified_at: firebase.firestore.FieldValue.serverTimestamp()
   };
+  // v6.2.2 — SOMENTE o administrador grava/altera a config de premiacao (valores/status).
+  // Clientes nao-admin nao enviam esse campo, entao nunca sobrescrevem o valor definido pelo gestor.
+  if (state.sessao && state.sessao.cargo === 'Administrador' && state.gamificacao) {
+    out.gamificacao = state.gamificacao;
+  }
+  return out;
 }
 
 // v6.0.7 — reanexa o base64 local aos anexos vindos da nuvem (que vem sem 'dados'),
