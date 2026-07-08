@@ -200,21 +200,19 @@ var _anexoPushFeito = {};         // chave -> true (evita repush)
 function _anexoDoc(id){ return window.fbDB.collection('azuos').doc(id); }
 
 function _anexoCloudPush(chave, dados, meta){
+  // v6.19.0 — grava DIRETO (sem leitura previa que travava quando offline).
+  // Marca como concluido SO apos o write completar, entao falhas permitem nova tentativa.
   try{
     if(!chave || !dados || typeof dados!=='string' || dados.indexOf('data:')!==0) return Promise.resolve(false);
     if(_anexoPushFeito[chave]) return Promise.resolve(true);
     if(!window.fbDB) return Promise.resolve(false);
-    var base = _anexoDoc(_ANEXO_PREFIX + chave);
-    // Se ja existe na nuvem, nao regrava (economiza quota; outros navegadores nem tem o arquivo local)
-    return base.get().then(function(doc){
-      if(doc && doc.exists){ _anexoPushFeito[chave]=true; return true; }
-      var chunks=[]; for(var i=0;i<dados.length;i+=_ANEXO_CH){ chunks.push(dados.slice(i,i+_ANEXO_CH)); }
-      var head = { n: chunks.length, nome:(meta&&meta.nome)||'', tipo:(meta&&meta.tipo)||'', ts: Date.now() };
-      if(chunks.length===1){ head.d = chunks[0]; return base.set(head).then(function(){ _anexoPushFeito[chave]=true; return true; }); }
-      var ps=[ base.set(head) ];
-      for(var j=0;j<chunks.length;j++){ ps.push(_anexoDoc(_ANEXO_PREFIX + chave + '__' + j).set({ d: chunks[j] })); }
-      return Promise.all(ps).then(function(){ _anexoPushFeito[chave]=true; return true; });
-    }).catch(function(e){ try{ console.warn('[anexo push]', (e&&e.message)||e); }catch(_){}; return false; });
+    var chunks=[]; for(var i=0;i<dados.length;i+=_ANEXO_CH){ chunks.push(dados.slice(i,i+_ANEXO_CH)); }
+    var head = { n: chunks.length, nome:(meta&&meta.nome)||'', tipo:(meta&&meta.tipo)||'', ts: Date.now() };
+    var ps;
+    if(chunks.length===1){ head.d = chunks[0]; ps = [ _anexoDoc(_ANEXO_PREFIX + chave).set(head) ]; }
+    else { ps = [ _anexoDoc(_ANEXO_PREFIX + chave).set(head) ]; for(var j=0;j<chunks.length;j++){ ps.push(_anexoDoc(_ANEXO_PREFIX + chave + '__' + j).set({ d: chunks[j] })); } }
+    return Promise.all(ps).then(function(){ _anexoPushFeito[chave]=true; return true; })
+      .catch(function(e){ try{ console.warn('[anexo push]', (e&&e.message)||e); }catch(_){}; return false; });
   }catch(e){ return Promise.resolve(false); }
 }
 
@@ -238,17 +236,16 @@ function _anexoCloudFetch(chave){
   }catch(e){ return Promise.resolve(null); }
 }
 
-var _anexoBackfillFeito = false;
+var _anexoBackfillTs = 0;
 function _anexoBackfillCloud(){
-  // Roda uma vez por sessao: o navegador que TEM os anexos locais empurra
-  // para a nuvem os que ainda nao subiram. Outros navegadores nao tem o
-  // base64 local, entao simplesmente nao encontram nada e ignoram.
+  // v6.19.0 — roda periodicamente (throttle 4s), nao mais uma unica vez.
+  // O navegador que TEM o arquivo local empurra para a nuvem os que ainda
+  // nao subiram; se o Firestore estiver offline, tenta de novo no proximo ciclo.
   try{
-    if(_anexoBackfillFeito) return;
     if(!window.fbDB || typeof _idbGet!=='function' || typeof state==='undefined') return;
-    _anexoBackfillFeito = true;
+    var now = Date.now(); if(now - _anexoBackfillTs < 4000) return; _anexoBackfillTs = now;
     var vistos={}, lista=[];
-    function scan(c){ if(c && Array.isArray(c.anexos)) c.anexos.forEach(function(a){ if(a && a._idb && !vistos[a._idb]){ vistos[a._idb]=1; lista.push({ id:a._idb, nome:a.nome, tipo:a.tipo }); } }); }
+    function scan(c){ if(c && Array.isArray(c.anexos)) c.anexos.forEach(function(a){ if(a && a._idb && !_anexoPushFeito[a._idb] && !vistos[a._idb]){ vistos[a._idb]=1; lista.push({ id:a._idb, nome:a.nome, tipo:a.tipo }); } }); }
     (state.alvaras||[]).forEach(scan);
     if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan(state.edicoes_alvaras[k]); });
     lista.forEach(function(it){
