@@ -679,7 +679,7 @@ function renderLayout(content){
   const ehAdmin = state.sessao && state.sessao.cargo === 'Administrador';
   // Contar empresas novas para o usuário ATUAL — apenas ATIVO
   const conhecidasKeys = _cienciasUsr().map(c => c.key);
-  const novas = (state.empresas || []).filter(e => (e.status||'').toUpperCase() === 'ATIVO' && !conhecidasKeys.includes(empresaKey(e)));
+  const novas = (state.empresas || []).filter(e => (e.status||'').toUpperCase() === 'ATIVO' && !_empresaTemCiencia(e));
   const badgeNovas = novas.length > 0 ? `<span class="ml-auto bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-red-500/40 pulse-soft">${novas.length}</span>` : '';
   // Calcula badge do resumo (pendências do dia) — paralegal vê só do dele; admin vê tudo
   const hojeStr = new Date(); hojeStr.setHours(0,0,0,0);
@@ -3780,6 +3780,23 @@ function _cienciasUsr(){
   keys.forEach(function(k){ var arr=cpu[k]; if(Array.isArray(arr)) arr.forEach(function(c){ if(c && c.key && !seen[c.key]){ seen[c.key]=1; out.push(c); } }); });
   return out;
 }
+// v6.17.0 — reconhece ciencia por CNPJ OU nome (a chave nome|cnpj muda quando a planilha corrige o cadastro)
+var _cidxCache=null, _cidxStamp=null;
+function _cienciaIndex(){
+  var cien=_cienciasUsr(); var stamp=cien.length;
+  if(_cidxCache && _cidxStamp===stamp) return _cidxCache;
+  var porCnpj={}, porNome={};
+  cien.forEach(function(c){ var p=(c.key||'').split('|'); var cnpj=(p[1]||'').trim(); var nome=(p[0]||'').trim().toLowerCase(); if(cnpj) porCnpj[cnpj]=1; if(nome) porNome[nome]=1; });
+  _cidxCache={cnpj:porCnpj, nome:porNome}; _cidxStamp=stamp; return _cidxCache;
+}
+function _empresaTemCiencia(e){
+  if(!e) return false;
+  var idx=_cienciaIndex();
+  var cnpj=(e.cnpj||'').trim(); var nome=(e.nome||'').trim().toLowerCase();
+  if(cnpj && idx.cnpj[cnpj]) return true;
+  if(nome && idx.nome[nome]) return true;
+  return false;
+}
 function cienciasDoUsuarioAtual() {
   migrarConhecidasParaCiencia();
   return _cienciasUsr();
@@ -3845,7 +3862,7 @@ function renderNovasEmpresas() {
   const atuaisSet = new Set(atuaisKeysAtivo);
   const cienciasLimpas = _cienciasUsr().filter(c => atuaisSet.has(c.key));
   const conhecidasKeys = cienciasLimpas.map(c => c.key);
-  const novasFinal = empresasAtivo.filter(e => !conhecidasKeys.includes(empresaKey(e)));
+  const novasFinal = empresasAtivo.filter(e => !_empresaTemCiencia(e));
   const conhecidasFinal = cienciasLimpas;
 
   return `
@@ -4054,7 +4071,7 @@ function renderResumoDia() {
 
   // Novas empresas (paralegal vê só as que tem alvará dele OU sem responsável definido)
   const conhecidas = _cienciasUsr().map(c=>c.key);
-  let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !conhecidas.includes(empresaKey(e)));
+  let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !_empresaTemCiencia(e));
   if (!ehAdmin) {
     novasEmp = novasEmp.filter(e => (e.responsavel||'') === meuNome);
   }
@@ -4471,7 +4488,7 @@ function mostrarPopupResumoDia() {
   });
 
   const conhecidasKeys = _cienciasUsr().map(c => c.key);
-  let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !conhecidasKeys.includes(empresaKey(e)));
+  let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !_empresaTemCiencia(e));
   if (!ehAdmin) novasEmp = novasEmp.filter(e => (e.responsavel||'') === meuNome);
   // novasEmp já é por responsavel da empresa (correto)
 
