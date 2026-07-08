@@ -184,3 +184,77 @@ function _fsApplyToState(remote) {
   }
   return changed;
 }
+
+/* ============================================================
+   v6.18.0 — Sincronizacao de ARQUIVO dos anexos entre dispositivos.
+   Antes: o anexo (base64) ficava so no IndexedDB de quem enviou; so o
+   NOME sincronizava. Agora o base64 vai para docs pequenos na colecao
+   'azuos' (ja liberada nas rules): azuos/anx_<chave> (+ chunks se >0.8MB).
+   Nao usa Firebase Storage/plano pago. O app nunca le a colecao 'azuos'
+   inteira (so doc('shared')), entao docs irmaos nao atrapalham.
+   ============================================================ */
+var _ANEXO_PREFIX = 'anx_';
+var _ANEXO_CH = 800000;          // ~0.8MB por chunk (margem do limite de 1MB do Firestore)
+var _anexoCloudCache = {};        // chave -> base64 (cache de sessao)
+var _anexoPushFeito = {};         // chave -> true (evita repush)
+function _anexoDoc(id){ return window.fbDB.collection('azuos').doc(id); }
+
+function _anexoCloudPush(chave, dados, meta){
+  try{
+    if(!chave || !dados || typeof dados!=='string' || dados.indexOf('data:')!==0) return Promise.resolve(false);
+    if(_anexoPushFeito[chave]) return Promise.resolve(true);
+    if(!window.fbDB) return Promise.resolve(false);
+    var base = _anexoDoc(_ANEXO_PREFIX + chave);
+    // Se ja existe na nuvem, nao regrava (economiza quota; outros navegadores nem tem o arquivo local)
+    return base.get().then(function(doc){
+      if(doc && doc.exists){ _anexoPushFeito[chave]=true; return true; }
+      var chunks=[]; for(var i=0;i<dados.length;i+=_ANEXO_CH){ chunks.push(dados.slice(i,i+_ANEXO_CH)); }
+      var head = { n: chunks.length, nome:(meta&&meta.nome)||'', tipo:(meta&&meta.tipo)||'', ts: Date.now() };
+      if(chunks.length===1){ head.d = chunks[0]; return base.set(head).then(function(){ _anexoPushFeito[chave]=true; return true; }); }
+      var ps=[ base.set(head) ];
+      for(var j=0;j<chunks.length;j++){ ps.push(_anexoDoc(_ANEXO_PREFIX + chave + '__' + j).set({ d: chunks[j] })); }
+      return Promise.all(ps).then(function(){ _anexoPushFeito[chave]=true; return true; });
+    }).catch(function(e){ try{ console.warn('[anexo push]', (e&&e.message)||e); }catch(_){}; return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+
+function _anexoCloudFetch(chave){
+  try{
+    if(!chave) return Promise.resolve(null);
+    if(_anexoCloudCache[chave]) return Promise.resolve(_anexoCloudCache[chave]);
+    if(!window.fbDB) return Promise.resolve(null);
+    return _anexoDoc(_ANEXO_PREFIX + chave).get().then(function(doc){
+      if(!doc || !doc.exists) return null;
+      var data = doc.data() || {};
+      var n = data.n || 1;
+      if(n<=1){ if(data.d){ _anexoCloudCache[chave]=data.d; return data.d; } return null; }
+      var ps=[]; for(var j=0;j<n;j++){ ps.push(_anexoDoc(_ANEXO_PREFIX + chave + '__' + j).get()); }
+      return Promise.all(ps).then(function(docs){
+        var full=''; for(var k=0;k<docs.length;k++){ var dd=(docs[k]&&docs[k].data())||{}; full += (dd.d||''); }
+        if(full){ _anexoCloudCache[chave]=full; return full; }
+        return null;
+      });
+    }).catch(function(e){ try{ console.warn('[anexo fetch]', (e&&e.message)||e); }catch(_){}; return null; });
+  }catch(e){ return Promise.resolve(null); }
+}
+
+var _anexoBackfillFeito = false;
+function _anexoBackfillCloud(){
+  // Roda uma vez por sessao: o navegador que TEM os anexos locais empurra
+  // para a nuvem os que ainda nao subiram. Outros navegadores nao tem o
+  // base64 local, entao simplesmente nao encontram nada e ignoram.
+  try{
+    if(_anexoBackfillFeito) return;
+    if(!window.fbDB || typeof _idbGet!=='function' || typeof state==='undefined') return;
+    _anexoBackfillFeito = true;
+    var vistos={}, lista=[];
+    function scan(c){ if(c && Array.isArray(c.anexos)) c.anexos.forEach(function(a){ if(a && a._idb && !vistos[a._idb]){ vistos[a._idb]=1; lista.push({ id:a._idb, nome:a.nome, tipo:a.tipo }); } }); }
+    (state.alvaras||[]).forEach(scan);
+    if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan(state.edicoes_alvaras[k]); });
+    lista.forEach(function(it){
+      _idbGet(it.id).then(function(b64){
+        if(b64 && typeof b64==='string' && b64.indexOf('data:')===0){ _anexoCloudPush(it.id, b64, { nome:it.nome, tipo:it.tipo }); }
+      }).catch(function(){});
+    });
+  }catch(e){}
+}

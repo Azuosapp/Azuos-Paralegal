@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.17 (Logo horizontal)</title>
+<title>AZUOS Paralegal - Sistema v6.0.18 (Anexos sincronizados)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2412,9 +2412,16 @@ function _baixarAnexoIDB(el){
     var idb = (el && el.getAttribute) ? el.getAttribute('data-idb') : null;
     var nome = ((el && el.getAttribute) ? el.getAttribute('data-nome') : '') || 'anexo';
     if(!idb || typeof _idbGet!=='function') return false;
+    function _serve(b64){ var a=document.createElement('a'); a.href=b64; a.download=nome; document.body.appendChild(a); a.click(); a.remove(); }
     _idbGet(idb).then(function(b64){
-      if(b64){ var a=document.createElement('a'); a.href=b64; a.download=nome; document.body.appendChild(a); a.click(); a.remove(); }
-      else { alert('Anexo nao encontrado neste navegador.\n\nOs anexos ficam salvos localmente no navegador de quem os enviou.'); }
+      if(b64){ _serve(b64); return; }
+      // v6.18.0 — nao esta neste navegador: busca o arquivo na nuvem (sincronizado de quem enviou)
+      if(typeof _anexoCloudFetch==='function'){
+        _anexoCloudFetch(idb).then(function(cloud){
+          if(cloud){ try{ _idbPut(idb, cloud); }catch(e){} _serve(cloud); }
+          else { alert('Anexo ainda nao disponivel.\n\nEle sera sincronizado assim que o navegador de quem enviou ficar online. Tente novamente em alguns instantes.'); }
+        }).catch(function(e){ alert('Erro ao baixar anexo da nuvem: '+((e&&e.message)||e)); });
+      } else { alert('Anexo nao encontrado neste navegador.'); }
     }).catch(function(e){ alert('Erro ao abrir anexo: '+((e&&e.message)||e)); });
   }catch(e){}
   return false;
@@ -2429,6 +2436,7 @@ function adicionarAnexo(input) {
     var b64=e.target.result;
     var id='idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
     _idbPut(id, b64).then(function(){
+      try{ if(typeof _anexoCloudPush==='function') _anexoCloudPush(id, b64, {nome:_nome, tipo:_tipo}); }catch(e){}
       var dataField=document.getElementById('fa-anexos-data');
       var anexos=JSON.parse(dataField.value||'[]');
       anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:b64, _idb:id });
@@ -7957,6 +7965,6 @@ try{
   setInterval(tick,3000); setTimeout(tick,1500);
 })();
 </script>
-<script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}}if(n>60)clearInterval(iv);},500);})();</script>
+<script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}try{if(typeof _anexoBackfillCloud==="function")_anexoBackfillCloud();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}}if(n>60)clearInterval(iv);},500);})();</script>
 </body>
 </html>
