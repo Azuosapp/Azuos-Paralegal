@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.19 (Anexos sincronizados)</title>
+<title>AZUOS Paralegal - Sistema v6.0.20 (Anexos na plataforma)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2435,14 +2435,21 @@ function adicionarAnexo(input) {
   reader.onload=function(e){
     var b64=e.target.result;
     var id='idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
-    _idbPut(id, b64).then(function(){
-      try{ if(typeof _anexoCloudPush==='function') _anexoCloudPush(id, b64, {nome:_nome, tipo:_tipo}); }catch(e){}
-      var dataField=document.getElementById('fa-anexos-data');
-      var anexos=JSON.parse(dataField.value||'[]');
-      anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:b64, _idb:id });
-      dataField.value=JSON.stringify(anexos); renderAnexosLista(anexos);
-      if (typeof toast==='function') toast('\u2705 Anexo salvo', 'emerald');
-    }).catch(function(err){ console.error('[anexo idb]',err); alert('Nao foi possivel salvar o anexo no navegador: '+((err&&err.message)?err.message:err)); });
+    // v6.20.0 — mostra o anexo na hora e ENVIA para a plataforma (nuvem), confirmando o envio.
+    var dataField=document.getElementById('fa-anexos-data');
+    var anexos=JSON.parse((dataField&&dataField.value)||'[]');
+    anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:b64, _idb:id });
+    if(dataField) dataField.value=JSON.stringify(anexos);
+    try{ renderAnexosLista(anexos); }catch(e){}
+    if (typeof toast==='function') toast('\u2b06\ufe0f Enviando anexo para a plataforma...', 'blue');
+    // 1) cache local (IndexedDB)  2) envia para a plataforma (nuvem) e confirma para o usuario
+    _idbPut(id, b64).catch(function(){}).then(function(){
+      if(typeof _anexoCloudPush==='function') return _anexoCloudPush(id, b64, {nome:_nome, tipo:_tipo});
+      return false;
+    }).then(function(ok){
+      if(ok){ if(typeof toast==='function') toast('\u2705 Anexo salvo na plataforma \u2014 todos tem acesso', 'emerald'); }
+      else { if(typeof toast==='function') toast('\u2705 Anexo salvo. Concluindo envio a plataforma...', 'blue'); }
+    }).catch(function(err){ console.error('[anexo]',err); if(typeof toast==='function') toast('\u26a0\ufe0f Anexo salvo localmente; reenviando a plataforma...', 'red'); });
     input.value='';
     if (_tipo && _tipo.indexOf('image/')===0 && typeof Tesseract!=='undefined') { try{ iaLerDocumento(b64,_nome); }catch(e){} }
   };
