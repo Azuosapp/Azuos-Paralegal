@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.20 (Anexos na plataforma)</title>
+<title>AZUOS Paralegal - Sistema v6.0.21 (Ranking sem gestor)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -771,11 +771,17 @@ function _gamMesLabel(m){ var M=['Janeiro','Fevereiro','Marco','Abril','Maio','J
 function _gamValor(){ var g=state.gamificacao||{}; var v=parseFloat(g.valorPorAlvara); return isNaN(v)?0:v; }
 function _gamStatusSet(){ var g=state.gamificacao||{}; return (Array.isArray(g.statusConcluido)&&g.statusConcluido.length)?g.statusConcluido:_GAM_STATUS_PADRAO; }
 function _gamConta(s){ return _gamStatusSet().indexOf(s||'')>=0; }
+function _gamEhGestor(cargo){ var c=(cargo||'').toString().toLowerCase(); return c.indexOf('admin')>=0 || c.indexOf('gestor')>=0 || c.indexOf('consulta')>=0; }
 function _gamUser(token){
   var t=(token==null?'':token).toString().trim().toLowerCase(); if(!t) return null;
+  // v6.21.0 — resolve nome e cargo OFICIAIS pelo e-mail (evita mostrar o e-mail como nome)
+  var of = (typeof _azuosOficialPorEmail==='function') ? _azuosOficialPorEmail(t) : null;
   var us=state.usuarios||[];
-  for(var i=0;i<us.length;i++){ var u=us[i]; if(!u) continue; if((u.email||'').toLowerCase()===t||(u.nome||'').toLowerCase()===t) return {nome:u.nome,email:(u.email||''),cargo:u.cargo||'',foto:u.foto||''}; }
-  return {nome:(token||'').toString(), email:(t.indexOf('@')>=0?token:''), cargo:'', foto:''};
+  for(var i=0;i<us.length;i++){ var u=us[i]; if(!u) continue; if((u.email||'').toLowerCase()===t||(u.nome||'').toLowerCase()===t){ return {nome:(of&&of.nome)||u.nome, email:(u.email||(t.indexOf('@')>=0?token:'')), cargo:(of&&of.cargo)||u.cargo||'', foto:u.foto||''}; } }
+  if(of){ return {nome:of.nome, email:(t.indexOf('@')>=0?token:''), cargo:of.cargo||'', foto:''}; }
+  // fallback: nome amigavel do prefixo do e-mail (nunca o e-mail cru)
+  var nf=(t.indexOf('@')>=0) ? t.split('@')[0].replace(/[._-]+/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}) : (token||'').toString();
+  return {nome:nf, email:(t.indexOf('@')>=0?token:''), cargo:'', foto:''};
 }
 function _gamMeses(){ var s={}; Object.values(state.edicoes_alvaras||{}).forEach(function(e){ if(e&&e._editado_em&&e._editado_por&&_gamConta(e.status)) s[(e._editado_em||'').slice(0,7)]=1; }); var a=Object.keys(s).sort().reverse(); var atual=_gamMesAtual(); if(a.indexOf(atual)<0) a.unshift(atual); return a; }
 function _gamAgrega(mes){
@@ -787,6 +793,7 @@ function _gamAgrega(mes){
     var _cm=(e._editado_em||'').slice(0,7);
     if(mes && _cm!==mes) return;
     var u=_gamUser(e._editado_por); if(!u) return;
+    if(_gamEhGestor(u.cargo)) return; // gestor/admin nao entra no ranking (nao e operacional)
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
     if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,chave:k};
     por[k].qtd++;
@@ -907,7 +914,8 @@ function _gamListaConcluidos(chave, mes){
     if(!_gamConta(e.status)) return;
     var cm=(e._editado_em||'').slice(0,7);
     if(mes && cm!==mes) return;
-    var u=_gamUser(e._editado_por); var k=((u&&(u.email||u.nome))||'').toLowerCase().trim();
+    var u=_gamUser(e._editado_por); if(_gamEhGestor(u&&u.cargo)) return;
+    var k=((u&&(u.email||u.nome))||'').toLowerCase().trim();
     if(k!==chave) return;
     var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); });
     var anx=_anexosDoAlvara(aid);
