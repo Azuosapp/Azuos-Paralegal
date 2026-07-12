@@ -698,12 +698,16 @@ function renderLayout(content){
     return diff >= 0 && diff <= 7 && a.status && !/^(formalizado|concluído|pago|em vigor)/i.test(a.status);
   }).length;
   const badgeResumo = pendDia > 0 ? `<span class="ml-auto bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-orange-500/40 pulse-soft">${pendDia}</span>` : '';
+  // Inteligência: nº de alvarás com vencimento mas SEM próxima atualização (respeitando escopo do usuário)
+  const _intelPend = (typeof _auditProxItens === 'function') ? _auditProxItens().length : 0;
+  const badgeIntel = _intelPend > 0 ? `<span class="ml-auto bg-gradient-to-r from-rose-500 to-red-600 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-rose-500/40">${_intelPend}</span>` : '';
   const menu = [
     {key:'resumo', label:'Resumo do Dia', icon:'📣', badge: badgeResumo},
     {key:'empresas', label:'Empresas', icon:'🏢'},
     {key:'novas', label:'Novas Empresas', icon:'🆕', badge: badgeNovas},
     {key:'execucao', label:'Em Execução', icon:'▶️'},
     {key:'dashboard', label:'Dashboard', icon:'📊'},
+    {key:'inteligencia', label:'Inteligência', icon:'🧠', badge: badgeIntel},
     {key:'premiacao', label:'Premiação', icon:'🏆'},
     ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
     {key:'alertas', label:'Alertas', icon:'🔔'},
@@ -1205,6 +1209,7 @@ function renderPage(){
     case 'resumo': return renderResumoDia();
     case 'empresas': return renderEmpresas();
     case 'dashboard': return renderDashboard();
+    case 'inteligencia': return renderInteligencia();
     case 'premiacao': return renderPremiacao();
     case 'valores': return renderValores();
     case 'alertas': return renderAlertas();
@@ -1222,6 +1227,7 @@ function attachPage(){
     case 'resumo': return attachResumoDia();
     case 'empresas': return attachEmpresas();
     case 'dashboard': return attachDashboard();
+    case 'inteligencia': return attachInteligencia();
     case 'alertas': return attachAlertas();
     case 'historico': return attachHistorico();
     case 'novas': return attachNovasEmpresas();
@@ -7985,5 +7991,7 @@ try{
 })();
 </script>
 <script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}try{if(typeof _anexoBackfillCloud==="function")_anexoBackfillCloud();}catch(e){}}if(n>600)clearInterval(iv);},500);})();</script>
+<!-- Centro de Inteligência (módulo separado — NÃO é remendo IIFE no index) -->
+<script src="/inteligencia.js"></script>
 </body>
 </html>
