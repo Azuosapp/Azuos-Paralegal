@@ -35,6 +35,105 @@
 
   var TERMINAIS = /^(conclu|pago|em vigor|sem obrigat|arquivad|isento)/i;
 
+  // ---- conversão de datas: input date (yyyy-mm-dd) <-> app (dd/mm/aaaa) ----
+  function _isoParaBr(iso){
+    if (!iso) return '';
+    var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? (m[3] + '/' + m[2] + '/' + m[1]) : String(iso);
+  }
+  function _brParaIso(br){
+    if (!br) return '';
+    var m = String(br).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return '';
+    var d = ('0'+m[1]).slice(-2), mo = ('0'+m[2]).slice(-2);
+    return m[3] + '-' + mo + '-' + d;
+  }
+  // data mínima permitida (hoje + 5 dias) em yyyy-mm-dd, p/ o atributo min do input
+  function _minIso(){
+    var h = new Date(); h.setHours(0,0,0,0); h.setDate(h.getDate()+5);
+    return h.getFullYear() + '-' + ('0'+(h.getMonth()+1)).slice(-2) + '-' + ('0'+h.getDate()).slice(-2);
+  }
+
+  // ---- SALVAR próxima atualização direto da auditoria --------------------
+  // Aplica as MESMAS 3 regras do modal de alvará (salvarAlvara) e reusa o
+  // mesmo mecanismo de persistência: overlay state.edicoes_alvaras + patch
+  // por campo no Firestore. Retorna true se salvou.
+  window._auditSalvarProx = function(alvaraId, isoDate){
+    if (typeof bloqueioConsulta === 'function' && bloqueioConsulta()) return false;
+    var brData = _isoParaBr(isoDate);
+    if (!brData) { alert('Escolha uma data válida.'); return false; }
+
+    var alv = (state.alvaras||[]).find(function(x){ return String(x.id) === String(alvaraId); });
+    if (!alv) { alert('Alvará não encontrado.'); return false; }
+
+    var _dProx = (typeof parseDataBR==='function') ? parseDataBR(brData) : null;
+    if (_dProx) {
+      var _hoje = new Date(); _hoje.setHours(0,0,0,0);
+      var _dp = new Date(_dProx); _dp.setHours(0,0,0,0);
+      // regra 1: não retroativa
+      if (_dp < _hoje) { alert('A próxima atualização não pode ser anterior a hoje.'); return false; }
+      // regra 2: mínimo 5 dias a partir de hoje
+      var _min5 = new Date(_hoje); _min5.setDate(_min5.getDate()+5);
+      if (_dp < _min5) { alert('A próxima atualização precisa ser de pelo menos 5 dias a partir de hoje.\n\nData mínima: ' + _min5.toLocaleDateString('pt-BR')); return false; }
+      // regra 3: pelo menos 10 dias antes do vencimento
+      var _dVenc = (alv.vencimento && typeof parseDataBR==='function') ? parseDataBR(alv.vencimento) : null;
+      if (_dVenc) {
+        var _diff = Math.round((_dVenc - _dp) / (1000*60*60*24));
+        if (_diff < 10) { alert('A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + alv.vencimento + '\nPróxima atualização: ' + brData + '\nDiferença atual: ' + _diff + ' dia(s).'); return false; }
+      }
+    }
+
+    // monta o overlay de edição (mesmos metadados de salvarAlvara)
+    var empresa = (state.empresas||[]).find(function(e){ return e.id === alv.empresa_id; }) || {};
+    var data = {
+      empresa_id: alv.empresa_id, tipo: alv.tipo, status: alv.status,
+      responsavel: alv.responsavel, vencimento: alv.vencimento,
+      proxima_atualizacao: brData,
+      observacao: alv.observacao || '',
+      conversas: alv.conversas || [], anexos: alv.anexos || [],
+      empresa: alv.empresa || empresa.nome || '', cidade: alv.cidade || empresa.cidade || '',
+      _editado_manualmente: true,
+      _editado_em: new Date().toISOString(),
+      _editado_por: state.sessao ? (state.sessao.email || state.sessao.nome) : ''
+    };
+    state.alvaras = state.alvaras.map(function(x){ return x.id == alvaraId ? Object.assign({}, x, data) : x; });
+    state.edicoes_alvaras = state.edicoes_alvaras || {};
+    state.edicoes_alvaras[alvaraId] = data;
+    if (typeof log === 'function') log('Agendou próxima atualização', (alv.tipo||'') + ' - ' + (data.empresa||''), 'Próx.: ' + brData);
+    if (typeof saveState === 'function') saveState();
+
+    // patch por campo no Firestore (mesmo contrato do v6.0.8 em salvarAlvara)
+    try {
+      if (typeof firebase !== 'undefined' && firebase && firebase.firestore) {
+        var _o = {};
+        Object.keys(data).forEach(function(k){
+          var val = data[k];
+          if (k === 'anexos' && Array.isArray(val)) {
+            _o[k] = val.map(function(a){ var m = Object.assign({}, a); if (m.dados && String(m.dados).indexOf('data:')===0){ m.dados=''; m._local=true; } return m; });
+          } else {
+            _o[k] = (val === undefined || val === null) ? '' : val;
+          }
+        });
+        var _patch = {}; _patch['edicoes_alvaras.' + alvaraId] = _o;
+        firebase.firestore().collection('azuos').doc('shared').update(_patch)
+          .then(function(){ console.log('[intel] próx. atualização do alvará ' + alvaraId + ' salva no Firestore'); })
+          .catch(function(err){ console.error('[intel] erro Firestore:', err.message); alert('Aviso: salvo localmente mas FALHOU no servidor.\n\n' + err.message); });
+      }
+    } catch(e){ console.warn('[intel] firestore', e); }
+
+    // toast de confirmação
+    try {
+      var t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(16,185,129,.6);z-index:99999;font-size:14px;font-weight:600;';
+      t.innerHTML = '✅ Próxima atualização agendada: <strong>' + _esc(brData) + '</strong>';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 2500);
+    } catch(e){}
+
+    render();
+    return true;
+  };
+
   // Núcleo: alvarás com vencimento e SEM próxima atualização.
   // Admin vê tudo; usuário comum só os seus. Ignora status terminais.
   window._auditProxItens = function(){
@@ -92,7 +191,83 @@
     return Object.values(m).sort(function(x,y){ return y.itens.length - x.itens.length; });
   }
 
+  // ==========================================================================
+  //  REGISTRO DE AUDITORIAS — para adicionar uma nova inteligência no futuro,
+  //  basta acrescentar um objeto aqui com: key, titulo, icone, cor, descricao,
+  //  contar() (nº de pendências p/ o badge do card) e render() (a tela da auditoria).
+  //  O hub monta os botões automaticamente a partir desta lista.
+  // ==========================================================================
+  var _AUDITS = [
+    {
+      key: 'proxatual',
+      titulo: 'Próxima Atualização',
+      icone: '📅',
+      cor: 'rose',
+      descricao: 'Alvarás com vencimento definido mas SEM data de próxima atualização — têm prazo, mas ninguém agendou o próximo ciclo. Risco de vencer sem acompanhamento.',
+      contar: function(){ return window._auditProxItens().length; },
+      render: function(){ return _renderAuditProxAtual(); }
+    }
+    // 👉 próximas auditorias entram aqui (ex.: empresas sem responsável,
+    //    alvarás vencidos há +30d, próxima atualização já vencida, etc.)
+  ];
+  window._intelAuditoria = window._intelAuditoria || null; // null = hub; senão a key da auditoria aberta
+
+  // ---- HUB: tela inicial com os botões de cada auditoria -------------------
+  function _renderHub(){
+    var admin = _souAdmin();
+    return `
+    <div class="p-6">
+      <div class="mb-1">
+        <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">🧠 Centro de Inteligência</h1>
+        <p class="text-sm text-slate-500 mt-0.5">Gestão proativa do paralegal · Escolha uma auditoria para investigar${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
+      </div>
+
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 my-5 flex items-start gap-3">
+        <div class="text-2xl leading-none">💡</div>
+        <p class="text-sm text-blue-900 m-0">Cada botão abaixo é uma <b>auditoria de qualidade de dados</b> sobre a base de alvarás. Novas inteligências vão sendo adicionadas aqui conforme criamos. Clique em uma para ver os apontamentos e agir.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        ${_AUDITS.map(function(au){
+          var n = 0; try { n = au.contar(); } catch(e){ n = 0; }
+          var temPend = n > 0;
+          return `<button class="intel-abrir group text-left bg-white rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-150 p-5 border-l-4 border-${au.cor}-500 flex flex-col gap-3" data-audit="${_esc(au.key)}">
+            <div class="flex items-center justify-between gap-2">
+              <div class="w-11 h-11 rounded-xl bg-${au.cor}-50 flex items-center justify-center text-2xl">${au.icone}</div>
+              ${temPend
+                ? `<span class="bg-${au.cor}-100 text-${au.cor}-700 text-xs font-bold rounded-full px-3 py-1">${n} pendência${n>1?'s':''}</span>`
+                : `<span class="bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">✓ em dia</span>`}
+            </div>
+            <div>
+              <div class="text-base font-bold text-slate-800 group-hover:text-${au.cor}-600">${_esc(au.titulo)}</div>
+              <div class="text-[13px] text-slate-500 mt-1 leading-snug">${_esc(au.descricao)}</div>
+            </div>
+            <div class="mt-1 text-sm font-semibold text-${au.cor}-600 flex items-center gap-1">Abrir auditoria <span class="group-hover:translate-x-0.5 transition-transform">→</span></div>
+          </button>`;
+        }).join('')}
+
+        <!-- placeholder das próximas inteligências -->
+        <div class="rounded-2xl border-2 border-dashed border-slate-200 p-5 flex flex-col items-center justify-center text-center text-slate-400 gap-2 min-h-[160px]">
+          <div class="text-2xl">🔜</div>
+          <div class="text-sm font-medium">Mais auditorias em breve</div>
+          <div class="text-[12px]">Novas inteligências de gestão aparecem aqui.</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ---- roteador da seção: hub ou auditoria aberta --------------------------
   window.renderInteligencia = function(){
+    if (!window._intelAuditoria) return _renderHub();
+    var au = _AUDITS.find(function(x){ return x.key === window._intelAuditoria; });
+    if (!au) { window._intelAuditoria = null; return _renderHub(); }
+    return au.render();
+  };
+
+  // ==========================================================================
+  //  AUDITORIA 1: Próxima Atualização
+  // ==========================================================================
+  function _renderAuditProxAtual(){
     var itensTodos = window._auditProxItens();
     var admin = _souAdmin();
     var q = (window._auditProxBusca || '').trim().toLowerCase();
@@ -136,29 +311,22 @@
 
     return `
     <div class="p-6">
+      <!-- voltar ao hub + título da auditoria -->
+      <button class="intel-voltar inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Centro de Inteligência</button>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
         <div>
-          <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">🧠 Centro de Inteligência</h1>
-          <p class="text-sm text-slate-500 mt-0.5">Gestão proativa do paralegal · Auditorias de qualidade de dados${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
+          <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">📅 Próxima Atualização</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
         </div>
-      </div>
-
-      <!-- Abas de inteligências (só uma por enquanto; preparado p/ crescer) -->
-      <div class="flex items-center gap-2 mt-4 mb-5 border-b border-slate-200">
-        <div class="px-4 py-2 text-sm font-semibold text-rose-600 border-b-2 border-rose-500 -mb-px flex items-center gap-2">
-          📅 Próxima Atualização
-          ${totalAlv>0?`<span class="bg-rose-100 text-rose-700 text-[10px] font-bold rounded-full px-2 py-0.5">${totalAlv}</span>`:''}
-        </div>
-        <div class="px-4 py-2 text-sm font-medium text-slate-300 cursor-not-allowed flex items-center gap-1" title="Em breve">🔜 mais auditorias</div>
       </div>
 
       <!-- Explicação da auditoria -->
-      <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-5 flex items-start gap-3">
+      <div class="bg-rose-50 border border-rose-200 rounded-xl p-4 my-5 flex items-start gap-3">
         <div class="text-2xl leading-none">⚠️</div>
         <div class="text-sm text-rose-900">
           <span class="font-bold">Auditoria: alvarás sem data de próxima atualização.</span>
           Estes alvarás têm <b>vencimento definido</b> mas <b>ninguém agendou o próximo ciclo</b> — risco de cair no esquecimento e vencer sem acompanhamento.
-          Status já concluídos/em vigor são ignorados. <span class="font-semibold">Clique numa empresa para corrigir.</span>
+          Status já concluídos/em vigor são ignorados. <span class="font-semibold">Defina a data de próxima atualização direto na lista.</span>
         </div>
       </div>
 
@@ -216,7 +384,7 @@
               <div class="divide-y divide-slate-50">
                 ${g.itens.map(function(a){
                   var vc = vencColor(a);
-                  return `<div class="flex items-center gap-3 px-4 py-2 text-sm hover:bg-slate-50">
+                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50">
                     <div class="flex-1 min-w-0">
                       <span class="font-medium text-slate-700">${_esc(a.tipo||'(sem tipo)')}</span>
                       ${!isEmp?`<span class="text-slate-400"> · ${_esc(a.empresa||'')}</span>`:''}
@@ -224,7 +392,11 @@
                     </div>
                     <span class="shrink-0 text-xs text-slate-500">venc: <b class="text-slate-700">${_esc(a.vencimento||'')}</b></span>
                     <span class="shrink-0 text-[10px] font-bold text-${vc}-600 bg-${vc}-50 rounded px-2 py-0.5">${vencLabel(a)}</span>
-                    <span class="shrink-0 text-[10px] font-bold text-rose-600 bg-rose-50 rounded px-2 py-0.5">próx: —</span>
+                    <div class="shrink-0 flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg pl-2 pr-1 py-1" title="Defina a próxima atualização">
+                      <span class="text-[10px] font-bold text-rose-600 uppercase">próx:</span>
+                      <input type="date" class="intel-prox-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-500" data-aid="${_esc(String(a.id))}" min="${_minIso()}" value="">
+                      <button class="intel-prox-save px-2 py-0.5 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-aid="${_esc(String(a.id))}" disabled>Salvar</button>
+                    </div>
                   </div>`;
                 }).join('')}
               </div>
@@ -236,6 +408,13 @@
   };
 
   window.attachInteligencia = function(){
+    // navegação hub <-> auditoria
+    document.querySelectorAll('.intel-abrir').forEach(function(b){
+      b.onclick = function(){ window._intelAuditoria = b.dataset.audit; render(); };
+    });
+    var voltar = document.querySelector('.intel-voltar');
+    if (voltar) voltar.onclick = function(){ window._intelAuditoria = null; render(); };
+
     document.querySelectorAll('.intel-group').forEach(function(b){
       b.onclick = function(){ window._auditProxAgrupar = b.dataset.g; render(); };
     });
@@ -243,6 +422,19 @@
     if (soMeu) soMeu.onclick = function(){ window._auditProxSoMeu = soMeu.checked; render(); };
     document.querySelectorAll('.intel-open').forEach(function(b){
       b.onclick = function(){ var id = b.dataset.eid; if (id != null) setState({empresaAtiva: isNaN(+id)?id:+id}); };
+    });
+    // date picker inline: habilita o botão Salvar quando há data escolhida
+    document.querySelectorAll('.intel-prox-inp').forEach(function(inp){
+      var btn = document.querySelector('.intel-prox-save[data-aid="'+inp.dataset.aid+'"]');
+      var sync = function(){ if (btn) btn.disabled = !inp.value; };
+      inp.oninput = sync; inp.onchange = sync;
+    });
+    document.querySelectorAll('.intel-prox-save').forEach(function(btn){
+      btn.onclick = function(){
+        var inp = document.querySelector('.intel-prox-inp[data-aid="'+btn.dataset.aid+'"]');
+        if (!inp || !inp.value) { alert('Escolha a data da próxima atualização primeiro.'); return; }
+        window._auditSalvarProx(btn.dataset.aid, inp.value); // render() acontece dentro se salvar
+      };
     });
     var busca = document.getElementById('intel-busca');
     if (busca) {
