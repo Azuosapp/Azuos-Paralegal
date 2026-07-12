@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="640" height="360" role="img" aria-label="Grupo Azuos monocromático">
+  <!-- Versão monocromática: usar sobre fundos onde só se pode uma cor. currentColor herda a cor do contexto. -->
+  <text x="88" y="150" font-family="Inter, sans-serif" font-weight="600"
+        font-size="44" letter-spacing="12" fill="currentColor">GRUPO</text>
+  <text x="80" y="250" font-family="Inter, sans-serif" font-weight="800"
+        font-size="130" letter-spacing="-2" fill="currentColor">azuos</text>
+  <circle cx="548" cy="228" r="16" fill="currentColor"/>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Símbolo Azuos">
+  <!-- Símbolo: o traço em 'S' com o ponto amarelo, marca da Azuos -->
+  <path d="M28 78c0-14 12-20 24-20s24 6 24-6-12-18-24-14"
+        fill="none" stroke="#1B3A8C" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="90" cy="46" r="11" fill="#F5C518"/>
+</svg>
