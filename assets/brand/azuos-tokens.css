@@ -1,7 +1,7 @@
 /* ==========================================================================
    Azuos Brand — Design Tokens (CSS Variables)
-   Fonte única da verdade. Importe em qualquer sistema:
-     @import "@azuos/brand/css/azuos-tokens.css";
+   Vendorizado localmente a partir da marca central do Grupo Azuos.
+   Fonte: assets/brand/ (tokens + logo). Sem dependencia de node_modules.
    ========================================================================== */
 
 :root {
