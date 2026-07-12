@@ -1,0 +1,55 @@
+/* ==========================================================================
+   Azuos Brand — Design Tokens (CSS Variables)
+   Fonte única da verdade. Importe em qualquer sistema:
+     @import "@azuos/brand/css/azuos-tokens.css";
+   ========================================================================== */
+
+:root {
+  /* -- Primitive: cores da marca -- */
+  --azuos-blue-900: #142B69;
+  --azuos-blue-800: #1B3A8C;   /* AZUL PRINCIPAL OFICIAL (fundo da logo) */
+  --azuos-blue-700: #22429C;
+  --azuos-blue-600: #2E52B8;
+  --azuos-blue-500: #4265D4;
+  --azuos-blue-100: #E1E6F5;
+  --azuos-yellow-500: #F5C518; /* AMARELO OFICIAL (o ponto da logo) */
+  --azuos-yellow-400: #F7CE3C;
+  --azuos-yellow-300: #FADE7A;
+  --azuos-white: #FFFFFF;
+  --azuos-gray-900: #111827;
+  --azuos-gray-700: #374151;
+  --azuos-gray-500: #6B7280;
+  --azuos-gray-300: #D1D5DB;
+  --azuos-gray-100: #F3F4F6;
+
+  /* -- Semantic: intenção de uso -- */
+  --color-primary: var(--azuos-blue-800);
+  --color-primary-hover: var(--azuos-blue-900);
+  --color-primary-fg: var(--azuos-white);
+  --color-accent: var(--azuos-yellow-500);
+  --color-accent-fg: var(--azuos-blue-900);
+  --color-bg: var(--azuos-white);
+  --color-bg-brand: var(--azuos-blue-800);
+  --color-surface: var(--azuos-gray-100);
+  --color-text: var(--azuos-gray-900);
+  --color-text-muted: var(--azuos-gray-500);
+  --color-border: var(--azuos-gray-300);
+
+  /* -- Tipografia -- */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* -- Raio / espaçamento -- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+}
+
+/* Modo escuro: inverte fundo/marca */
+[data-theme="dark"] {
+  --color-bg: var(--azuos-blue-900);
+  --color-text: var(--azuos-white);
+  --color-surface: var(--azuos-blue-800);
+  --color-border: var(--azuos-blue-600);
+}
