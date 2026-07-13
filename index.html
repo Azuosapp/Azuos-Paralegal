@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.22 (Alertas de datas)</title>
+<title>AZUOS Paralegal - Sistema v6.0.23 (Alertas: filtro por responsavel)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3132,6 +3132,14 @@ function renderAlertas(){
       </div>
 
       <!-- v6.22.0 — Problemas de data por empresa -->
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-2 flex flex-wrap gap-2 items-center">
+        <span class="text-xs font-semibold text-slate-600 uppercase">\uD83D\uDCC5 Problemas de data \u00b7 filtrar por respons\u00e1vel:</span>
+        <select id="ale-resp-datas" class="px-2 py-1 text-xs border border-slate-200 rounded">
+          <option value="">Todos os respons\u00e1veis</option>
+          ${respOpts.map(r => `<option value="${esc(r)}" ${_aleResp===r?'selected':''}>${esc(r)}</option>`).join('')}
+        </select>
+        ${_aleResp?`<span class="text-xs text-slate-500">filtrando: <strong>${esc(_aleResp)}</strong></span><button onclick="_aleResp='';renderPartial();" class="text-xs text-blue-600 hover:underline">Limpar</button>`:''}
+      </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
         <div class="bg-white rounded-xl shadow-sm border-l-4 border-amber-500 overflow-hidden">
           <div class="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
@@ -3220,6 +3228,8 @@ function renderAlertas(){
 function attachAlertas(){
   const sel = document.getElementById('ale-resp');
   if (sel) sel.onchange = (e) => { _aleResp = e.target.value; renderPartial(); };
+  const selD = document.getElementById('ale-resp-datas');
+  if (selD) selD.onchange = (e) => { _aleResp = e.target.value; renderPartial(); };
   document.querySelectorAll('.ale-row').forEach(r => {
     r.onclick = () => { setState({empresaAtiva: parseInt(r.dataset.eid)}); };
   });
