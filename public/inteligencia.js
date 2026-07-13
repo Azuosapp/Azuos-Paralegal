@@ -302,6 +302,122 @@
         kpiLabel:'Status desatualizado', kpiSub:'venceu, status não', vazio:'Nenhum status desatualizado.',
         colBadge: function(a){ var d=parseDataBR(a.vencimento); if(!d) return null; var dias=Math.round((_hojeZero()-d)/DIAS); return {txt:'venceu há '+dias+'d', cor:'orange'}; }
       }); }
+    },
+
+    // ---------- PROATIVIDADE ----------
+    {
+      key:'vencebreve', titulo:'Vence em breve sem agendamento', icone:'⏳', cor:'orange',
+      descricao:'Alvarás que vencem em até 30 dias e ainda não têm próxima atualização agendada — risco duplo: prazo curto + sem acompanhamento planejado.',
+      contar:function(){ return window._auditVenceBreveSemProxItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Vence em breve sem agendamento', icone:'⏳', cor:'orange', emoji:'🟠',
+        itensFn: window._auditVenceBreveSemProxItens,
+        explica:'<span class="font-bold">Auditoria: vence em ≤30 dias e sem próxima atualização.</span> Prazo curto e ninguém agendou o próximo ciclo — risco duplo. <span class="font-semibold">Aja com prioridade.</span>',
+        kpiLabel:'Vencem em ≤30d', kpiSub:'sem agendamento', vazio:'Nenhum alvará vencendo sem agendamento.',
+        colBadge:function(a){ var d=parseDataBR(a.vencimento); if(!d) return null; var dias=Math.round((d-_hojeZero())/DIAS); return {txt: dias===0?'vence hoje':'vence em '+dias+'d', cor:'orange'}; }
+      }); }
+    },
+    {
+      key:'proxsemvenc', titulo:'Próxima atualização sem vencimento', icone:'🧩', cor:'amber',
+      descricao:'Alvarás com data de próxima atualização preenchida mas sem vencimento — incoerência: agendou o ciclo sem haver um prazo de referência.',
+      contar:function(){ return window._auditProxSemVencItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Próxima atualização sem vencimento', icone:'🧩', cor:'amber', emoji:'⚠️',
+        itensFn: window._auditProxSemVencItens,
+        explica:'<span class="font-bold">Auditoria: próxima atualização sem vencimento.</span> Há data de próximo ciclo mas nenhum vencimento de referência — provável erro de cadastro. <span class="font-semibold">Verifique o vencimento.</span>',
+        kpiLabel:'Sem vencimento', kpiSub:'mas com próx.', vazio:'Nenhuma incoerência encontrada.',
+        colBadge:function(){ return {txt:'sem vencimento', cor:'amber'}; }
+      }); }
+    },
+
+    // ---------- OPERACIONAL ----------
+    {
+      key:'paralisado', titulo:'Serviço paralisado', icone:'🛑', cor:'red',
+      descricao:'Alvarás com status "Serviço paralisado" — travados por algum bloqueio. Precisam de destrave ou repriorização.',
+      contar:function(){ return window._auditParalisadoItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Serviço paralisado', icone:'🛑', cor:'red', emoji:'🔴',
+        itensFn: window._auditParalisadoItens,
+        explica:'<span class="font-bold">Auditoria: serviços paralisados.</span> Estão travados — algo bloqueou o andamento. <span class="font-semibold">Destrave ou repriorize.</span>',
+        kpiLabel:'Paralisados', kpiSub:'travados', vazio:'Nenhum serviço paralisado.'
+      }); }
+    },
+    {
+      key:'aguardcliente', titulo:'Aguardando cliente', icone:'⌛', cor:'amber',
+      descricao:'Alvarás parados aguardando o cliente — podem estar travados indefinidamente. Bom para uma rodada de cobrança.',
+      contar:function(){ return window._auditAguardClienteItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Aguardando cliente', icone:'⌛', cor:'amber', emoji:'⚠️',
+        itensFn: window._auditAguardClienteItens,
+        explica:'<span class="font-bold">Auditoria: aguardando cliente.</span> Parados esperando o cliente — risco de travar sem fim. <span class="font-semibold">Rode uma cobrança.</span>',
+        kpiLabel:'Aguardando cliente', kpiSub:'parados no cliente', vazio:'Nada aguardando cliente.'
+      }); }
+    },
+    {
+      key:'semregistro', titulo:'Sem registro', icone:'📭', cor:'amber',
+      descricao:'Alvarás com status "Sem registro" — situação indefinida que precisa ser apurada e classificada.',
+      contar:function(){ return window._auditSemRegistroItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Sem registro', icone:'📭', cor:'amber', emoji:'⚠️',
+        itensFn: window._auditSemRegistroItens,
+        explica:'<span class="font-bold">Auditoria: sem registro.</span> Situação indefinida — precisa ser apurada e classificada. <span class="font-semibold">Defina o status real.</span>',
+        kpiLabel:'Sem registro', kpiSub:'a apurar', vazio:'Nenhum sem registro.'
+      }); }
+    },
+    {
+      key:'naopago', titulo:'Não pago', icone:'💸', cor:'red',
+      descricao:'Alvarás com status "Não pago" — pendência financeira em aberto. Foco para regularização de pagamentos.',
+      contar:function(){ return window._auditNaoPagoItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Não pago', icone:'💸', cor:'red', emoji:'🔴',
+        itensFn: window._auditNaoPagoItens,
+        explica:'<span class="font-bold">Auditoria: não pago.</span> Pendência financeira em aberto. <span class="font-semibold">Regularize o pagamento.</span>',
+        kpiLabel:'Não pago', kpiSub:'pendência financeira', vazio:'Nenhuma pendência de pagamento.'
+      }); }
+    },
+
+    // ---------- INTEGRIDADE ----------
+    {
+      key:'orfaos', titulo:'Alvarás órfãos', icone:'🚧', cor:'red',
+      descricao:'Alvarás apontando para uma empresa que não existe (empresa_id inválido) — dado quebrado que some das telas por empresa.',
+      contar:function(){ return window._auditOrfaosItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Alvarás órfãos', icone:'🚧', cor:'red', emoji:'🔴',
+        itensFn: window._auditOrfaosItens,
+        explica:'<span class="font-bold">Auditoria de integridade: alvarás órfãos.</span> Apontam para uma empresa que não existe — o registro está quebrado. <span class="font-semibold">Requer correção técnica/reassociação.</span>',
+        kpiLabel:'Órfãos', kpiSub:'empresa inexistente', vazio:'Nenhum alvará órfão. Base íntegra.'
+      }); }
+    },
+    {
+      key:'respinvalido', titulo:'Responsável inválido', icone:'👻', cor:'amber',
+      descricao:'Alvarás cujo responsável não consta na lista de usuários do sistema — provável nome digitado errado ou usuário removido.',
+      contar:function(){ return window._auditRespInvalidoItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Responsável inválido', icone:'👻', cor:'amber', emoji:'⚠️',
+        itensFn: window._auditRespInvalidoItens,
+        explica:'<span class="font-bold">Auditoria de integridade: responsável inválido.</span> O responsável não existe na lista de usuários — nome errado ou usuário removido. <span class="font-semibold">Reatribua a um usuário válido.</span>',
+        kpiLabel:'Resp. inválido', kpiSub:'não é usuário', vazio:'Todos os responsáveis são válidos.'
+      }); }
+    },
+    {
+      key:'cachedesatualizado', titulo:'Cache desatualizado', icone:'♻️', cor:'amber',
+      descricao:'Alvarás cujo nome/cidade guardado no alvará não bate com o cadastro atual da empresa — dado divergente após edição da empresa.',
+      contar:function(){ return window._auditCacheDesatualizadoItens().length; },
+      render:function(){ return _renderAuditListaAlvaras({
+        titulo:'Cache desatualizado', icone:'♻️', cor:'amber', emoji:'⚠️',
+        itensFn: window._auditCacheDesatualizadoItens,
+        explica:'<span class="font-bold">Auditoria de integridade: cache desatualizado.</span> O nome/cidade no alvará não bate com o cadastro atual da empresa. <span class="font-semibold">Abra e salve para sincronizar.</span>',
+        kpiLabel:'Cache divergente', kpiSub:'nome/cidade', vazio:'Nenhum cache divergente.'
+      }); }
+    },
+
+    // ---------- PLACAR (painel de gestão, não conta p/ badge) ----------
+    {
+      key:'placar', titulo:'Placar por Responsável', icone:'🏅', cor:'blue',
+      descricao:'Painel de gestão: pendências de qualidade de dados agrupadas por responsável (sem próx., vencidos, sem status) + saúde da carteira de cada um.',
+      naoContaBadge:true,               // é panorama, não pendência a resolver
+      contar:function(){ return 0; },    // não infla o badge do menu
+      render:function(){ return _renderPlacar(); }
     }
     // 👉 próximas auditorias entram aqui
   ];
@@ -332,18 +448,21 @@
         ${_AUDITS.map(function(au){
           var n = 0; try { n = au.contar(); } catch(e){ n = 0; }
           var temPend = n > 0;
+          var painel = !!au.naoContaBadge;
           return `<button class="intel-abrir group text-left bg-white rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-150 p-5 border-l-4 border-${au.cor}-500 flex flex-col gap-3" data-audit="${_esc(au.key)}">
             <div class="flex items-center justify-between gap-2">
               <div class="w-11 h-11 rounded-xl bg-${au.cor}-50 flex items-center justify-center text-2xl">${au.icone}</div>
-              ${temPend
-                ? `<span class="bg-${au.cor}-100 text-${au.cor}-700 text-xs font-bold rounded-full px-3 py-1">${n} pendência${n>1?'s':''}</span>`
-                : `<span class="bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">✓ em dia</span>`}
+              ${painel
+                ? `<span class="bg-${au.cor}-100 text-${au.cor}-700 text-xs font-bold rounded-full px-3 py-1">painel</span>`
+                : (temPend
+                  ? `<span class="bg-${au.cor}-100 text-${au.cor}-700 text-xs font-bold rounded-full px-3 py-1">${n} pendência${n>1?'s':''}</span>`
+                  : `<span class="bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-3 py-1">✓ em dia</span>`)}
             </div>
             <div>
               <div class="text-base font-bold text-slate-800 group-hover:text-${au.cor}-600">${_esc(au.titulo)}</div>
               <div class="text-[13px] text-slate-500 mt-1 leading-snug">${_esc(au.descricao)}</div>
             </div>
-            <div class="mt-1 text-sm font-semibold text-${au.cor}-600 flex items-center gap-1">Abrir auditoria <span class="group-hover:translate-x-0.5 transition-transform">→</span></div>
+            <div class="mt-1 text-sm font-semibold text-${au.cor}-600 flex items-center gap-1">${painel?'Abrir painel':'Abrir auditoria'} <span class="group-hover:translate-x-0.5 transition-transform">→</span></div>
           </button>`;
         }).join('')}
 
@@ -774,6 +893,97 @@
     }).sort(function(x,y){ return (parseDataBR(x.vencimento)||0) - (parseDataBR(y.vencimento)||0); });
   };
 
+  // ===================== PACOTE OPERACIONAL =====================
+  // Alvarás travados por status operacional (não-terminal). Uma auditoria genérica
+  // parametrizada por regex de status.
+  function _alvarasPorStatus(re){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    return alvaras.filter(function(a){
+      if (!a || !a.status) return false;
+      if (!re.test(a.status)) return false;
+      if (!_passaEscopo(a)) return false;
+      return true;
+    });
+  }
+  window._auditParalisadoItens   = function(){ return _alvarasPorStatus(/paralisad/i); };
+  window._auditAguardClienteItens= function(){ return _alvarasPorStatus(/aguardando cliente/i); };
+  window._auditSemRegistroItens  = function(){ return _alvarasPorStatus(/sem registro/i); };
+  window._auditNaoPagoItens      = function(){ return _alvarasPorStatus(/n[ãa]o pago/i); };
+
+  // ===================== PACOTE PROATIVIDADE =====================
+  // vence em ≤30 dias E ainda sem próxima atualização (risco duplo)
+  window._auditVenceBreveSemProxItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var hoje = _hojeZero();
+    return alvaras.filter(function(a){
+      if (!a || !a.vencimento) return false;
+      if (a.status && TERMINAIS.test(a.status)) return false;
+      if (!_proxVazia(a.proxima_atualizacao)) return false;
+      var d = parseDataBR(a.vencimento); if (!d) return false; d.setHours(0,0,0,0);
+      var dias = Math.round((d - hoje)/DIAS);
+      if (dias < 0 || dias > 30) return false;
+      if (!_passaEscopo(a)) return false;
+      return true;
+    }).sort(function(x,y){ return (parseDataBR(x.vencimento)||0) - (parseDataBR(y.vencimento)||0); });
+  };
+  // próxima atualização preenchida mas SEM vencimento (incoerência lógica)
+  window._auditProxSemVencItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    return alvaras.filter(function(a){
+      if (!a) return false;
+      if (_proxVazia(a.proxima_atualizacao)) return false;      // precisa ter próx.
+      if (a.vencimento && String(a.vencimento).trim()) return false; // e NÃO ter venc
+      if (a.status && TERMINAIS.test(a.status)) return false;
+      if (!_passaEscopo(a)) return false;
+      return true;
+    });
+  };
+
+  // ===================== PACOTE INTEGRIDADE =====================
+  // alvará apontando p/ empresa inexistente
+  window._auditOrfaosItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var empresas = (typeof state!=='undefined' && state.empresas) ? state.empresas : [];
+    var ids = {}; empresas.forEach(function(e){ if(e) ids[e.id]=true; });
+    return alvaras.filter(function(a){
+      if (!a) return false;
+      if (a.empresa_id == null) return true;             // sem empresa_id = órfão
+      if (!ids[a.empresa_id]) return true;               // empresa não existe
+      return false;
+    });
+  };
+  // responsável do alvará que não existe na lista de usuários
+  function _nomesUsuarios(){
+    var us = (typeof state!=='undefined' && state.usuarios) ? state.usuarios : [];
+    var arr = Array.isArray(us) ? us : Object.values(us||{});
+    var set = {};
+    arr.forEach(function(u){ if(!u) return; if(u.nome) set[String(u.nome).trim().toLowerCase()]=true; if(u.email) set[String(u.email).trim().toLowerCase()]=true; });
+    return set;
+  }
+  window._auditRespInvalidoItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var validos = _nomesUsuarios();
+    var temUsuarios = Object.keys(validos).length > 0;
+    if (!temUsuarios) return []; // sem lista de usuários carregada, não dá pra auditar
+    return alvaras.filter(function(a){
+      if (!a || !a.responsavel || !String(a.responsavel).trim()) return false; // vazio é outra auditoria
+      return !validos[String(a.responsavel).trim().toLowerCase()];
+    });
+  };
+  // cache a.empresa/a.cidade divergente do cadastro atual da empresa
+  window._auditCacheDesatualizadoItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var empresas = (typeof state!=='undefined' && state.empresas) ? state.empresas : [];
+    var byId = {}; empresas.forEach(function(e){ if(e) byId[e.id]=e; });
+    return alvaras.filter(function(a){
+      if (!a || a.empresa_id == null) return false;
+      var e = byId[a.empresa_id]; if (!e) return false; // órfão é outra auditoria
+      var nomeDif = a.empresa && e.nome && String(a.empresa).trim() !== String(e.nome).trim();
+      var cidadeDif = a.cidade && e.cidade && String(a.cidade).trim() !== String(e.cidade).trim();
+      return !!(nomeDif || cidadeDif);
+    });
+  };
+
   // ---- renderer GENÉRICO p/ auditorias que listam alvarás agrupados por empresa
   //      cfg: {titulo, icone, cor, itensFn, explica, colBadge(a)->{txt,cor}}
   function _renderAuditListaAlvaras(cfg){
@@ -854,6 +1064,85 @@
             </div>`;
           }).join('')}
         </div>
+      `}
+    </div>`;
+  }
+
+  // ==========================================================================
+  //  PLACAR POR RESPONSÁVEL — painel-resumo de pendências por pessoa
+  // ==========================================================================
+  window._placarResponsaveis = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var hoje = _hojeZero();
+    var m = {};
+    alvaras.forEach(function(a){
+      if (!a) return;
+      if (a.status && TERMINAIS.test(a.status)) return; // só alvarás vivos
+      var r = (a.responsavel && String(a.responsavel).trim()) || '(sem responsável)';
+      if (!m[r]) m[r] = {resp:r, ativos:0, semProx:0, vencidos:0, semStatus:0, comFalha:0};
+      var s = m[r];
+      s.ativos++;
+      var falha = false;
+      if (_proxVazia(a.proxima_atualizacao)) { s.semProx++; falha = true; }
+      if (!a.status || !String(a.status).trim()) { s.semStatus++; falha = true; }
+      var d = parseDataBR(a.vencimento);
+      if (d) { d.setHours(0,0,0,0); if (d < hoje) { s.vencidos++; falha = true; } }
+      if (falha) s.comFalha++; // alvarás DISTINTOS com ao menos uma pendência
+    });
+    return Object.values(m).map(function(s){
+      s.pendencias = s.semProx + s.vencidos + s.semStatus; // total de ocorrências
+      // saúde = % de alvarás SEM nenhuma falha (por alvará distinto, não satura)
+      s.saude = s.ativos ? Math.round(100 * (s.ativos - s.comFalha) / s.ativos) : 100;
+      if (s.saude < 0) s.saude = 0;
+      return s;
+    }).sort(function(a,b){ return b.comFalha - a.comFalha; });
+  };
+
+  function _renderPlacar(){
+    var linhas = window._placarResponsaveis();
+    var totalPend = linhas.reduce(function(s,l){ return s + l.pendencias; }, 0);
+    var barra = function(v, cor){ return '<div class="h-1.5 rounded-full bg-'+cor+'-500" style="width:'+Math.min(100,v)+'%"></div>'; };
+    return `
+    <div class="p-6">
+      <button class="intel-voltar inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Centro de Inteligência</button>
+      <div class="mb-1">
+        <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">🏅 Placar por Responsável</h1>
+        <p class="text-sm text-slate-500 mt-0.5">Visão de carteira · pendências de qualidade de dados por pessoa</p>
+      </div>
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 my-5 flex items-start gap-3">
+        <div class="text-2xl leading-none">📊</div>
+        <p class="text-sm text-blue-900 m-0">Resumo por responsável das pendências que as auditorias apontam: alvarás <b>sem próxima atualização</b>, <b>vencidos</b> e <b>sem status</b>. Use para distribuir esforço e acompanhar quem está com a carteira mais em dia.</p>
+      </div>
+      ${linhas.length === 0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-5xl mb-3">🎉</div><div class="text-lg font-bold text-slate-800">Sem pendências!</div></div>` : `
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+          <div class="col-span-3">Responsável</div>
+          <div class="col-span-2 text-center">Ativos</div>
+          <div class="col-span-1 text-center">S/ próx</div>
+          <div class="col-span-1 text-center">Vencidos</div>
+          <div class="col-span-1 text-center">S/ status</div>
+          <div class="col-span-1 text-center">Pend.</div>
+          <div class="col-span-3">Saúde da carteira</div>
+        </div>
+        <div class="divide-y divide-slate-50">
+          ${linhas.map(function(l){
+            var cor = l.saude >= 90 ? 'emerald' : (l.saude >= 70 ? 'amber' : 'rose');
+            return `<div class="grid grid-cols-12 gap-2 px-4 py-3 items-center text-sm hover:bg-slate-50">
+              <div class="col-span-3 font-semibold text-slate-700 truncate">👤 ${_esc(l.resp)}</div>
+              <div class="col-span-2 text-center text-slate-600">${l.ativos}</div>
+              <div class="col-span-1 text-center ${l.semProx?'text-rose-600 font-bold':'text-slate-300'}">${l.semProx}</div>
+              <div class="col-span-1 text-center ${l.vencidos?'text-red-600 font-bold':'text-slate-300'}">${l.vencidos}</div>
+              <div class="col-span-1 text-center ${l.semStatus?'text-amber-600 font-bold':'text-slate-300'}">${l.semStatus}</div>
+              <div class="col-span-1 text-center"><span class="inline-block bg-${cor}-100 text-${cor}-700 text-xs font-bold rounded-full px-2 py-0.5">${l.pendencias}</span></div>
+              <div class="col-span-3 flex items-center gap-2">
+                <div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">${barra(l.saude, cor)}</div>
+                <span class="text-xs font-bold text-${cor}-600 w-9 text-right">${l.saude}%</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 mt-3">Total de ${totalPend} pendência(s) em ${linhas.length} responsável(is). Saúde = % de alvarás ativos sem pendência de dados.</p>
       `}
     </div>`;
   }
