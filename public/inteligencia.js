@@ -136,31 +136,31 @@
 
   // Núcleo: alvarás com vencimento e SEM próxima atualização.
   // Admin vê tudo; usuário comum só os seus. Ignora status terminais.
+  // escopo: por padrão a auditoria varre a BASE INTEIRA (gestão).
+  // "só os meus" é um filtro OPCIONAL (checkbox) disponível para qualquer usuário.
+  function _passaEscopo(a){
+    if (!window._auditProxSoMeu) return true; // base inteira
+    return (a.responsavel || '') === _meuNomeAtual();
+  }
+
   window._auditProxItens = function(){
-    var meu = _meuNomeAtual();
-    var admin = _souAdmin();
-    var soMeu = admin ? window._auditProxSoMeu : true; // não-admin sempre restrito
     var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
     return alvaras.filter(function(a){
       if (!a) return false;
-      if (!a.vencimento) return false;                      // sem vencimento não é auditável aqui
       if (!_proxVazia(a.proxima_atualizacao)) return false; // já preenchida => ok
-      if (a.status && TERMINAIS.test(a.status)) return false; // status terminal não precisa de próx.
-      if (soMeu && (a.responsavel || '') !== meu) return false;
-      return true;
+      if (a.status && TERMINAIS.test(a.status)) return false; // status terminal (concluído/pago/sem obrig./etc.) não precisa de próx.
+      if (!_passaEscopo(a)) return false;
+      return true;                                          // vivo e sem próxima atualização => FALHA (com ou sem vencimento)
     });
   };
 
-  // universo auditável (alvarás vivos com vencimento no escopo) — p/ % de saúde
+  // universo auditável (alvarás vivos no escopo) — p/ % de saúde
   function _universoEscopo(){
-    var meu = _meuNomeAtual();
-    var admin = _souAdmin();
-    var soMeu = admin ? window._auditProxSoMeu : true;
     var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
     return alvaras.filter(function(a){
-      if (!a || !a.vencimento) return false;
+      if (!a) return false;
       if (a.status && TERMINAIS.test(a.status)) return false;
-      if (soMeu && (a.responsavel||'') !== meu) return false;
+      if (!_passaEscopo(a)) return false;
       return true;
     }).length;
   }
@@ -203,7 +203,7 @@
       titulo: 'Próxima Atualização',
       icone: '📅',
       cor: 'rose',
-      descricao: 'Alvarás com vencimento definido mas SEM data de próxima atualização — têm prazo, mas ninguém agendou o próximo ciclo. Risco de vencer sem acompanhamento.',
+      descricao: 'Alvarás ativos SEM data de próxima atualização — ninguém agendou o próximo ciclo. Risco de cair no esquecimento (inclui vencidos antigos e sem prazo definido).',
       contar: function(){ return window._auditProxItens().length; },
       render: function(){ return _renderAuditProxAtual(); }
     },
@@ -242,7 +242,7 @@
     <div class="p-6">
       <div class="mb-1">
         <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">🧠 Centro de Inteligência</h1>
-        <p class="text-sm text-slate-500 mt-0.5">Gestão proativa do paralegal · Escolha uma auditoria para investigar${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
+        <p class="text-sm text-slate-500 mt-0.5">Gestão proativa do paralegal · Escolha uma auditoria para investigar</p>
       </div>
 
       <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 my-5 flex items-start gap-3">
@@ -308,7 +308,7 @@
     var grupos = window._auditProxAgrupar === 'responsavel' ? _agruparPorResp(itens) : _agruparPorEmpresa(itens);
 
     var kpis = [
-      {l:'Alvarás sem próx. atualização', v: totalAlv, c:'rose', sub:'com vencimento definido'},
+      {l:'Alvarás sem próx. atualização', v: totalAlv, c:'rose', sub:'alvarás ativos'},
       {l:'Empresas afetadas', v: empresasAfetadas, c:'amber', sub:'precisam de ação'},
       {l:'Responsáveis envolvidos', v: respAfetados, c:'blue', sub:'com pendências'},
       {l:'Saúde da base', v: pctOk + '%', c: corSaude, sub: universo + ' alvarás no escopo'}
@@ -339,7 +339,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
         <div>
           <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">📅 Próxima Atualização</h1>
-          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
+          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${window._auditProxSoMeu?' <span class="text-amber-600 font-medium">(filtro: seus alvarás)</span>':' <span class="text-slate-400">· base inteira</span>'}</p>
         </div>
       </div>
 
@@ -369,10 +369,10 @@
           <button class="intel-group px-3 py-1.5 rounded-lg text-sm font-medium ${window._auditProxAgrupar==='empresa'?'bg-blue-600 text-white':'bg-slate-100 text-slate-700 hover:bg-slate-200'}" data-g="empresa">🏢 Empresa</button>
           <button class="intel-group px-3 py-1.5 rounded-lg text-sm font-medium ${window._auditProxAgrupar==='responsavel'?'bg-blue-600 text-white':'bg-slate-100 text-slate-700 hover:bg-slate-200'}" data-g="responsavel">👤 Responsável</button>
         </div>
-        ${admin?`<div class="h-6 w-px bg-slate-200"></div>
-        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+        <div class="h-6 w-px bg-slate-200"></div>
+        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none" title="Filtra só os alvarás em que você é o responsável">
           <input type="checkbox" id="intel-so-meu" ${window._auditProxSoMeu?'checked':''} class="w-4 h-4 rounded"> Só os meus
-        </label>`:''}
+        </label>
         <div class="flex-1 min-w-[180px]">
           <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa, cidade, responsável, tipo..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
         </div>
@@ -383,7 +383,7 @@
         <div class="bg-white rounded-xl shadow-sm p-12 text-center">
           <div class="text-5xl mb-3">🎉</div>
           <div class="text-lg font-bold text-slate-800">Tudo em dia!</div>
-          <div class="text-sm text-slate-500 mt-1">Nenhum alvará ${q?'(no filtro atual) ':''}com vencimento está sem data de próxima atualização.</div>
+          <div class="text-sm text-slate-500 mt-1">Nenhum alvará ativo ${q?'(no filtro atual) ':''}está sem data de próxima atualização.</div>
         </div>
       ` : `
         <div class="space-y-3">
@@ -413,8 +413,10 @@
                       ${!isEmp?`<span class="text-slate-400"> · ${_esc(a.empresa||'')}</span>`:''}
                       ${a.status?`<span class="ml-2 text-[10px] uppercase tracking-wide text-slate-400">${_esc(a.status)}</span>`:''}
                     </div>
-                    <span class="shrink-0 text-xs text-slate-500">venc: <b class="text-slate-700">${_esc(a.vencimento||'')}</b></span>
-                    <span class="shrink-0 text-[10px] font-bold text-${vc}-600 bg-${vc}-50 rounded px-2 py-0.5">${vencLabel(a)}</span>
+                    <span class="shrink-0 text-xs text-slate-500">venc: <b class="text-slate-700">${_esc(a.vencimento||'—')}</b></span>
+                    ${a.vencimento
+                      ? `<span class="shrink-0 text-[10px] font-bold text-${vc}-600 bg-${vc}-50 rounded px-2 py-0.5">${vencLabel(a)}</span>`
+                      : `<span class="shrink-0 text-[10px] font-bold text-slate-400 bg-slate-50 rounded px-2 py-0.5">sem vencimento</span>`}
                     <div class="shrink-0 flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg pl-2 pr-1 py-1" title="Defina a próxima atualização">
                       <span class="text-[10px] font-bold text-rose-600 uppercase">próx:</span>
                       <input type="date" class="intel-prox-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-500" data-aid="${_esc(String(a.id))}" min="${_minIso()}" value="">
@@ -436,9 +438,6 @@
   //  e ninguém reagendou. Crítico: acompanhamento atrasado.
   // ==========================================================================
   window._auditProxVencidaItens = function(){
-    var meu = _meuNomeAtual();
-    var admin = _souAdmin();
-    var soMeu = admin ? window._auditProxSoMeu : true;
     var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
     var hoje = new Date(); hoje.setHours(0,0,0,0);
     return alvaras.filter(function(a){
@@ -449,7 +448,7 @@
       if (!d) return false;
       d.setHours(0,0,0,0);
       if (d >= hoje) return false;                            // só as JÁ vencidas
-      if (soMeu && (a.responsavel || '') !== meu) return false;
+      if (!_passaEscopo(a)) return false;
       return true;
     }).sort(function(x,y){
       var dx=parseDataBR(x.proxima_atualizacao), dy=parseDataBR(y.proxima_atualizacao);
@@ -483,7 +482,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
         <div>
           <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">⏰ Próxima Atualização Vencida</h1>
-          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
+          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${window._auditProxSoMeu?' <span class="text-amber-600 font-medium">(filtro: seus alvarás)</span>':' <span class="text-slate-400">· base inteira</span>'}</p>
         </div>
       </div>
       <div class="bg-red-50 border border-red-200 rounded-xl p-4 my-5 flex items-start gap-3">
@@ -502,9 +501,9 @@
         </div>`; }).join('')}
       </div>
       <div class="bg-white rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-3">
-        ${admin?`<label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none" title="Filtra só os alvarás em que você é o responsável">
           <input type="checkbox" id="intel-so-meu" ${window._auditProxSoMeu?'checked':''} class="w-4 h-4 rounded"> Só os meus
-        </label><div class="h-6 w-px bg-slate-200"></div>`:''}
+        </label><div class="h-6 w-px bg-slate-200"></div>
         <div class="flex-1 min-w-[180px]">
           <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa, cidade, responsável, tipo..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
         </div>
