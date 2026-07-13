@@ -1209,7 +1209,7 @@ function renderPage(){
     case 'resumo': return renderResumoDia();
     case 'empresas': return renderEmpresas();
     case 'dashboard': return renderDashboard();
-    case 'inteligencia': return renderInteligencia();
+    case 'inteligencia': return (typeof window.renderInteligencia === 'function') ? window.renderInteligencia() : '<div class="p-6 text-slate-500">Carregando Centro de Inteligência…</div>';
     case 'premiacao': return renderPremiacao();
     case 'valores': return renderValores();
     case 'alertas': return renderAlertas();
@@ -1227,7 +1227,7 @@ function attachPage(){
     case 'resumo': return attachResumoDia();
     case 'empresas': return attachEmpresas();
     case 'dashboard': return attachDashboard();
-    case 'inteligencia': return attachInteligencia();
+    case 'inteligencia': return (typeof window.attachInteligencia === 'function') ? window.attachInteligencia() : undefined;
     case 'alertas': return attachAlertas();
     case 'historico': return attachHistorico();
     case 'novas': return attachNovasEmpresas();
