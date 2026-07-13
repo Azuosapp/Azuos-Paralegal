@@ -953,4 +953,14 @@
       setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
     };
   };
+
+  // Se o app já estiver na aba Inteligência quando ESTE módulo terminar de
+  // carregar (ele é o último <script>), re-renderiza para trocar o placeholder
+  // "Carregando…" pela tela real. Evita a corrida que causava
+  // "renderInteligencia is not defined".
+  try {
+    if (typeof state !== 'undefined' && state && state.page === 'inteligencia' && typeof render === 'function') {
+      render();
+    }
+  } catch(e){}
 })();
