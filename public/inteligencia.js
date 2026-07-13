@@ -1037,17 +1037,29 @@
           <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}${_esc(cfg.vazio||'Nenhuma ocorrência encontrada.')}</div>
         </div>
       ` : `
-        <div class="space-y-3">
-          ${grupos.map(function(g){
+        <div class="flex items-center justify-between mb-2 px-1">
+          <div class="text-xs text-slate-500">${grupos.length} empresa(s) · ${itens.length} alvará(s)</div>
+          <div class="flex items-center gap-2">
+            <button id="intel-expandir-todos" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Expandir todos</button>
+            <span class="text-slate-300">·</span>
+            <button id="intel-recolher-todos" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Recolher todos</button>
+          </div>
+        </div>
+        <div class="space-y-2">
+          ${grupos.map(function(g, gi){
+            var gkey = String(g.id!=null?g.id:('r'+gi));
+            var aberto = !!window._intelGruposAbertos[gkey];
             return `<div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-${cfg.cor}-500">
-              <div class="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100">
-                <button class="intel-open text-left flex-1 min-w-0 group" ${g.id!=null?`data-eid="${g.id}"`:''}>
-                  <div class="font-bold text-slate-800 truncate group-hover:text-blue-600">${_esc(g.nome)}</div>
+              <div class="intel-toggle flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100 cursor-pointer select-none hover:bg-slate-100" data-gkey="${gkey}">
+                <span class="shrink-0 text-slate-400 text-xs ${aberto?'rotate-90':''}" style="display:inline-block">▶</span>
+                <div class="flex-1 min-w-0">
+                  <div class="font-bold text-slate-800 truncate">${_esc(g.nome)}</div>
                   <div class="text-[11px] text-slate-500 truncate">${_esc(g.cidade||'')}${g.responsavel?' · 👤 '+_esc(g.responsavel):''}</div>
-                </button>
+                </div>
                 <span class="shrink-0 bg-${cfg.cor}-100 text-${cfg.cor}-700 text-xs font-bold rounded-full px-3 py-1">${g.itens.length}</span>
-                ${g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}">Abrir →</button>` : ''}
+                ${g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}" title="Abrir a empresa">Abrir empresa</button>` : ''}
               </div>
+              ${!aberto ? '' : `
               <div class="divide-y divide-slate-50">
                 ${g.itens.map(function(a){
                   var badge = cfg.colBadge ? cfg.colBadge(a) : null;
@@ -1060,7 +1072,7 @@
                     ${badge?`<span class="shrink-0 text-[10px] font-bold text-${badge.cor}-600 bg-${badge.cor}-50 rounded px-2 py-0.5">${_esc(badge.txt)}</span>`:''}
                   </div>`;
                 }).join('')}
-              </div>
+              </div>`}
             </div>`;
           }).join('')}
         </div>
@@ -1150,10 +1162,11 @@
   window.attachInteligencia = function(){
     // navegação hub <-> auditoria (limpa a busca ao trocar de tela p/ não vazar filtro)
     document.querySelectorAll('.intel-abrir').forEach(function(b){
-      b.onclick = function(){ window._auditProxBusca = ''; window._intelAuditoria = b.dataset.audit; render(); };
+      // ao abrir uma auditoria: limpa busca e recolhe todos os grupos (começa recolhido)
+      b.onclick = function(){ window._auditProxBusca = ''; window._intelGruposAbertos = {}; window._intelAuditoria = b.dataset.audit; render(); };
     });
     var voltar = document.querySelector('.intel-voltar');
-    if (voltar) voltar.onclick = function(){ window._auditProxBusca = ''; window._intelAuditoria = null; render(); };
+    if (voltar) voltar.onclick = function(){ window._auditProxBusca = ''; window._intelGruposAbertos = {}; window._intelAuditoria = null; render(); };
 
     document.querySelectorAll('.intel-group').forEach(function(b){
       b.onclick = function(){ window._auditProxAgrupar = b.dataset.g; render(); };
