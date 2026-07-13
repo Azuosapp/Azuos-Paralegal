@@ -32,6 +32,8 @@
   window._auditProxAgrupar = window._auditProxAgrupar || 'empresa'; // 'empresa' | 'responsavel'
   window._auditProxBusca = window._auditProxBusca || '';
   window._auditProxSoMeu = (typeof window._auditProxSoMeu === 'boolean') ? window._auditProxSoMeu : false;
+  // grupos abertos (accordion) — vazio = tudo RECOLHIDO ao abrir. key = gkey.
+  window._intelGruposAbertos = window._intelGruposAbertos || {};
 
   var TERMINAIS = /^(conclu|pago|em vigor|sem obrigat|arquivad|isento)/i;
 
@@ -58,28 +60,31 @@
   // Aplica as MESMAS 3 regras do modal de alvará (salvarAlvara) e reusa o
   // mesmo mecanismo de persistência: overlay state.edicoes_alvaras + patch
   // por campo no Firestore. Retorna true se salvou.
-  window._auditSalvarProx = function(alvaraId, isoDate){
+  window._auditSalvarProx = function(alvaraId, isoDate, opts){
+    opts = opts || {};
+    var silent = !!opts.silent;              // não faz render nem toast (uso em massa)
+    var alertFn = silent ? function(){} : alert; // em massa não empilha popups
     if (typeof bloqueioConsulta === 'function' && bloqueioConsulta()) return false;
     var brData = _isoParaBr(isoDate);
-    if (!brData) { alert('Escolha uma data válida.'); return false; }
+    if (!brData) { alertFn('Escolha uma data válida.'); return false; }
 
     var alv = (state.alvaras||[]).find(function(x){ return String(x.id) === String(alvaraId); });
-    if (!alv) { alert('Alvará não encontrado.'); return false; }
+    if (!alv) { alertFn('Alvará não encontrado.'); return false; }
 
     var _dProx = (typeof parseDataBR==='function') ? parseDataBR(brData) : null;
     if (_dProx) {
       var _hoje = new Date(); _hoje.setHours(0,0,0,0);
       var _dp = new Date(_dProx); _dp.setHours(0,0,0,0);
       // regra 1: não retroativa
-      if (_dp < _hoje) { alert('A próxima atualização não pode ser anterior a hoje.'); return false; }
+      if (_dp < _hoje) { alertFn('A próxima atualização não pode ser anterior a hoje.'); return false; }
       // regra 2: mínimo 5 dias a partir de hoje
       var _min5 = new Date(_hoje); _min5.setDate(_min5.getDate()+5);
-      if (_dp < _min5) { alert('A próxima atualização precisa ser de pelo menos 5 dias a partir de hoje.\n\nData mínima: ' + _min5.toLocaleDateString('pt-BR')); return false; }
+      if (_dp < _min5) { alertFn('A próxima atualização precisa ser de pelo menos 5 dias a partir de hoje.\n\nData mínima: ' + _min5.toLocaleDateString('pt-BR')); return false; }
       // regra 3: pelo menos 10 dias antes do vencimento
       var _dVenc = (alv.vencimento && typeof parseDataBR==='function') ? parseDataBR(alv.vencimento) : null;
       if (_dVenc) {
         var _diff = Math.round((_dVenc - _dp) / (1000*60*60*24));
-        if (_diff < 10) { alert('A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + alv.vencimento + '\nPróxima atualização: ' + brData + '\nDiferença atual: ' + _diff + ' dia(s).'); return false; }
+        if (_diff < 10) { alertFn('A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + alv.vencimento + '\nPróxima atualização: ' + brData + '\nDiferença atual: ' + _diff + ' dia(s).'); return false; }
       }
     }
 
@@ -121,17 +126,45 @@
       }
     } catch(e){ console.warn('[intel] firestore', e); }
 
-    // toast de confirmação
+    if (!silent) {
+      // toast de confirmação
+      try {
+        var t = document.createElement('div');
+        t.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(16,185,129,.6);z-index:99999;font-size:14px;font-weight:600;';
+        t.innerHTML = '✅ Próxima atualização agendada: <strong>' + _esc(brData) + '</strong>';
+        document.body.appendChild(t);
+        setTimeout(function(){ t.remove(); }, 2500);
+      } catch(e){}
+      render();
+    }
+    return true;
+  };
+
+  // Aplicação em MASSA: mesma data para vários alvarás. Salva cada um em modo
+  // silencioso (valida individualmente), conta sucessos/pulados, depois 1 render + 1 toast.
+  window._auditSalvarProxMassa = function(alvaraIds, isoDate){
+    if (typeof bloqueioConsulta === 'function' && bloqueioConsulta()) return;
+    var brData = _isoParaBr(isoDate);
+    if (!brData) { alert('Escolha uma data válida para aplicar em massa.'); return; }
+    var ok = 0, pulados = 0, motivos = [];
+    (alvaraIds||[]).forEach(function(id){
+      // pré-checa regra 10-dias p/ dar motivo claro no resumo (a validação real acontece dentro)
+      var alv = (state.alvaras||[]).find(function(x){ return String(x.id)===String(id); });
+      var salvou = window._auditSalvarProx(id, isoDate, {silent:true});
+      if (salvou) ok++; else { pulados++; if (alv) motivos.push(alv.tipo||('#'+id)); }
+    });
+    // 1 render e 1 toast no fim
+    if (typeof saveState === 'function') saveState();
     try {
       var t = document.createElement('div');
-      t.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(16,185,129,.6);z-index:99999;font-size:14px;font-weight:600;';
-      t.innerHTML = '✅ Próxima atualização agendada: <strong>' + _esc(brData) + '</strong>';
+      var cor = pulados ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#10b981,#059669)';
+      t.style.cssText = 'position:fixed;top:20px;right:20px;background:'+cor+';color:#fff;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(0,0,0,.4);z-index:99999;font-size:14px;font-weight:600;max-width:360px;';
+      t.innerHTML = '✅ ' + ok + ' alvará(s) agendado(s) para <strong>' + _esc(brData) + '</strong>' +
+        (pulados ? '<br><span style="font-weight:400;font-size:12px">⚠️ ' + pulados + ' pulado(s) por regra de data (ex.: 10 dias antes do vencimento): ' + _esc(motivos.slice(0,4).join(', ')) + (motivos.length>4?'…':'') + '</span>' : '');
       document.body.appendChild(t);
-      setTimeout(function(){ t.remove(); }, 2500);
+      setTimeout(function(){ t.remove(); }, 5000);
     } catch(e){}
-
     render();
-    return true;
   };
 
   // Núcleo: alvarás com vencimento e SEM próxima atualização.
@@ -224,8 +257,53 @@
       descricao: 'Empresas ativas sem responsável designado — não aparecem em nenhuma carteira e ninguém acompanha. Clique para atribuir um dono.',
       contar: function(){ return window._auditSemRespItens().length; },
       render: function(){ return _renderAuditSemResp(); }
+    },
+    {
+      key: 'vencidos30',
+      titulo: 'Vencidos há +30 dias',
+      icone: '🚨',
+      cor: 'red',
+      descricao: 'Alvarás vencidos há mais de 30 dias e ainda ativos (não concluídos) — o vencimento passou faz tempo e ninguém resolveu. Foco no atraso crônico.',
+      contar: function(){ return window._auditVencidos30Itens().length; },
+      render: function(){ return _renderAuditListaAlvaras({
+        titulo:'Vencidos há +30 dias', icone:'🚨', cor:'red', emoji:'🔴',
+        itensFn: window._auditVencidos30Itens,
+        explica:'<span class="font-bold">Auditoria: alvarás vencidos há mais de 30 dias.</span> O vencimento passou faz tempo e o alvará continua ativo — atraso crônico. <span class="font-semibold">Clique na empresa para regularizar.</span>',
+        kpiLabel:'Vencidos +30d', kpiSub:'atraso crônico', vazio:'Nenhum alvará vencido há mais de 30 dias.',
+        colBadge: function(a){ var d=parseDataBR(a.vencimento); if(!d) return null; var dias=Math.round((_hojeZero()-d)/DIAS); return {txt:'há '+dias+'d', cor: dias>365?'red':'orange'}; }
+      }); }
+    },
+    {
+      key: 'semstatus',
+      titulo: 'Alvarás Sem Status',
+      icone: '❓',
+      cor: 'amber',
+      descricao: 'Alvarás sem status preenchido — falha de cadastro. Sem status não dá pra saber em que pé está nem gerir o alvará.',
+      contar: function(){ return window._auditSemStatusItens().length; },
+      render: function(){ return _renderAuditListaAlvaras({
+        titulo:'Alvarás Sem Status', icone:'❓', cor:'amber', emoji:'⚠️',
+        itensFn: window._auditSemStatusItens,
+        explica:'<span class="font-bold">Auditoria: alvarás sem status.</span> Sem status preenchido não dá pra saber em que pé está o alvará nem acompanhá-lo. <span class="font-semibold">Clique na empresa para definir o status.</span>',
+        kpiLabel:'Sem status', kpiSub:'falha de cadastro', vazio:'Todos os alvarás têm status.',
+        colBadge: function(){ return {txt:'sem status', cor:'amber'}; }
+      }); }
+    },
+    {
+      key: 'statusdesatualizado',
+      titulo: 'Status Desatualizado',
+      icone: '🔄',
+      cor: 'orange',
+      descricao: 'Alvarás cujo vencimento já passou mas o status não foi atualizado para "Vencido" — o dado está mentindo sobre a situação real.',
+      contar: function(){ return window._auditStatusDesatualizadoItens().length; },
+      render: function(){ return _renderAuditListaAlvaras({
+        titulo:'Status Desatualizado', icone:'🔄', cor:'orange', emoji:'🟠',
+        itensFn: window._auditStatusDesatualizadoItens,
+        explica:'<span class="font-bold">Auditoria: status não reflete o vencimento.</span> O vencimento já passou mas o status ainda não é "Vencido" — o dado está desatualizado. <span class="font-semibold">Clique na empresa para revisar o status.</span>',
+        kpiLabel:'Status desatualizado', kpiSub:'venceu, status não', vazio:'Nenhum status desatualizado.',
+        colBadge: function(a){ var d=parseDataBR(a.vencimento); if(!d) return null; var dias=Math.round((_hojeZero()-d)/DIAS); return {txt:'venceu há '+dias+'d', cor:'orange'}; }
+      }); }
     }
-    // 👉 próximas auditorias entram aqui (ex.: alvarás vencidos há +30d, etc.)
+    // 👉 próximas auditorias entram aqui
   ];
   window._intelAuditoria = window._intelAuditoria || null; // null = hub; senão a key da auditoria aberta
 
@@ -386,23 +464,39 @@
           <div class="text-sm text-slate-500 mt-1">Nenhum alvará ativo ${q?'(no filtro atual) ':''}está sem data de próxima atualização.</div>
         </div>
       ` : `
-        <div class="space-y-3">
-          ${grupos.map(function(g){
+        <div class="flex items-center justify-between mb-2 px-1">
+          <div class="text-xs text-slate-500">${grupos.length} ${window._auditProxAgrupar==='empresa'?'empresa(s)':'responsável(is)'} · ${totalAlv} alvará(s)</div>
+          <div class="flex items-center gap-2">
+            <button id="intel-expandir-todos" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Expandir todos</button>
+            <span class="text-slate-300">·</span>
+            <button id="intel-recolher-todos" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Recolher todos</button>
+          </div>
+        </div>
+        <div class="space-y-2">
+          ${grupos.map(function(g, gi){
             var isEmp = window._auditProxAgrupar === 'empresa';
-            var head = isEmp
-              ? `<button class="intel-open text-left flex-1 min-w-0 group" ${g.id!=null?`data-eid="${g.id}"`:''}>
-                   <div class="font-bold text-slate-800 truncate group-hover:text-blue-600">${_esc(g.nome)}</div>
-                   <div class="text-[11px] text-slate-500 truncate">${_esc(g.cidade||'')}${g.responsavel?' · 👤 '+_esc(g.responsavel):''}</div>
-                 </button>`
-              : `<div class="flex-1 min-w-0">
-                   <div class="font-bold text-slate-800 truncate">👤 ${_esc(g.nome)}</div>
-                   <div class="text-[11px] text-slate-500">${g.empresas.size} empresa(s) afetada(s)</div>
-                 </div>`;
+            var aberto = !!window._intelGruposAbertos[String(g.id!=null?g.id:('r'+gi))];
+            var gkey = String(g.id!=null?g.id:('r'+gi));
             return `<div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-rose-400">
-              <div class="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100">
-                ${head}
+              <div class="intel-toggle flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100 cursor-pointer select-none hover:bg-slate-100" data-gkey="${gkey}">
+                <span class="shrink-0 text-slate-400 text-xs transition-transform ${aberto?'rotate-90':''}" style="display:inline-block">▶</span>
+                <div class="flex-1 min-w-0">
+                  ${isEmp
+                    ? `<div class="font-bold text-slate-800 truncate">${_esc(g.nome)}</div>
+                       <div class="text-[11px] text-slate-500 truncate">${_esc(g.cidade||'')}${g.responsavel?' · 👤 '+_esc(g.responsavel):''}</div>`
+                    : `<div class="font-bold text-slate-800 truncate">👤 ${_esc(g.nome)}</div>
+                       <div class="text-[11px] text-slate-500">${g.empresas.size} empresa(s) afetada(s)</div>`}
+                </div>
                 <span class="shrink-0 bg-rose-100 text-rose-700 text-xs font-bold rounded-full px-3 py-1">${g.itens.length} alvará(s)</span>
-                ${isEmp && g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}">Corrigir →</button>` : ''}
+                ${isEmp && g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}" title="Abrir a empresa">Abrir empresa</button>` : ''}
+              </div>
+              ${!aberto ? '' : `
+              <!-- barra de aplicação em MASSA -->
+              <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
+                <span class="text-[11px] font-bold text-blue-700 uppercase">⚡ Aplicar em todos:</span>
+                <input type="date" class="intel-massa-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500" data-gkey="${gkey}" min="${_minIso()}" value="">
+                <button class="intel-massa-btn px-3 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-gkey="${gkey}" disabled>Aplicar aos ${g.itens.length}</button>
+                <span class="text-[11px] text-blue-600">define a mesma próxima atualização para todos os alvarás desta ${isEmp?'empresa':'lista'}</span>
               </div>
               <div class="divide-y divide-slate-50">
                 ${g.itens.map(function(a){
@@ -424,7 +518,7 @@
                     </div>
                   </div>`;
                 }).join('')}
-              </div>
+              </div>`}
             </div>`;
           }).join('')}
         </div>
@@ -631,6 +725,139 @@
     </div>`;
   }
 
+  // ==========================================================================
+  //  ITENS das auditorias 4, 5, 6 (alvarás)
+  // ==========================================================================
+  var DIAS = 864e5;
+  function _hojeZero(){ var h=new Date(); h.setHours(0,0,0,0); return h; }
+
+  // AUD 4 — vencidos há +30 dias (crônico), status não-terminal
+  window._auditVencidos30Itens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var hoje = _hojeZero();
+    return alvaras.filter(function(a){
+      if (!a || !a.vencimento) return false;
+      if (a.status && TERMINAIS.test(a.status)) return false;
+      var d = (typeof parseDataBR==='function') ? parseDataBR(a.vencimento) : null;
+      if (!d) return false; d.setHours(0,0,0,0);
+      if (Math.round((hoje - d)/DIAS) <= 30) return false; // só os vencidos há +30d
+      if (!_passaEscopo(a)) return false;
+      return true;
+    }).sort(function(x,y){ return (parseDataBR(x.vencimento)||0) - (parseDataBR(y.vencimento)||0); });
+  };
+
+  // AUD 5 — alvará SEM status (falha de cadastro)
+  window._auditSemStatusItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    return alvaras.filter(function(a){
+      if (!a) return false;
+      if (a.status && String(a.status).trim() !== '') return false;
+      if (!_passaEscopo(a)) return false;
+      return true;
+    });
+  };
+
+  // AUD 6 — status desatualizado: venceu mas o status não virou "Vencido"
+  //         (nem é terminal). Sinaliza status que precisa ser revisado.
+  window._auditStatusDesatualizadoItens = function(){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var hoje = _hojeZero();
+    return alvaras.filter(function(a){
+      if (!a || !a.vencimento || !a.status) return false;
+      if (TERMINAIS.test(a.status)) return false;      // terminal: ok
+      if (/^vencido/i.test(a.status)) return false;    // já marcado como vencido: ok
+      var d = (typeof parseDataBR==='function') ? parseDataBR(a.vencimento) : null;
+      if (!d) return false; d.setHours(0,0,0,0);
+      if (d >= hoje) return false;                      // ainda não venceu
+      if (!_passaEscopo(a)) return false;
+      return true;
+    }).sort(function(x,y){ return (parseDataBR(x.vencimento)||0) - (parseDataBR(y.vencimento)||0); });
+  };
+
+  // ---- renderer GENÉRICO p/ auditorias que listam alvarás agrupados por empresa
+  //      cfg: {titulo, icone, cor, itensFn, explica, colBadge(a)->{txt,cor}}
+  function _renderAuditListaAlvaras(cfg){
+    var q = (window._auditProxBusca || '').trim().toLowerCase();
+    var todos = cfg.itensFn();
+    var itens = !q ? todos : todos.filter(function(a){
+      return ((a.empresa||'')+' '+(a.cidade||'')+' '+(a.responsavel||'')+' '+(a.tipo||'')+' '+(a.status||'')).toLowerCase().indexOf(q)>=0;
+    });
+    var empresasAfetadas = new Set(itens.map(function(a){ return a.empresa_id!=null?a.empresa_id:a.empresa; })).size;
+    var respAfetados = new Set(itens.map(function(a){ return a.responsavel||'(sem)'; })).size;
+    var grupos = _agruparPorEmpresa(itens);
+    var kpis = [
+      {l: cfg.kpiLabel || 'Alvarás apontados', v: itens.length, c: cfg.cor, sub: cfg.kpiSub || 'precisam de revisão'},
+      {l:'Empresas afetadas', v: empresasAfetadas, c:'amber', sub:'com ocorrência'},
+      {l:'Responsáveis envolvidos', v: respAfetados, c:'blue', sub:'no escopo'}
+    ];
+    return `
+    <div class="p-6">
+      <button class="intel-voltar inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Centro de Inteligência</button>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">${cfg.icone} ${_esc(cfg.titulo)}</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${window._auditProxSoMeu?' <span class="text-amber-600 font-medium">(filtro: seus alvarás)</span>':' <span class="text-slate-400">· base inteira</span>'}</p>
+        </div>
+      </div>
+      <div class="bg-${cfg.cor}-50 border border-${cfg.cor}-200 rounded-xl p-4 my-5 flex items-start gap-3">
+        <div class="text-2xl leading-none">${cfg.emoji||'⚠️'}</div>
+        <div class="text-sm text-${cfg.cor}-900">${cfg.explica}</div>
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-5">
+        ${kpis.map(function(k){ return `<div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-${k.c}-500">
+          <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">${k.l}</div>
+          <div class="text-3xl font-bold text-slate-800 mt-1 leading-tight">${k.v}</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">${k.sub}</div>
+        </div>`; }).join('')}
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-3">
+        <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none" title="Filtra só os alvarás em que você é o responsável">
+          <input type="checkbox" id="intel-so-meu" ${window._auditProxSoMeu?'checked':''} class="w-4 h-4 rounded"> Só os meus
+        </label>
+        <div class="h-6 w-px bg-slate-200"></div>
+        <div class="flex-1 min-w-[180px]">
+          <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa, cidade, responsável, tipo..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+        </div>
+        <button id="intel-export" class="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100">⬇️ Exportar CSV</button>
+      </div>
+      ${itens.length === 0 ? `
+        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
+          <div class="text-5xl mb-3">🎉</div>
+          <div class="text-lg font-bold text-slate-800">Nada apontado!</div>
+          <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}${_esc(cfg.vazio||'Nenhuma ocorrência encontrada.')}</div>
+        </div>
+      ` : `
+        <div class="space-y-3">
+          ${grupos.map(function(g){
+            return `<div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-${cfg.cor}-500">
+              <div class="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100">
+                <button class="intel-open text-left flex-1 min-w-0 group" ${g.id!=null?`data-eid="${g.id}"`:''}>
+                  <div class="font-bold text-slate-800 truncate group-hover:text-blue-600">${_esc(g.nome)}</div>
+                  <div class="text-[11px] text-slate-500 truncate">${_esc(g.cidade||'')}${g.responsavel?' · 👤 '+_esc(g.responsavel):''}</div>
+                </button>
+                <span class="shrink-0 bg-${cfg.cor}-100 text-${cfg.cor}-700 text-xs font-bold rounded-full px-3 py-1">${g.itens.length}</span>
+                ${g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}">Abrir →</button>` : ''}
+              </div>
+              <div class="divide-y divide-slate-50">
+                ${g.itens.map(function(a){
+                  var badge = cfg.colBadge ? cfg.colBadge(a) : null;
+                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50">
+                    <div class="flex-1 min-w-0">
+                      <span class="font-medium text-slate-700">${_esc(a.tipo||'(sem tipo)')}</span>
+                      <span class="ml-2 text-[10px] uppercase tracking-wide text-slate-400">${_esc(a.status||'(sem status)')}</span>
+                    </div>
+                    <span class="shrink-0 text-xs text-slate-500">venc: <b class="text-slate-700">${_esc(a.vencimento||'—')}</b></span>
+                    ${badge?`<span class="shrink-0 text-[10px] font-bold text-${badge.cor}-600 bg-${badge.cor}-50 rounded px-2 py-0.5">${_esc(badge.txt)}</span>`:''}
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
+  }
+
   window.attachInteligencia = function(){
     // navegação hub <-> auditoria (limpa a busca ao trocar de tela p/ não vazar filtro)
     document.querySelectorAll('.intel-abrir').forEach(function(b){
@@ -645,7 +872,42 @@
     var soMeu = document.getElementById('intel-so-meu');
     if (soMeu) soMeu.onclick = function(){ window._auditProxSoMeu = soMeu.checked; render(); };
     document.querySelectorAll('.intel-open').forEach(function(b){
-      b.onclick = function(){ var id = b.dataset.eid; if (id != null) setState({empresaAtiva: isNaN(+id)?id:+id}); };
+      b.onclick = function(ev){ if(ev) ev.stopPropagation(); var id = b.dataset.eid; if (id != null) setState({empresaAtiva: isNaN(+id)?id:+id}); };
+    });
+    // accordion: recolher/expandir grupos (recolhido por padrão)
+    document.querySelectorAll('.intel-toggle').forEach(function(h){
+      h.onclick = function(ev){
+        if (ev && ev.target.closest('.intel-open')) return; // clique no botão "Abrir empresa" não togglea
+        var k = h.dataset.gkey;
+        window._intelGruposAbertos[k] = !window._intelGruposAbertos[k];
+        render();
+      };
+    });
+    var expTodos = document.getElementById('intel-expandir-todos');
+    if (expTodos) expTodos.onclick = function(){
+      document.querySelectorAll('.intel-toggle').forEach(function(h){ window._intelGruposAbertos[h.dataset.gkey] = true; });
+      render();
+    };
+    var recTodos = document.getElementById('intel-recolher-todos');
+    if (recTodos) recTodos.onclick = function(){ window._intelGruposAbertos = {}; render(); };
+    // aplicar data em MASSA por grupo
+    document.querySelectorAll('.intel-massa-inp').forEach(function(inp){
+      var btn = document.querySelector('.intel-massa-btn[data-gkey="'+inp.dataset.gkey+'"]');
+      var sync = function(){ if (btn) btn.disabled = !inp.value; };
+      inp.oninput = sync; inp.onchange = sync;
+    });
+    document.querySelectorAll('.intel-massa-btn').forEach(function(btn){
+      btn.onclick = function(){
+        var inp = document.querySelector('.intel-massa-inp[data-gkey="'+btn.dataset.gkey+'"]');
+        if (!inp || !inp.value) { alert('Escolha a data para aplicar em massa.'); return; }
+        // coleta os ids do grupo (os inputs individuais dentro do mesmo card)
+        var card = btn.closest('.bg-white');
+        var ids = [];
+        if (card) card.querySelectorAll('.intel-prox-inp').forEach(function(i){ ids.push(i.dataset.aid); });
+        if (!ids.length) { alert('Nenhum alvará neste grupo.'); return; }
+        if (!confirm('Aplicar ' + inp.value.split('-').reverse().join('/') + ' como próxima atualização em ' + ids.length + ' alvará(s)?\n\n(Alvarás que violarem a regra de data — ex.: 10 dias antes do vencimento — serão pulados.)')) return;
+        window._auditSalvarProxMassa(ids, inp.value);
+      };
     });
     // date picker inline: habilita o botão Salvar quando há data escolhida
     document.querySelectorAll('.intel-prox-inp').forEach(function(inp){
