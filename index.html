@@ -2917,15 +2917,57 @@ function attachDashboard(){
     arr.forEach(x => { const v = x[key]||'N/A'; c[v] = (c[v]||0)+1; });
     return Object.entries(c).sort((a,b) => b[1]-a[1]);
   };
-  const mk = (id, key, type='doughnut') => {
+  // Plugin inline: desenha o VALOR de cada barra/fatia direto no gráfico.
+  // (evita depender de chartjs-plugin-datalabels externo — CSP/offline safe)
+  const _valorLabels = {
+    id: 'valorLabels',
+    afterDatasetsDraw(chart){
+      const {ctx} = chart;
+      const total = (chart.data.datasets[0].data||[]).reduce((s,v)=>s+(Number(v)||0),0) || 1;
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach((el, i) => {
+          const v = ds.data[i];
+          if (v == null || v === 0) return;
+          ctx.save();
+          ctx.font = '700 11px -apple-system, "Segoe UI", sans-serif';
+          ctx.textAlign = 'center';
+          if (chart.config.type === 'bar') {
+            // valor ACIMA da barra
+            ctx.fillStyle = '#334155';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText(v, el.x, el.y - 3);
+          } else {
+            // doughnut/pie: valor + % no meio da fatia (só se a fatia for grande o bastante)
+            const pct = Math.round(100*v/total);
+            if (pct < 5) { ctx.restore(); return; } // fatia pequena: não polui
+            const pos = el.tooltipPosition();
+            ctx.fillStyle = '#fff';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 3;
+            ctx.fillText(v + ' (' + pct + '%)', pos.x, pos.y);
+          }
+          ctx.restore();
+        });
+      });
+    }
+  };
+  const mk = (id, key, type='doughnut', titulo) => {
     const ctx = document.getElementById(id);
     if (!ctx) return;
     const data = countBy(alvFiltrados, key);
     _charts[id] = new Chart(ctx, {
-      type, data: {labels: data.map(x=>x[0]), datasets:[{data: data.map(x=>x[1]), backgroundColor: data.map(([l],i)=>SC[l]||COL[i%COL.length])}]},
+      type, data: {labels: data.map(x=>x[0]), datasets:[{label: titulo||key, data: data.map(x=>x[1]), backgroundColor: data.map(([l],i)=>SC[l]||COL[i%COL.length])}]},
+      plugins: [_valorLabels],
       options: {
         responsive:true, maintainAspectRatio:false,
-        plugins:{legend:{position:type==='doughnut'?'right':'top', labels:{font:{size:10}, boxWidth:10}}},
+        layout:{ padding:{ top: type==='bar' ? 18 : 0 } }, // espaço p/ o valor acima da barra
+        plugins:{
+          // barra tem 1 série só → legenda "undefined" não faz sentido; escondemos.
+          // doughnut mantém legenda (identifica as fatias).
+          legend: type==='bar' ? {display:false} : {position:'right', labels:{font:{size:10}, boxWidth:10}}
+        },
         onClick: (evt, elements) => {
           if (!elements.length) return;
           const idx = elements[0].index;
@@ -2941,10 +2983,10 @@ function attachDashboard(){
     });
     ctx.style.cursor = 'pointer';
   };
-  mk('chart-status','status','doughnut');
-  mk('chart-tipo','tipo','bar');
-  mk('chart-cidade','cidade','doughnut');
-  mk('chart-resp','responsavel','bar');
+  mk('chart-status','status','doughnut','Status');
+  mk('chart-tipo','tipo','bar','Tipo de alvará');
+  mk('chart-cidade','cidade','doughnut','Cidade');
+  mk('chart-resp','responsavel','bar','Responsável');
   // Bindings do drill-down
   const closeDrill = document.getElementById('dash-close-drill');
   if (closeDrill) closeDrill.onclick = () => { _dashDrill = null; renderPartial(); };
