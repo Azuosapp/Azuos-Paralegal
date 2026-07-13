@@ -80,11 +80,16 @@
       // regra 2: mínimo 5 dias a partir de hoje
       var _min5 = new Date(_hoje); _min5.setDate(_min5.getDate()+5);
       if (_dp < _min5) { alertFn('A próxima atualização precisa ser de pelo menos 5 dias a partir de hoje.\n\nData mínima: ' + _min5.toLocaleDateString('pt-BR')); return false; }
-      // regra 3: pelo menos 10 dias antes do vencimento
+      // regra 3: pelo menos 10 dias antes do vencimento — SÓ vale se o vencimento
+      // ainda está no futuro. Se já venceu, a próxima atualização é livre
+      // (senão seria impossível reagendar alvarás vencidos). Respeita só a regra de 5 dias.
       var _dVenc = (alv.vencimento && typeof parseDataBR==='function') ? parseDataBR(alv.vencimento) : null;
       if (_dVenc) {
-        var _diff = Math.round((_dVenc - _dp) / (1000*60*60*24));
-        if (_diff < 10) { alertFn('A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + alv.vencimento + '\nPróxima atualização: ' + brData + '\nDiferença atual: ' + _diff + ' dia(s).'); return false; }
+        var _dv0 = new Date(_dVenc); _dv0.setHours(0,0,0,0);
+        if (_dv0 >= _hoje) { // vencimento no futuro → aplica a regra dos 10 dias
+          var _diff = Math.round((_dVenc - _dp) / (1000*60*60*24));
+          if (_diff < 10) { alertFn('A próxima atualização precisa ter no mínimo 10 dias de diferença para o vencimento.\n\nVencimento: ' + alv.vencimento + '\nPróxima atualização: ' + brData + '\nDiferença atual: ' + _diff + ' dia(s).'); return false; }
+        }
       }
     }
 
@@ -728,15 +733,35 @@
           <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}Todos os ciclos estão em dia.</div>
         </div>
       ` : `
-        <div class="space-y-3">
-          ${grupos.map(function(g){
+        <div class="flex items-center justify-between mb-2 px-1">
+          <div class="text-xs text-slate-500">${grupos.length} empresa(s) · ${itens.length} vencida(s)</div>
+          <div class="flex items-center gap-2">
+            <button id="intel-expandir-todos" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Expandir todos</button>
+            <span class="text-slate-300">·</span>
+            <button id="intel-recolher-todos" class="text-xs font-semibold text-blue-600 hover:text-blue-800">Recolher todos</button>
+          </div>
+        </div>
+        <div class="space-y-2">
+          ${grupos.map(function(g, gi){
+            var gkey = String(g.id!=null?g.id:('r'+gi));
+            var aberto = !!window._intelGruposAbertos[gkey];
             return `<div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-red-500">
-              <div class="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100">
-                <button class="intel-open text-left flex-1 min-w-0 group" ${g.id!=null?`data-eid="${g.id}"`:''}>
-                  <div class="font-bold text-slate-800 truncate group-hover:text-blue-600">${_esc(g.nome)}</div>
+              <div class="intel-toggle flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100 cursor-pointer select-none hover:bg-slate-100" data-gkey="${gkey}">
+                <span class="shrink-0 text-slate-400 text-xs ${aberto?'rotate-90':''}" style="display:inline-block">▶</span>
+                <div class="flex-1 min-w-0">
+                  <div class="font-bold text-slate-800 truncate">${_esc(g.nome)}</div>
                   <div class="text-[11px] text-slate-500 truncate">${_esc(g.cidade||'')}${g.responsavel?' · 👤 '+_esc(g.responsavel):''}</div>
-                </button>
+                </div>
                 <span class="shrink-0 bg-red-100 text-red-700 text-xs font-bold rounded-full px-3 py-1">${g.itens.length} vencida(s)</span>
+                ${g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}" title="Abrir a empresa">Abrir empresa</button>` : ''}
+              </div>
+              ${!aberto ? '' : `
+              <!-- barra de aplicação em MASSA (reagendar todos de uma vez) -->
+              <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
+                <span class="text-[11px] font-bold text-blue-700 uppercase">⚡ Reagendar todos:</span>
+                <input type="date" class="intel-massa-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500" data-gkey="${gkey}" min="${_minIso()}" value="">
+                <button class="intel-massa-btn px-3 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-gkey="${gkey}" disabled>Aplicar aos ${g.itens.length}</button>
+                <span class="text-[11px] text-blue-600">define a mesma nova data de próxima atualização para todos os vencidos desta empresa</span>
               </div>
               <div class="divide-y divide-slate-50">
                 ${g.itens.map(function(a){
@@ -754,7 +779,7 @@
                     </div>
                   </div>`;
                 }).join('')}
-              </div>
+              </div>`}
             </div>`;
           }).join('')}
         </div>
