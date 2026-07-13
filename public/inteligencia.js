@@ -206,9 +206,26 @@
       descricao: 'Alvarás com vencimento definido mas SEM data de próxima atualização — têm prazo, mas ninguém agendou o próximo ciclo. Risco de vencer sem acompanhamento.',
       contar: function(){ return window._auditProxItens().length; },
       render: function(){ return _renderAuditProxAtual(); }
+    },
+    {
+      key: 'proxvencida',
+      titulo: 'Próxima Atualização Vencida',
+      icone: '⏰',
+      cor: 'red',
+      descricao: 'Alvarás cuja data de próxima atualização já passou e ninguém reagendou — o ciclo de acompanhamento estourou. Reagende direto na lista.',
+      contar: function(){ return window._auditProxVencidaItens().length; },
+      render: function(){ return _renderAuditProxVencida(); }
+    },
+    {
+      key: 'semresp',
+      titulo: 'Empresas Sem Responsável',
+      icone: '👤',
+      cor: 'amber',
+      descricao: 'Empresas ativas sem responsável designado — não aparecem em nenhuma carteira e ninguém acompanha. Clique para atribuir um dono.',
+      contar: function(){ return window._auditSemRespItens().length; },
+      render: function(){ return _renderAuditSemResp(); }
     }
-    // 👉 próximas auditorias entram aqui (ex.: empresas sem responsável,
-    //    alvarás vencidos há +30d, próxima atualização já vencida, etc.)
+    // 👉 próximas auditorias entram aqui (ex.: alvarás vencidos há +30d, etc.)
   ];
   window._intelAuditoria = window._intelAuditoria || null; // null = hub; senão a key da auditoria aberta
 
@@ -406,6 +423,208 @@
       `}
     </div>`;
   };
+
+  // ==========================================================================
+  //  AUDITORIA 2: Próxima atualização já VENCIDA
+  //  A data de próxima atualização foi definida mas já passou — ciclo estourou
+  //  e ninguém reagendou. Crítico: acompanhamento atrasado.
+  // ==========================================================================
+  window._auditProxVencidaItens = function(){
+    var meu = _meuNomeAtual();
+    var admin = _souAdmin();
+    var soMeu = admin ? window._auditProxSoMeu : true;
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var hoje = new Date(); hoje.setHours(0,0,0,0);
+    return alvaras.filter(function(a){
+      if (!a) return false;
+      if (_proxVazia(a.proxima_atualizacao)) return false;   // precisa ter data
+      if (a.status && TERMINAIS.test(a.status)) return false; // terminal não conta
+      var d = (typeof parseDataBR==='function') ? parseDataBR(a.proxima_atualizacao) : null;
+      if (!d) return false;
+      d.setHours(0,0,0,0);
+      if (d >= hoje) return false;                            // só as JÁ vencidas
+      if (soMeu && (a.responsavel || '') !== meu) return false;
+      return true;
+    }).sort(function(x,y){
+      var dx=parseDataBR(x.proxima_atualizacao), dy=parseDataBR(y.proxima_atualizacao);
+      return (dx||0) - (dy||0); // mais atrasadas primeiro
+    });
+  };
+
+  function _renderAuditProxVencida(){
+    var admin = _souAdmin();
+    var q = (window._auditProxBusca || '').trim().toLowerCase();
+    var todos = window._auditProxVencidaItens();
+    var itens = !q ? todos : todos.filter(function(a){
+      return ((a.empresa||'')+' '+(a.cidade||'')+' '+(a.responsavel||'')+' '+(a.tipo||'')).toLowerCase().indexOf(q)>=0;
+    });
+    var empresasAfetadas = new Set(itens.map(function(a){ return a.empresa_id!=null?a.empresa_id:a.empresa; })).size;
+    var respAfetados = new Set(itens.map(function(a){ return a.responsavel||'(sem)'; })).size;
+    var hoje = new Date(); hoje.setHours(0,0,0,0);
+    var maxAtraso = itens.reduce(function(mx,a){ var d=parseDataBR(a.proxima_atualizacao); if(!d) return mx; var dias=Math.round((hoje-d)/(864e5)); return Math.max(mx,dias); },0);
+    var grupos = _agruparPorEmpresa(itens);
+    var kpis = [
+      {l:'Próx. atualizações vencidas', v: itens.length, c:'red', sub:'ciclo estourou'},
+      {l:'Empresas afetadas', v: empresasAfetadas, c:'amber', sub:'acompanhamento atrasado'},
+      {l:'Responsáveis envolvidos', v: respAfetados, c:'blue', sub:'com atraso'},
+      {l:'Maior atraso', v: maxAtraso + 'd', c:'rose', sub:'dias em atraso'}
+    ];
+    var atrasoLabel = function(a){ var d=parseDataBR(a.proxima_atualizacao); if(!d) return ''; var dias=Math.round((hoje-d)/(864e5)); return 'atrasado ' + dias + 'd'; };
+
+    return `
+    <div class="p-6">
+      <button class="intel-voltar inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Centro de Inteligência</button>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">⏰ Próxima Atualização Vencida</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados${admin?'':' <span class="text-amber-600 font-medium">(escopo: seus alvarás)</span>'}</p>
+        </div>
+      </div>
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4 my-5 flex items-start gap-3">
+        <div class="text-2xl leading-none">🔴</div>
+        <div class="text-sm text-red-900">
+          <span class="font-bold">Auditoria: próxima atualização com data já vencida.</span>
+          A data do próximo ciclo <b>já passou</b> e ninguém reagendou — o acompanhamento está <b>atrasado</b>.
+          <span class="font-semibold">Reagende a próxima atualização direto na lista.</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        ${kpis.map(function(k){ return `<div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-${k.c}-500">
+          <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">${k.l}</div>
+          <div class="text-3xl font-bold text-slate-800 mt-1 leading-tight">${k.v}</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">${k.sub}</div>
+        </div>`; }).join('')}
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-3">
+        ${admin?`<label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+          <input type="checkbox" id="intel-so-meu" ${window._auditProxSoMeu?'checked':''} class="w-4 h-4 rounded"> Só os meus
+        </label><div class="h-6 w-px bg-slate-200"></div>`:''}
+        <div class="flex-1 min-w-[180px]">
+          <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa, cidade, responsável, tipo..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+        </div>
+      </div>
+      ${itens.length === 0 ? `
+        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
+          <div class="text-5xl mb-3">🎉</div>
+          <div class="text-lg font-bold text-slate-800">Nenhuma próxima atualização vencida!</div>
+          <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}Todos os ciclos estão em dia.</div>
+        </div>
+      ` : `
+        <div class="space-y-3">
+          ${grupos.map(function(g){
+            return `<div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-red-500">
+              <div class="flex items-center gap-3 px-4 py-3 bg-slate-50 border-b border-slate-100">
+                <button class="intel-open text-left flex-1 min-w-0 group" ${g.id!=null?`data-eid="${g.id}"`:''}>
+                  <div class="font-bold text-slate-800 truncate group-hover:text-blue-600">${_esc(g.nome)}</div>
+                  <div class="text-[11px] text-slate-500 truncate">${_esc(g.cidade||'')}${g.responsavel?' · 👤 '+_esc(g.responsavel):''}</div>
+                </button>
+                <span class="shrink-0 bg-red-100 text-red-700 text-xs font-bold rounded-full px-3 py-1">${g.itens.length} vencida(s)</span>
+              </div>
+              <div class="divide-y divide-slate-50">
+                ${g.itens.map(function(a){
+                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50">
+                    <div class="flex-1 min-w-0">
+                      <span class="font-medium text-slate-700">${_esc(a.tipo||'(sem tipo)')}</span>
+                      ${a.status?`<span class="ml-2 text-[10px] uppercase tracking-wide text-slate-400">${_esc(a.status)}</span>`:''}
+                    </div>
+                    <span class="shrink-0 text-xs text-slate-500">próx. era: <b class="text-slate-700">${_esc(a.proxima_atualizacao||'')}</b></span>
+                    <span class="shrink-0 text-[10px] font-bold text-red-600 bg-red-50 rounded px-2 py-0.5">${atrasoLabel(a)}</span>
+                    <div class="proxbox shrink-0 flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg pl-2 pr-1 py-1" title="Reagende a próxima atualização">
+                      <span class="text-[10px] font-bold text-rose-600 uppercase">nova:</span>
+                      <input type="date" class="intel-prox-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-blue-500" data-aid="${_esc(String(a.id))}" min="${_minIso()}" value="">
+                      <button class="intel-prox-save px-2 py-0.5 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-aid="${_esc(String(a.id))}" disabled>Salvar</button>
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
+  }
+
+  // ==========================================================================
+  //  AUDITORIA 3: Empresas ATIVAS sem responsável
+  // ==========================================================================
+  window._auditSemRespItens = function(){
+    var empresas = (typeof state!=='undefined' && state.empresas) ? state.empresas : [];
+    return empresas.filter(function(e){
+      if (!e) return false;
+      if ((e.status||'').toUpperCase() !== 'ATIVO') return false;
+      return !e.responsavel || String(e.responsavel).trim() === '';
+    }).sort(function(x,y){ return String(x.nome||'').localeCompare(String(y.nome||'')); });
+  };
+
+  function _renderAuditSemResp(){
+    var q = (window._auditProxBusca || '').trim().toLowerCase();
+    var todos = window._auditSemRespItens();
+    var itens = !q ? todos : todos.filter(function(e){
+      return ((e.nome||'')+' '+(e.cidade||'')).toLowerCase().indexOf(q)>=0;
+    });
+    var cidades = new Set(itens.map(function(e){ return e.cidade||'(sem)'; })).size;
+    var idx = window._idxAlvCache; // pode não existir; conta alvarás órfãos de forma segura
+    var alvarasOrfaos = 0;
+    try {
+      var ids = new Set(itens.map(function(e){ return e.id; }));
+      alvarasOrfaos = (state.alvaras||[]).filter(function(a){ return a && ids.has(a.empresa_id); }).length;
+    } catch(e){}
+    var kpis = [
+      {l:'Empresas sem responsável', v: itens.length, c:'amber', sub:'ativas, sem dono'},
+      {l:'Cidades', v: cidades, c:'blue', sub:'distribuição'},
+      {l:'Alvarás sem dono', v: alvarasOrfaos, c:'rose', sub:'nessas empresas'}
+    ];
+    return `
+    <div class="p-6">
+      <button class="intel-voltar inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Centro de Inteligência</button>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">👤 Empresas Sem Responsável</h1>
+          <p class="text-sm text-slate-500 mt-0.5">Auditoria de qualidade de dados</p>
+        </div>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 my-5 flex items-start gap-3">
+        <div class="text-2xl leading-none">⚠️</div>
+        <div class="text-sm text-amber-900">
+          <span class="font-bold">Auditoria: empresas ativas sem responsável designado.</span>
+          Sem um dono, essas empresas (e seus alvarás) <b>não aparecem em nenhuma carteira</b> — ninguém acompanha.
+          <span class="font-semibold">Clique na empresa para atribuir um responsável.</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-5">
+        ${kpis.map(function(k){ return `<div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-${k.c}-500">
+          <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">${k.l}</div>
+          <div class="text-3xl font-bold text-slate-800 mt-1 leading-tight">${k.v}</div>
+          <div class="text-[11px] text-slate-500 mt-0.5">${k.sub}</div>
+        </div>`; }).join('')}
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-3 mb-4 flex flex-wrap items-center gap-3">
+        <div class="flex-1 min-w-[180px]">
+          <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa ou cidade..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+        </div>
+      </div>
+      ${itens.length === 0 ? `
+        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
+          <div class="text-5xl mb-3">🎉</div>
+          <div class="text-lg font-bold text-slate-800">Todas as empresas têm responsável!</div>
+          <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}Nenhuma empresa ativa está sem dono.</div>
+        </div>
+      ` : `
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-amber-500 divide-y divide-slate-50">
+          ${itens.map(function(e){
+            return `<button class="intel-open w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-slate-50 group" data-eid="${e.id}">
+              <div class="flex-1 min-w-0">
+                <div class="font-medium text-slate-700 truncate group-hover:text-blue-600">${_esc(e.nome||'(sem nome)')}</div>
+                <div class="text-[11px] text-slate-500 truncate">${_esc(e.cidade||'')}</div>
+              </div>
+              <span class="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 rounded px-2 py-0.5">sem responsável</span>
+              <span class="shrink-0 text-blue-600 font-semibold text-xs group-hover:translate-x-0.5 transition-transform">atribuir →</span>
+            </button>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
+  }
 
   window.attachInteligencia = function(){
     // navegação hub <-> auditoria
