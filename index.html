@@ -699,7 +699,7 @@ function renderLayout(content){
   }).length;
   const badgeResumo = pendDia > 0 ? `<span class="ml-auto bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-orange-500/40 pulse-soft">${pendDia}</span>` : '';
   // Inteligência: nº de alvarás com vencimento mas SEM próxima atualização (respeitando escopo do usuário)
-  const _intelPend = (typeof _auditProxItens === 'function') ? _auditProxItens().length : 0;
+  const _intelPend = (typeof window._intelTotalPendencias === 'function') ? window._intelTotalPendencias() : ((typeof _auditProxItens === 'function') ? _auditProxItens().length : 0);
   const badgeIntel = _intelPend > 0 ? `<span class="ml-auto bg-gradient-to-r from-rose-500 to-red-600 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-rose-500/40">${_intelPend}</span>` : '';
   const menu = [
     {key:'resumo', label:'Resumo do Dia', icon:'📣', badge: badgeResumo},

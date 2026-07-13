@@ -229,6 +229,12 @@
   ];
   window._intelAuditoria = window._intelAuditoria || null; // null = hub; senão a key da auditoria aberta
 
+  // total de pendências somando TODAS as auditorias — usado no badge do menu.
+  // Como lê o registro _AUDITS, uma auditoria nova entra no badge automaticamente.
+  window._intelTotalPendencias = function(){
+    return _AUDITS.reduce(function(s, au){ try { return s + (au.contar() || 0); } catch(e){ return s; } }, 0);
+  };
+
   // ---- HUB: tela inicial com os botões de cada auditoria -------------------
   function _renderHub(){
     var admin = _souAdmin();
@@ -627,12 +633,12 @@
   }
 
   window.attachInteligencia = function(){
-    // navegação hub <-> auditoria
+    // navegação hub <-> auditoria (limpa a busca ao trocar de tela p/ não vazar filtro)
     document.querySelectorAll('.intel-abrir').forEach(function(b){
-      b.onclick = function(){ window._intelAuditoria = b.dataset.audit; render(); };
+      b.onclick = function(){ window._auditProxBusca = ''; window._intelAuditoria = b.dataset.audit; render(); };
     });
     var voltar = document.querySelector('.intel-voltar');
-    if (voltar) voltar.onclick = function(){ window._intelAuditoria = null; render(); };
+    if (voltar) voltar.onclick = function(){ window._auditProxBusca = ''; window._intelAuditoria = null; render(); };
 
     document.querySelectorAll('.intel-group').forEach(function(b){
       b.onclick = function(){ window._auditProxAgrupar = b.dataset.g; render(); };
