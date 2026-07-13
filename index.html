@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.21 (Ranking sem gestor)</title>
+<title>AZUOS Paralegal - Sistema v6.0.22 (Alertas de datas)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3039,6 +3039,21 @@ function renderAlertas(){
 
   // Filtros (vars globais)
   
+  // v6.22.0 — Alertas de datas por empresa (ATIVO): sem nenhuma data / data em formato invalido
+  const _dtTxt = (v)=> v!=null && String(v).trim()!=='';
+  const _dtOk  = (v)=> _dtTxt(v) && !!parseDataBR(v);
+  const _grpSem = {}, _grpInv = {};
+  state.alvaras.forEach(a=>{
+    if(!empresasAtivo.has(a.empresa_id)) return;      // so empresas ATIVO
+    if(STATUS_OK(a.status)) return;                    // finalizados nao alertam
+    if(_aleResp && (a.responsavel||'')!==_aleResp) return;
+    const tv=_dtTxt(a.vencimento), tp=_dtTxt(a.proxima_atualizacao);
+    if(!tv && !tp){ (_grpSem[a.empresa_id]=_grpSem[a.empresa_id]||{empresa:a.empresa,eid:a.empresa_id,itens:[]}).itens.push(a); return; }
+    const vi=tv && !_dtOk(a.vencimento), pi=tp && !_dtOk(a.proxima_atualizacao);
+    if(vi||pi){ (_grpInv[a.empresa_id]=_grpInv[a.empresa_id]||{empresa:a.empresa,eid:a.empresa_id,itens:[]}).itens.push(Object.assign({},a,{_vi:vi,_pi:pi})); }
+  });
+  const listaSemData  = Object.keys(_grpSem).map(k=>_grpSem[k]).sort((a,b)=>(a.empresa||'').localeCompare(b.empresa||''));
+  const listaInvalida = Object.keys(_grpInv).map(k=>_grpInv[k]).sort((a,b)=>(a.empresa||'').localeCompare(b.empresa||''));
   const respOpts = [...new Set(state.alvaras.map(a=>a.responsavel).filter(x=>x))].sort();
   let visiveis = ativos;
   let semDataFiltrado = semData;
@@ -3114,6 +3129,28 @@ function renderAlertas(){
         ${sec('Atenção', ativos.filter(a=>a.cat==='atencao'),'yellow','31-60 dias','atencao')}
         ${sec('Monitorar', ativos.filter(a=>a.cat==='monitorar'),'blue','61-90 dias','monitorar')}
         ${sec('Futuro', ativos.filter(a=>a.cat==='futuro'),'slate','> 90 dias','futuro')}
+      </div>
+
+      <!-- v6.22.0 — Problemas de data por empresa -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+        <div class="bg-white rounded-xl shadow-sm border-l-4 border-amber-500 overflow-hidden">
+          <div class="px-4 py-2 bg-amber-50 border-b border-amber-100 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-amber-800">\uD83D\uDDD3\uFE0F Empresas com alvar\u00e1s SEM nenhuma data</h3>
+            <span class="text-lg font-bold text-amber-600">${listaSemData.length}</span>
+          </div>
+          <div class="max-h-72 overflow-y-auto">
+            ${listaSemData.length ? listaSemData.map(g=>`<details class="border-b border-slate-100"><summary class="px-3 py-2 cursor-pointer text-xs font-medium text-slate-700 hover:bg-slate-50 flex justify-between"><span class="truncate">${esc(g.empresa)}</span><span class="text-amber-600 font-bold ml-2">${g.itens.length}</span></summary><div class="bg-slate-50/60">${g.itens.map(a=>`<div class="px-4 py-1 text-[11px] text-slate-600 cursor-pointer hover:bg-white ale-row" data-aid="${a.id}" data-eid="${a.empresa_id}">\u2022 ${esc(a.tipo)} <span class="text-slate-400">(${esc(a.status||'-')})</span></div>`).join('')}</div></details>`).join('') : '<div class="px-4 py-6 text-center text-slate-400 text-xs">Nenhuma empresa nesta situa\u00e7\u00e3o \uD83C\uDF89</div>'}
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border-l-4 border-red-500 overflow-hidden">
+          <div class="px-4 py-2 bg-red-50 border-b border-red-100 flex items-center justify-between">
+            <h3 class="text-sm font-bold text-red-800">\u274C Empresas com data em formato inv\u00e1lido</h3>
+            <span class="text-lg font-bold text-red-600">${listaInvalida.length}</span>
+          </div>
+          <div class="max-h-72 overflow-y-auto">
+            ${listaInvalida.length ? listaInvalida.map(g=>`<details class="border-b border-slate-100"><summary class="px-3 py-2 cursor-pointer text-xs font-medium text-slate-700 hover:bg-slate-50 flex justify-between"><span class="truncate">${esc(g.empresa)}</span><span class="text-red-600 font-bold ml-2">${g.itens.length}</span></summary><div class="bg-slate-50/60">${g.itens.map(a=>`<div class="px-4 py-1 text-[11px] text-slate-600 cursor-pointer hover:bg-white ale-row" data-aid="${a.id}" data-eid="${a.empresa_id}">\u2022 ${esc(a.tipo)}: <span class="font-mono text-red-600">${a._vi?esc(a.vencimento):''}${a._pi?((a._vi?' / ':'')+esc(a.proxima_atualizacao)):''}</span></div>`).join('')}</div></details>`).join('') : '<div class="px-4 py-6 text-center text-slate-400 text-xs">Nenhuma empresa nesta situa\u00e7\u00e3o \uD83C\uDF89</div>'}
+          </div>
+        </div>
       </div>
 
       <!-- Filtro responsável -->
