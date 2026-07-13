@@ -647,6 +647,7 @@
           }).join('')}
         </div>
       `}
+      ${_rodapeTransparencia('Ignora só status terminais (Concluído/Pago/Em vigor/Sem obrigatoriedade/Arquivado/Isento) — esses não precisam de próxima atualização.', itensTodos.length, itens.length, q)}
     </div>`;
   };
 
@@ -784,6 +785,7 @@
           }).join('')}
         </div>
       `}
+      ${_rodapeTransparencia('Considera só alvarás com próxima atualização já preenchida e vencida, em status não-terminal.', todos.length, itens.length, q)}
     </div>`;
   }
 
@@ -866,6 +868,14 @@
           }).join('')}
         </div>
       `}
+      ${(function(){
+        var totAtivas = ((typeof state!=='undefined' && state.empresas)?state.empresas:[]).filter(function(e){ return e && (e.status||'').toUpperCase()==='ATIVO'; }).length;
+        return `<div class="mt-4 text-[11px] text-slate-400 border-t border-slate-100 pt-3 flex flex-wrap gap-x-4 gap-y-1">
+          <span><b class="text-slate-600">${todos.length}</b> empresa(s) sem responsável</span>
+          <span>de <b class="text-slate-600">${totAtivas}</b> empresa(s) ativa(s)</span>
+          <span class="w-full text-slate-300">Considera apenas empresas ATIVAS. Todas as ativas são verificadas.</span>
+        </div>`;
+      })()}
     </div>`;
   }
 
@@ -881,7 +891,12 @@
     var hoje = _hojeZero();
     return alvaras.filter(function(a){
       if (!a || !a.vencimento) return false;
-      if (a.status && TERMINAIS.test(a.status)) return false;
+      // "Sem obrigatoriedade" nunca é problema. Demais status terminais (incl.
+      // Concluído/Pago/Arquivado) SÓ são ignorados se já houver próxima
+      // atualização agendada — se venceu e ninguém reagendou, é atraso crônico
+      // e DEVE aparecer, independente do status.
+      if (/^sem obrigat/i.test(a.status||'')) return false;
+      if (a.status && TERMINAIS.test(a.status) && !_proxVazia(a.proxima_atualizacao)) return false;
       var d = (typeof parseDataBR==='function') ? parseDataBR(a.vencimento) : null;
       if (!d) return false; d.setHours(0,0,0,0);
       if (Math.round((hoje - d)/DIAS) <= 30) return false; // só os vencidos há +30d
@@ -1102,6 +1117,26 @@
           }).join('')}
         </div>
       `}
+      ${_rodapeTransparencia(cfg.rodapeNota, todos.length, itens.length, q)}
+    </div>`;
+  }
+
+  // Rodapé de transparência: mostra o universo auditado e o que foi filtrado,
+  // para que NUNCA reste dúvida sobre "faltou empresa". Todo alvará no escopo é
+  // contabilizado: apontado, ou excluído (com o motivo).
+  function _rodapeTransparencia(nota, totalApontadoSemBusca, mostrados, q){
+    var alvaras = (typeof state!=='undefined' && state.alvaras) ? state.alvaras : [];
+    var universo = alvaras.filter(function(a){ return a && _passaEscopo(a); }).length;
+    var apontados = totalApontadoSemBusca;
+    var excluidos = universo - apontados;
+    var escopoTxt = window._auditProxSoMeu ? 'seus alvarás' : 'base inteira';
+    var filtroTxt = q ? '<b>'+mostrados+'</b> no filtro de busca atual' : '';
+    return `<div class="mt-4 text-[11px] text-slate-400 border-t border-slate-100 pt-3 flex flex-wrap gap-x-4 gap-y-1">
+      <span><b class="text-slate-600">${apontados}</b> apontado(s)</span>
+      <span>de <b class="text-slate-600">${universo}</b> alvará(s) no escopo (${escopoTxt})</span>
+      <span><b class="text-slate-600">${excluidos}</b> não se enquadram nesta auditoria</span>
+      ${filtroTxt?`<span>${filtroTxt}</span>`:''}
+      <span class="w-full text-slate-300">${_esc(nota||'Todo alvará no escopo é contabilizado — nenhum some silenciosamente.')}</span>
     </div>`;
   }
 
