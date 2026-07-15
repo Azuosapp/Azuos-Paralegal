@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.24 (Robustez: guard + limite 1MB)</title>
+<title>AZUOS Paralegal - Sistema v6.0.25 (Alertas unificado na Inteligência)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -725,7 +725,6 @@ function renderLayout(content){
     {key:'inteligencia', label:'Inteligência', icon:'🧠', badge: badgeIntel},
     {key:'premiacao', label:'Premiação', icon:'🏆'},
     ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
-    {key:'alertas', label:'Alertas', icon:'🔔'},
     {key:'historico', label:'Histórico', icon:'🕒'},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
     {key:'usuarios', label:'Usuários', icon:'👥'},
@@ -4330,7 +4329,7 @@ function renderResumoDia() {
 
           <div class="border-t border-white/10 pt-4 mt-4 text-xs text-slate-400 flex items-center justify-between">
             <span>Acesse as abas para mais detalhes</span>
-            <button onclick="setState({page:'alertas'})" class="text-blue-300 hover:text-white">Ver Alertas →</button>
+            <button onclick="setState({page:'inteligencia'})" class="text-blue-300 hover:text-white">Ver Inteligência →</button>
           </div>
         </div>
       </div>
@@ -4356,10 +4355,10 @@ function renderResumoDia() {
 
       <!-- Botões de ação rápida -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <button onclick="setState({page:'alertas'})" class="bg-white border-2 border-slate-200 hover:border-orange-400 rounded-xl p-4 text-left transition card-hover">
-          <div class="text-2xl mb-1">🔔</div>
-          <div class="font-bold text-slate-800 text-sm">Alertas</div>
-          <div class="text-xs text-slate-500">Ver vencimentos</div>
+        <button onclick="setState({page:'inteligencia'})" class="bg-white border-2 border-slate-200 hover:border-orange-400 rounded-xl p-4 text-left transition card-hover">
+          <div class="text-2xl mb-1">🧠</div>
+          <div class="font-bold text-slate-800 text-sm">Inteligência</div>
+          <div class="text-xs text-slate-500">Auditorias e pendências</div>
         </button>
         <button onclick="setState({page:'novas'})" class="bg-white border-2 border-slate-200 hover:border-blue-400 rounded-xl p-4 text-left transition card-hover">
           <div class="text-2xl mb-1">🆕</div>
