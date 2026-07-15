@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.23 (Alertas: filtro por responsavel)</title>
+<title>AZUOS Paralegal - Sistema v6.0.24 (Robustez: guard + limite 1MB)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -265,8 +265,23 @@ async function _fsWriteNow() {
   const ref = _fsDocRef();
   if (!ref) return;
   try {
+    var _payload = _fsCollectFromState();
+    // v6.24.0 — protecao do limite de 1MB do doc 'shared': se o payload estiver
+    // grande, NAO reenvia as fotos (base64) neste write. Com merge:true as fotos ja
+    // gravadas na nuvem sao preservadas; so evitamos que o write inteiro falhe e
+    // quebre a sincronizacao de todos. Avisa o admin quando isso acontece.
+    try {
+      var _sz = JSON.stringify(_payload).length;
+      if (_sz > 900000 && _payload && _payload.fotos_usuarios) {
+        delete _payload.fotos_usuarios;
+        console.warn('[FS] doc grande (' + Math.round(_sz/1024) + 'KB) — fotos nao reenviadas neste write para nao estourar 1MB');
+        if (typeof toast === 'function' && state.sessao && state.sessao.cargo === 'Administrador') {
+          try { toast('\u26a0\ufe0f Sincroniza\u00e7\u00e3o perto do limite (' + Math.round(_sz/1024) + 'KB). Recomendo mover as fotos para armazenamento separado.', 'red'); } catch(_){}
+        }
+      }
+    } catch(_){}
     window._fsIgnoreNext = true;
-    await ref.set(_fsCollectFromState(), {merge: true});
+    await ref.set(_payload, {merge: true});
     console.log('[FS] State sincronizado para nuvem');
   } catch(e) {
     console.error('[FS] Erro ao gravar:', e.message);
@@ -2296,7 +2311,7 @@ function openModalAlvara(alvara, empresaId, tipoSugerido){
         </div>
         <input type="file" id="fa-arquivo" class="hidden" onchange="adicionarAnexo(this)">
         <button onclick="document.getElementById('fa-arquivo').click()" class="w-full px-3 py-2 border-2 border-dashed border-slate-300 rounded-lg text-xs text-slate-600 hover:border-blue-400 hover:bg-blue-50">📤 Anexar arquivo (PDF, foto, doc) <span class="text-blue-600 font-semibold">🤖 IA lê data automaticamente</span></button>
-        <div class="text-[10px] text-slate-400 mt-1">Limite: 2 MB. IA tenta detectar vencimento/ano em imagens.</div>
+        <div class="text-[10px] text-slate-400 mt-1">Limite: 5 MB. IA tenta detectar vencimento/ano em imagens.</div>
       </div>
 
       <!-- 📅 Anos Anteriores com Checklist de Revisão -->
@@ -2620,6 +2635,7 @@ function salvarAlvara(id, empresaId){
     }
   }
   const empresa = state.empresas.find(x => x.id === empresaId);
+  if (!empresa) { alert('Empresa não encontrada (pode ter sido removida ou re-sincronizada). Reabra a empresa e tente novamente.'); return; }
   let conversas = [], anexos = [];
   try { conversas = JSON.parse(document.getElementById('fa-conversas-data').value || '[]'); } catch(e) {}
   try { anexos = JSON.parse(document.getElementById('fa-anexos-data').value || '[]'); } catch(e) {}
