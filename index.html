@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.27 (Manutenção: chamados)</title>
+<title>AZUOS Paralegal - Sistema v6.0.28 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -807,6 +807,7 @@ function renderLayout(content){
   // Inteligência: nº de alvarás com vencimento mas SEM próxima atualização (respeitando escopo do usuário)
   const _intelPend = (typeof window._intelTotalPendencias === 'function') ? window._intelTotalPendencias() : ((typeof _auditProxItens === 'function') ? _auditProxItens().length : 0);
   const badgeIntel = _intelPend > 0 ? `<span class="ml-auto bg-gradient-to-r from-rose-500 to-red-600 text-white text-[10px] font-bold rounded-full px-2 py-0.5 min-w-[22px] text-center shadow-lg shadow-rose-500/40">${_intelPend}</span>` : '';
+  const badgeManut = (function(){ try{ if(!(state.sessao&&state.sessao.cargo==='Administrador')) return ''; var n=(state.manutencao||[]).filter(function(t){return t && !t.arquivado && (t.status==='aberto'||!t.status);}).length; return n?('<span class="ml-auto text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">'+n+'</span>'):''; }catch(e){ return ''; } })();
   const menu = [
     {key:'resumo', label:'Resumo do Dia', icon:'📣', badge: badgeResumo},
     {key:'empresas', label:'Empresas', icon:'🏢'},
@@ -821,7 +822,6 @@ function renderLayout(content){
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
     {key:'usuarios', label:'Usuários', icon:'👥'},
   ];
-  const badgeManut = (function(){ try{ if(!(state.sessao&&state.sessao.cargo==='Administrador')) return ''; var n=(state.manutencao||[]).filter(function(t){return t && !t.arquivado && (t.status==='aberto'||!t.status);}).length; return n?('<span class="ml-auto text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">'+n+'</span>'):''; }catch(e){ return ''; } })();
   const initialsUser = (state.sessao.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
   const _fotoSes = (()=>{try{const e=state.sessao&&state.sessao.email;if(!e||!state.usuarios)return null;const us=Object.values(state.usuarios);const u=us.find(x=>x&&(x.email||'').toLowerCase()===(e||'').toLowerCase());return (u&&u.foto)||null;}catch(_){return null}})();
   return `
