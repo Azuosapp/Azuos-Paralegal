@@ -1,0 +1,74 @@
+name: Manutenção — implementar chamados aprovados
+
+on:
+  workflow_dispatch: {}
+  # Depois de testar, descomente para rodar sozinho (ex.: de hora em hora):
+  # schedule:
+  #   - cron: '0 * * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: manutencao-auto
+  cancel-in-progress: false
+
+jobs:
+  processar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar credencial do Firebase (segredo)
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: printf '%s' "$SA" > service-account.json
+
+      - name: Instalar dependências
+        run: npm install firebase-admin@13 --no-audit --no-fund --loglevel=error
+
+      - name: Buscar chamado aprovado
+        id: fetch
+        run: node scripts/ci/fetch-approved-ticket.mjs
+
+      - name: Implementar com Claude e abrir Pull Request
+        if: steps.fetch.outputs.has_ticket == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Alternativa (se usar chave de API em vez do token da assinatura):
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          base_branch: main
+          prompt: |
+            Você está no repositório do sistema "AZUOS Paralegal" — um app single-file
+            (index.html com JS inline + módulos em public/*.js), publicado via GitHub Actions.
+
+            TAREFA: leia o arquivo `.ci-ticket.md` (o chamado de manutenção da equipe) e implemente o que ele pede.
+
+            REGRAS OBRIGATÓRIAS:
+            - Toda a lógica fica em index.html (JS inline) e/ou nos módulos public/*.js. Siga o padrão do código existente.
+            - TRAVA ANTI-PATCH: rode `node scripts/validate-html.js` e garanta que continua "válido".
+              O index.html deve manter no máximo 51 IIFEs no topo e no máximo 11 MutationObservers.
+              NÃO adicione novos IIFEs de topo nem novos MutationObservers.
+            - Faça a MENOR mudança possível para resolver o chamado. Não refatore o que não é necessário.
+            - Valide também com: `node --check public/firestore.js` e confirmando que os <script> inline não têm erro de sintaxe.
+            - Se o chamado for ambíguo, grande demais, arriscado ou você não tiver certeza, NÃO altere o código:
+              abra o PR apenas com uma descrição explicando o que falta ("precisa de detalhes / decisão do admin").
+            - Ao terminar, crie uma branch e abra um Pull Request para `main` com o título:
+              "🛠️ Manutenção: ${{ steps.fetch.outputs.ticket_titulo }}"
+              descrevendo objetivamente o que mudou e como testar. NÃO faça merge — quem aprova é o admin.
+          claude_args: |
+            --allowedTools Edit,Read,Write,Bash
+            --max-turns 30
+
+      - name: Marcar chamado como feito (aguardando revisão)
+        if: steps.fetch.outputs.has_ticket == 'true'
+        run: node scripts/ci/update-ticket.mjs "${{ steps.fetch.outputs.ticket_id }}" "🤖 Implementado automaticamente — PR aberto para revisão no GitHub."

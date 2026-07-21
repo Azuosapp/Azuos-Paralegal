@@ -11,3 +11,13 @@ dist/
 index.html.bak*
 deploy.command
 configurar-e-publicar.command
+# Chave de acesso do Firebase (service account) — SEGREDO, NUNCA versionar
+service-account.json
+serviceAccount*.json
+*firebase-adminsdk*.json
+_secrets/
+# Guias/ferramentas internas de segurança (não publicar)
+gerar-hash-senha.html
+SEGURANCA-*.md
+COMO-PUBLICAR-REGRAS-FIREBASE.md
+.ci-ticket.md
