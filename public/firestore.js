@@ -45,6 +45,7 @@ function _fsCollectFromState() {
   var out = {
     ciencias_por_usuario: state.ciencias_por_usuario || {},
     empresas_manuais: state.empresas_manuais || [],
+    manutencao: state.manutencao || [],
     resumo_visto_por_usuario: state.resumo_visto_por_usuario || {},
     historico: (state.historico || []).slice(0, 500),
     edicoes_alvaras: _semAnexosPesados(state.edicoes_alvaras || {}),
@@ -126,7 +127,7 @@ function _fsApplyToState(remote) {
   }
   // Campos simples: substitui se diferente
   // v6.0.8: merge por id — nao substitui arrays em bloco (evita perder itens criados em paralelo)
-  ['empresas_manuais','historico'].forEach(k => {
+  ['empresas_manuais','historico','manutencao'].forEach(k => {
     if (remote[k] !== undefined) {
       var _m = _uniPorId(state[k], remote[k]);
       if (k === 'historico') _m.sort(function(a,b){ var da=(a&&a.data)||'', db=(b&&b.data)||''; return db<da?-1:(db>da?1:0); });

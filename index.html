@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.26 (Proteção da estrutura)</title>
+<title>AZUOS Paralegal - Sistema v6.0.27 (Manutenção: chamados)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -817,9 +817,11 @@ function renderLayout(content){
     {key:'premiacao', label:'Premiação', icon:'🏆'},
     ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
     {key:'historico', label:'Histórico', icon:'🕒'},
+    {key:'manutencao', label:'Manutenção', icon:'🛠️', badge: badgeManut},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
     {key:'usuarios', label:'Usuários', icon:'👥'},
   ];
+  const badgeManut = (function(){ try{ if(!(state.sessao&&state.sessao.cargo==='Administrador')) return ''; var n=(state.manutencao||[]).filter(function(t){return t && !t.arquivado && (t.status==='aberto'||!t.status);}).length; return n?('<span class="ml-auto text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5">'+n+'</span>'):''; }catch(e){ return ''; } })();
   const initialsUser = (state.sessao.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
   const _fotoSes = (()=>{try{const e=state.sessao&&state.sessao.email;if(!e||!state.usuarios)return null;const us=Object.values(state.usuarios);const u=us.find(x=>x&&(x.email||'').toLowerCase()===(e||'').toLowerCase());return (u&&u.foto)||null;}catch(_){return null}})();
   return `
@@ -1340,6 +1342,7 @@ function renderPage(){
     case 'valores': return renderValores();
     case 'alertas': return renderAlertas();
     case 'historico': return renderHistorico();
+    case 'manutencao': return renderManutencao();
     case 'novas': return renderNovasEmpresas();
     case 'execucao': return renderEmExecucao();
     case 'checklists': return renderChecklists();
@@ -1356,6 +1359,7 @@ function attachPage(){
     case 'inteligencia': return (typeof window.attachInteligencia === 'function') ? window.attachInteligencia() : undefined;
     case 'alertas': return attachAlertas();
     case 'historico': return attachHistorico();
+    case 'manutencao': return attachManutencao();
     case 'novas': return attachNovasEmpresas();
     case 'execucao': return attachEmExecucao();
     case 'checklists': return attachChecklists();
@@ -3363,6 +3367,94 @@ function attachAlertas(){
 }
 
 // ============ Histórico ============
+/* ===== v6.27.0 — Sistema de Manutencao (chamados: bug/melhoria + aprovacao admin) ===== */
+var _MANUT_STATUS = { aberto:{label:'Aberto',cor:'slate'}, aprovado:{label:'Aprovado',cor:'blue'}, em_andamento:{label:'Em andamento',cor:'amber'}, resolvido:{label:'Resolvido',cor:'emerald'}, rejeitado:{label:'Rejeitado',cor:'red'} };
+function _manutBadge(st){ var s=_MANUT_STATUS[st]||_MANUT_STATUS.aberto; return '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-'+s.cor+'-100 text-'+s.cor+'-700">'+s.label+'</span>'; }
+function _manutLista(){ return Array.isArray(state.manutencao)?state.manutencao:[]; }
+function _manutSou(t){ var me=state.sessao||{}; return !!((t.autor_email&&t.autor_email===(me.email||''))||(t.autor_nome&&t.autor_nome===(me.nome||''))); }
+function _manutData(iso){ try{ var d=new Date(iso); return isNaN(d)?'':d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR').slice(0,5); }catch(e){ return ''; } }
+function _manutSetTipo(t){ window._manutTipo=t; var b=document.getElementById('manut-btn-bug'), m=document.getElementById('manut-btn-mel'); if(b&&m){ if(t==='bug'){ b.className='flex-1 px-4 py-2.5 text-sm font-bold bg-red-500 text-white'; m.className='flex-1 px-4 py-2.5 text-sm font-bold text-slate-500'; } else { m.className='flex-1 px-4 py-2.5 text-sm font-bold bg-blue-600 text-white'; b.className='flex-1 px-4 py-2.5 text-sm font-bold text-slate-500'; } } }
+window._manutPrints = window._manutPrints || [];
+function _manutRenderPreview(){ var box=document.getElementById('manut-prints-preview'); if(!box) return; box.innerHTML=(window._manutPrints||[]).map(function(pp,i){ return '<div class="relative rounded-lg overflow-hidden border border-slate-200"><img src="'+(pp.dados||'')+'" class="h-24 w-full object-cover bg-slate-50"><button type="button" onclick="_manutRmPrint('+i+')" class="absolute right-1 top-1 h-6 w-6 rounded-full bg-black/60 text-white text-xs">✕</button></div>'; }).join(''); }
+function _manutRmPrint(i){ (window._manutPrints||[]).splice(i,1); _manutRenderPreview(); }
+function _manutAddPrint(input){ var files=input&&input.files?Array.prototype.slice.call(input.files):[]; _manutAddFiles(files); if(input) input.value=''; }
+function _manutAddFiles(files){ files.forEach(function(file){ if(!file||file.type.indexOf('image/')!==0) return; if((window._manutPrints||[]).length>=5){ if(typeof toast==='function') toast('Máximo de 5 prints','amber'); return; } if(file.size>5*1024*1024){ if(typeof toast==='function') toast('Imagem acima de 5MB','red'); return; } var reader=new FileReader(); reader.onload=function(e){ var b64=e.target.result; var id='idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); try{ _idbPut(id,b64).then(function(){ try{ if(typeof _anexoCloudPush==='function') _anexoCloudPush(id,b64,{nome:file.name,tipo:file.type}); }catch(_){} }); }catch(_){} window._manutPrints.push({nome:file.name,tipo:file.type,_idb:id,dados:b64}); _manutRenderPreview(); }; reader.readAsDataURL(file); }); }
+function _manutVerPrint(idb){ if(!idb) return false; function abrir(b){ var w=window.open('','_blank'); if(w) w.document.write('<title>Print</title><img src="'+b+'" style="max-width:100%">'); } _idbGet(idb).then(function(b){ if(b){ abrir(b); return; } if(typeof _anexoCloudFetch==='function'){ _anexoCloudFetch(idb).then(function(c){ if(c){ try{_idbPut(idb,c);}catch(e){} abrir(c); } else alert('Print ainda não sincronizado. Tente em instantes.'); }); } }); return false; }
+function manutAbrirChamado(){
+  var tipo = window._manutTipo || 'bug';
+  var titulo=(document.getElementById('manut-titulo')||{}).value||'';
+  var descricao=(document.getElementById('manut-descricao')||{}).value||'';
+  var pagina=(document.getElementById('manut-pagina')||{}).value||'';
+  if(!titulo.trim()){ if(typeof toast==='function') toast('Escreva um resumo','red'); return; }
+  var prints=(window._manutPrints||[]).map(function(pp){ return {nome:pp.nome,tipo:pp.tipo,_idb:pp._idb}; });
+  var me=state.sessao||{};
+  var t={ id:'mnt_'+Date.now()+'_'+Math.random().toString(36).slice(2,8), tipo:(tipo==='melhoria'?'melhoria':'bug'), titulo:titulo.trim().slice(0,200), descricao:descricao.trim().slice(0,4000)||'', pagina:pagina.trim().slice(0,300)||'', prints:prints, autor_nome:me.nome||'', autor_email:me.email||'', status:'aberto', nota_admin:'', obs_interna:'', arquivado:false, created_at:new Date().toISOString(), updated_at:new Date().toISOString() };
+  state.manutencao = _manutLista(); state.manutencao.unshift(t);
+  window._manutPrints=[]; window._manutTipo='bug';
+  try{ saveState(); }catch(e){}
+  if(typeof toast==='function') toast('✅ Chamado enviado!','emerald');
+  try{ render(); }catch(e){}
+}
+function _manutAdmin(){ return state.sessao && state.sessao.cargo==='Administrador'; }
+function manutDefinirStatus(id, st){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; t.status=st; t.updated_at=new Date().toISOString(); try{ saveState(); }catch(e){} if(typeof toast==='function') toast('Status: '+((_MANUT_STATUS[st]||{}).label||st),'blue'); try{ render(); }catch(e){} }
+function manutArquivar(id, arq){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; t.arquivado=!!arq; t.updated_at=new Date().toISOString(); try{ saveState(); }catch(e){} try{ render(); }catch(e){} }
+function manutResponderAbrir(id){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-bold text-slate-800">Responder chamado</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button></div><div class="p-5 space-y-3"><div><label class="text-xs font-semibold text-slate-500 uppercase">Resposta ao autor (o autor vê)</label><textarea id="manut-nota" rows="3" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded text-sm">'+esc(t.nota_admin||'')+'</textarea></div><div><label class="text-xs font-semibold text-slate-500 uppercase">Observação interna (só admin)</label><textarea id="manut-obs" rows="2" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded text-sm">'+esc(t.obs_interna||'')+'</textarea></div><button onclick="manutResponderSalvar(\''+t.id+'\')" class="w-full py-2 bg-emerald-600 text-white rounded font-semibold text-sm hover:bg-emerald-700">Salvar</button></div>'); }
+function manutResponderSalvar(id){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; t.nota_admin=((document.getElementById('manut-nota')||{}).value||'').slice(0,2000); t.obs_interna=((document.getElementById('manut-obs')||{}).value||'').slice(0,2000); t.updated_at=new Date().toISOString(); try{ saveState(); }catch(e){} try{ closeModal(); }catch(e){} if(typeof toast==='function') toast('Resposta salva','emerald'); try{ render(); }catch(e){} }
+function _manutSetFiltro(f){ window._manutFiltro=f; try{ render(); }catch(e){} }
+function _manutCardChamado(t, adminView){
+  var icon = t.tipo==='melhoria' ? '💡' : '🐞';
+  var prints=(t.prints||[]).map(function(pp){ return '<button onclick="_manutVerPrint(\''+esc(pp._idb||'')+'\')" class="text-[11px] text-blue-600 hover:underline mr-2">🖼️ '+esc(pp.nome||'print')+'</button>'; }).join('');
+  var acoes='';
+  if(adminView){
+    var st=['aprovado','em_andamento','resolvido','rejeitado'];
+    acoes='<div class="mt-2 flex flex-wrap gap-1">'+st.map(function(x){ var a=(_MANUT_STATUS[x]||{}); var on=(t.status===x); return '<button onclick="manutDefinirStatus(\''+t.id+'\',\''+x+'\')" class="px-2 py-1 text-[11px] rounded '+(on?'bg-'+a.cor+'-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+a.label+'</button>'; }).join('')
+      +'<button onclick="manutResponderAbrir(\''+t.id+'\')" class="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-700 hover:bg-blue-200">✍️ Responder</button>'
+      +'<button onclick="manutArquivar(\''+t.id+'\','+(t.arquivado?'false':'true')+')" class="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-500 hover:bg-slate-200">'+(t.arquivado?'Desarquivar':'Arquivar')+'</button></div>';
+  }
+  return '<div class="bg-white rounded-xl border border-slate-200 p-3 '+(t.arquivado?'opacity-60':'')+'">'
+    +'<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-semibold text-slate-800 text-sm truncate">'+icon+' '+esc(t.titulo)+'</div>'
+    +(t.pagina?'<div class="text-[11px] text-slate-400">Tela: '+esc(t.pagina)+'</div>':'')+'</div>'+_manutBadge(t.status)+'</div>'
+    +(t.descricao?'<div class="text-xs text-slate-600 mt-1 whitespace-pre-wrap">'+esc(t.descricao)+'</div>':'')
+    +(prints?'<div class="mt-2">'+prints+'</div>':'')
+    +(adminView?'<div class="text-[11px] text-slate-400 mt-1">Por: '+esc(t.autor_nome||t.autor_email||'—')+' · '+_manutData(t.created_at)+'</div>':'<div class="text-[11px] text-slate-400 mt-1">'+_manutData(t.created_at)+'</div>')
+    +(t.nota_admin?'<div class="mt-2 text-xs bg-emerald-50 border border-emerald-100 rounded p-2"><strong class="text-emerald-700">Resposta:</strong> '+esc(t.nota_admin)+'</div>':'')
+    +(adminView&&t.obs_interna?'<div class="mt-1 text-xs bg-amber-50 border border-amber-100 rounded p-2"><strong class="text-amber-700">Interna:</strong> '+esc(t.obs_interna)+'</div>':'')
+    +acoes+'</div>';
+}
+function renderManutencao(){
+  var ehAdmin=_manutAdmin();
+  var lista=_manutLista();
+  var meus=lista.filter(_manutSou).sort(function(a,b){return (b.created_at||'').localeCompare(a.created_at||'');});
+  if(!window._manutTipo) window._manutTipo='bug';
+  var filtro=window._manutFiltro||'';
+  var todos=lista.slice().sort(function(a,b){return (b.created_at||'').localeCompare(a.created_at||'');});
+  var visiveis=todos.filter(function(t){ if(filtro==='arquivados') return t.arquivado; if(t.arquivado) return false; if(!filtro) return true; return t.status===filtro; });
+  var cont={};['aberto','aprovado','em_andamento','resolvido','rejeitado'].forEach(function(k){ cont[k]=todos.filter(function(t){return !t.arquivado && t.status===k;}).length; });
+  var abas=[['','Todos'],['aberto','Aberto'],['aprovado','Aprovado'],['em_andamento','Em andamento'],['resolvido','Resolvido'],['rejeitado','Rejeitado'],['arquivados','Arquivados']];
+  return '<div class="p-6 max-w-3xl mx-auto">'
+    +'<h1 class="text-2xl font-bold text-slate-800 mb-1">🛠️ Manutenção</h1>'
+    +'<p class="text-sm text-slate-500 mb-5">Achou um bug ou tem uma ideia de melhoria? Conta pra gente. Pode colar um print com <strong>Ctrl+V</strong> ou anexar imagem.</p>'
+    +'<div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6">'
+    +'<div class="mb-3 flex overflow-hidden rounded-xl border border-slate-200"><button type="button" id="manut-btn-bug" onclick="_manutSetTipo(\'bug\')" class="flex-1 px-4 py-2.5 text-sm font-bold '+(window._manutTipo==='bug'?'bg-red-500 text-white':'text-slate-500')+'">🐞 Reportar bug</button><button type="button" id="manut-btn-mel" onclick="_manutSetTipo(\'melhoria\')" class="flex-1 px-4 py-2.5 text-sm font-bold '+(window._manutTipo==='melhoria'?'bg-blue-600 text-white':'text-slate-500')+'">💡 Sugerir melhoria</button></div>'
+    +'<label class="block"><span class="text-xs font-bold text-slate-500">Resumo *</span><input id="manut-titulo" maxlength="200" placeholder="Ex.: O botão de salvar não funciona" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"></label>'
+    +'<label class="mt-3 block"><span class="text-xs font-bold text-slate-500">Detalhes</span><textarea id="manut-descricao" rows="4" maxlength="4000" placeholder="O que aconteceu, o que você esperava, em qual tela…" class="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"></textarea></label>'
+    +'<label class="mt-3 block"><span class="text-xs font-bold text-slate-500">Em qual tela? (opcional)</span><input id="manut-pagina" maxlength="300" placeholder="Ex.: Empresas → editar alvará" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"></label>'
+    +'<div class="mt-3"><span class="text-xs font-bold text-slate-500">Prints (opcional · até 5)</span>'
+    +'<input id="manut-print-input" type="file" multiple accept="image/*" class="hidden" onchange="_manutAddPrint(this)">'
+    +'<div id="manut-prints-preview" class="mt-1 grid grid-cols-2 sm:grid-cols-3 gap-2"></div>'
+    +'<button type="button" onclick="document.getElementById(\'manut-print-input\').click()" class="mt-2 w-full rounded-xl border border-dashed border-slate-300 px-3 py-3 text-sm text-blue-600">📋 Cole com Ctrl+V ou clique para anexar</button></div>'
+    +'<button type="button" onclick="manutAbrirChamado()" class="mt-4 w-full rounded-xl px-5 py-3 text-sm font-black text-white bg-blue-600 hover:bg-blue-700">Enviar chamado</button>'
+    +'</div>'
+    +(meus.length?('<div class="mb-6"><h2 class="text-sm font-black uppercase tracking-wide text-slate-500 mb-2">Meus chamados</h2><div class="space-y-2">'+meus.map(function(t){return _manutCardChamado(t,false);}).join('')+'</div></div>'):'')
+    +(ehAdmin?('<div class="mt-2"><h2 class="text-sm font-black uppercase tracking-wide text-slate-500 mb-2">Painel do admin</h2>'
+      +'<div class="flex flex-wrap gap-1 mb-3">'+abas.map(function(a){ var on=(filtro===a[0]); var c=(a[0]&&_MANUT_STATUS[a[0]])?_MANUT_STATUS[a[0]].cor:'slate'; var n=(a[0]&&cont[a[0]]!=null)?(' ('+cont[a[0]]+')'):''; return '<button onclick="_manutSetFiltro(\''+a[0]+'\')" class="px-3 py-1.5 text-xs rounded-lg '+(on?'bg-'+c+'-600 text-white':'bg-white border border-slate-200 text-slate-600')+'">'+a[1]+n+'</button>'; }).join('')+'</div>'
+      +'<div class="space-y-2">'+(visiveis.length?visiveis.map(function(t){return _manutCardChamado(t,true);}).join(''):'<div class="text-center text-slate-400 py-8 text-sm">Nenhum chamado aqui.</div>')+'</div></div>'):'')
+    +'</div>';
+}
+function attachManutencao(){
+  try{ _manutRenderPreview(); }catch(e){}
+  if(!window._manutPasteBound){ window._manutPasteBound=true; document.addEventListener('paste', function(ev){ try{ if(state.page!=='manutencao') return; var it=Array.prototype.slice.call((ev.clipboardData&&ev.clipboardData.items)||[]).find(function(i){return i.type&&i.type.indexOf('image/')===0;}); if(it){ var f=it.getAsFile(); if(f){ ev.preventDefault(); _manutAddFiles([f]); } } }catch(e){} }); }
+}
 function renderHistorico(){
   return `
     <div class="p-6">
