@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.25 (Alertas unificado na Inteligência)</title>
+<title>AZUOS Paralegal - Sistema v6.0.26 (Proteção da estrutura)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -388,6 +388,97 @@ function ehAdmin() { return state.sessao && state.sessao.cargo === 'Administrado
 function ehConsulta() { return state.sessao && state.sessao.cargo === 'Consulta'; }
 function podeEditar() { return state.sessao && !ehConsulta(); }
 function bloqueioConsulta() { if (ehConsulta()) { alert('Seu perfil e Consulta - apenas visualizacao. Solicite ao Administrador um perfil com permissao de edicao.'); return true; } return false; }
+
+/* ===== v6.26.0 — Trava de ESTRUTURA por senha (+ palavra-chave), INVISIVEL =====
+   Protege so areas estruturais/administrativas (Usuarios, Valores, Premiacao).
+   Uso do dia a dia (alvaras, ciencia, anexos) continua livre.
+   Enquanto NAO houver senha cadastrada, nada trava. Config em state.trava_edicao. */
+async function _travaHash(txt){
+  try{
+    var data = new TextEncoder().encode('azuos::' + (txt||''));
+    var buf = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  }catch(e){ return null; }
+}
+function _travaAtiva(){ var t = state.trava_edicao; return !!(t && t.ativo && t.senhaHash); }
+function _travaLiberada(){ try{ return sessionStorage.getItem('azuos_estrut_ok') === '1'; }catch(e){ return false; } }
+function estruturaBloqueada(){
+  if(!_travaAtiva()) return false;
+  if(_travaLiberada()) return false;
+  try{ _travaAbrirDesbloqueio(); }catch(e){}
+  return true;
+}
+function _travaAbrirDesbloqueio(){
+  var t = state.trava_edicao || {};
+  var exigePalavra = !!t.palavraHash;
+  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-bold text-slate-800">&#128274; Area protegida</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button></div>'
+    + '<div class="p-5 space-y-3">'
+    + '<p class="text-sm text-slate-600">Esta acao altera a estrutura do sistema. Informe a senha para liberar.</p>'
+    + '<input id="trava-senha" type="password" placeholder="Senha" class="w-full px-3 py-2 border border-slate-300 rounded text-sm" autocomplete="off">'
+    + (exigePalavra ? '<input id="trava-palavra" type="password" placeholder="Palavra-chave" class="w-full px-3 py-2 border border-slate-300 rounded text-sm" autocomplete="off">' : '')
+    + '<div id="trava-erro" class="text-xs text-red-600 hidden">Senha ou palavra-chave incorreta.</div>'
+    + '<button onclick="_travaTentarDesbloquear()" class="w-full py-2 bg-blue-600 text-white rounded font-semibold text-sm hover:bg-blue-700">Desbloquear</button>'
+    + '</div>');
+}
+async function _travaTentarDesbloquear(){
+  var t = state.trava_edicao || {};
+  var sv = (document.getElementById('trava-senha')||{}).value || '';
+  var pEl = document.getElementById('trava-palavra');
+  var pv = pEl ? (pEl.value || '') : '';
+  var hs = await _travaHash(sv);
+  var ok = (hs === t.senhaHash);
+  if(ok && t.palavraHash){ var hp = await _travaHash(pv); ok = (hp === t.palavraHash); }
+  if(ok){
+    try{ sessionStorage.setItem('azuos_estrut_ok','1'); }catch(e){}
+    try{ closeModal(); }catch(e){}
+    if(typeof toast==='function') toast('🔓 Estrutura liberada neste navegador','emerald');
+  } else {
+    var er = document.getElementById('trava-erro'); if(er) er.classList.remove('hidden');
+  }
+}
+function _travaConfigAbrir(){
+  if(!(state.sessao && state.sessao.cargo === 'Administrador')){ alert('Apenas o administrador configura.'); return; }
+  var t = state.trava_edicao || {};
+  var jaTem = !!t.senhaHash;
+  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-bold text-slate-800">&#128272; Prote&ccedil;&atilde;o da estrutura</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button></div>'
+    + '<div class="p-5 space-y-3">'
+    + '<p class="text-sm text-slate-600">Com a prote&ccedil;&atilde;o ativa, mexer em Usu&aacute;rios, Valores e Premia&ccedil;&atilde;o exige a senha. O uso do dia a dia continua livre.</p>'
+    + '<label class="text-xs font-semibold text-slate-500 uppercase">Senha' + (jaTem ? ' (em branco = manter)' : '') + '</label>'
+    + '<input id="tc-senha" type="password" class="w-full px-3 py-2 border border-slate-300 rounded text-sm" autocomplete="new-password">'
+    + '<label class="text-xs font-semibold text-slate-500 uppercase">Palavra-chave (refor&ccedil;o)' + (jaTem ? ' (em branco = manter)' : '') + '</label>'
+    + '<input id="tc-palavra" type="password" class="w-full px-3 py-2 border border-slate-300 rounded text-sm" autocomplete="new-password">'
+    + '<label class="flex items-center gap-2 text-sm text-slate-700 mt-2"><input id="tc-ativo" type="checkbox" ' + (t.ativo ? 'checked' : '') + '> Prote&ccedil;&atilde;o ativada</label>'
+    + '<div id="tc-erro" class="text-xs text-red-600 hidden"></div>'
+    + '<div class="flex gap-2 pt-2"><button onclick="_travaConfigSalvar()" class="flex-1 py-2 bg-emerald-600 text-white rounded font-semibold text-sm hover:bg-emerald-700">Salvar</button>'
+    + (jaTem ? '<button onclick="_travaConfigDesativar()" class="py-2 px-3 bg-slate-200 text-slate-700 rounded text-sm">Desativar</button>' : '')
+    + '</div></div>');
+}
+async function _travaConfigSalvar(){
+  if(!(state.sessao && state.sessao.cargo === 'Administrador')) return;
+  var t = Object.assign({}, state.trava_edicao || {});
+  var sv = (document.getElementById('tc-senha')||{}).value || '';
+  var pv = (document.getElementById('tc-palavra')||{}).value || '';
+  var ativo = !!(document.getElementById('tc-ativo')||{}).checked;
+  var er = document.getElementById('tc-erro');
+  if(sv){ t.senhaHash = await _travaHash(sv); }
+  if(pv){ t.palavraHash = await _travaHash(pv); }
+  if(ativo && !t.senhaHash){ if(er){ er.textContent = 'Cadastre uma senha antes de ativar.'; er.classList.remove('hidden'); } return; }
+  t.ativo = ativo; t.atualizado_em = new Date().toISOString();
+  state.trava_edicao = t;
+  try{ sessionStorage.setItem('azuos_estrut_ok','1'); }catch(e){}
+  try{ saveState(); }catch(e){}
+  try{ closeModal(); }catch(e){}
+  if(typeof toast==='function') toast('🔐 Proteção ' + (ativo ? 'ativada' : 'salva'),'emerald');
+}
+function _travaConfigDesativar(){
+  if(!(state.sessao && state.sessao.cargo === 'Administrador')) return;
+  var t = Object.assign({}, state.trava_edicao || {}); t.ativo = false; t.atualizado_em = new Date().toISOString();
+  state.trava_edicao = t;
+  try{ saveState(); }catch(e){}
+  try{ closeModal(); }catch(e){}
+  if(typeof toast==='function') toast('🔓 Proteção desativada','slate');
+}
+
 function podeGerenciarUsuarios() { return ehAdmin(); }
 function setState(patch) { Object.assign(state, patch); saveState(); sanearTipos(); if (typeof migrarConhecidasParaCiencia === 'function') migrarConhecidasParaCiencia(); render(); }
 
@@ -776,6 +867,25 @@ function attachLayout(){
     try { if (window.fbAuth) await window.fbAuth.signOut(); } catch(e){}
     setState({sessao: null});
   };
+  // v6.26.0 — gatilho OCULTO da protecao de estrutura (sem botao visivel).
+  // Ctrl+Shift+Alt+T  OU  5 cliques rapidos no logo. Somente admin abre.
+  if(!window._travaKeyBound){
+    window._travaKeyBound = true;
+    document.addEventListener('keydown', function(ev){
+      if(ev.ctrlKey && ev.shiftKey && ev.altKey && ((ev.code==='KeyT') || ((ev.key||'').toLowerCase()==='t'))){
+        if(state.sessao && state.sessao.cargo==='Administrador'){ ev.preventDefault(); try{ _travaConfigAbrir(); }catch(e){} }
+      }
+    });
+  }
+  try{
+    var _logoEl = document.querySelector('aside img');
+    if(_logoEl){ _logoEl.onclick = function(){
+      window._travaLogoN = (window._travaLogoN||0) + 1;
+      clearTimeout(window._travaLogoT);
+      window._travaLogoT = setTimeout(function(){ window._travaLogoN = 0; }, 1500);
+      if(window._travaLogoN >= 5){ window._travaLogoN = 0; if(state.sessao && state.sessao.cargo==='Administrador'){ try{ _travaConfigAbrir(); }catch(e){} } }
+    }; }
+  }catch(e){}
   document.getElementById('reset-btn').onclick = () => {
     if (confirm('Restaurar dados originais? Todas as alterações serão perdidas.')) {
       setState({empresas: SEED.empresas, alvaras: SEED.alvaras, usuarios: SEED.usuarios, historico: [], empresaAtiva: null});
@@ -830,6 +940,7 @@ function _gamIniciais(nome){ return (nome||'?').split(' ').filter(Boolean).map(f
 function _gamSouEu(row){ var me=state.sessao||{}; var e=(me.email||'').toLowerCase(), n=(me.nome||'').toLowerCase(); return !!((row.email&&row.email.toLowerCase()===e)||(row.nome&&row.nome.toLowerCase()===n)); }
 function _gamSetMes(m){ _gamMes=m||null; render(); }
 function _gamSalvar(){
+  if (estruturaBloqueada()) return;
   if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar.'); return; }
   var el=document.getElementById('gam-valor-input'); if(!el) return;
   var v=parseFloat((el.value||'').toString().replace(',','.'));
@@ -1150,6 +1261,7 @@ function _gamSyncInputs(){ var w=_gamTabelaWork(); document.querySelectorAll('#g
 function _gamAddRow(){ _gamSyncInputs(); _gamTabelaWork().push({atividade:'',valor:0}); render(); }
 function _gamRmRow(i){ _gamSyncInputs(); _gamTabelaWork().splice(i,1); render(); }
 function _gamSalvarValores(){
+  if (estruturaBloqueada()) return;
   if(!(state.sessao&&state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode alterar os valores.'); return; }
   _gamSyncInputs();
   var tab=_gamTabelaWork().filter(function(r){return (r.atividade||'').trim();}).map(function(r){return {atividade:(r.atividade||'').trim(),valor:(+r.valor||0)};});
@@ -3396,6 +3508,7 @@ function openModalUsuario(id) {
   `);
 }
 function salvarUsuario(id){
+  if (estruturaBloqueada()) return;
   const nome = document.getElementById('fu-nome').value.trim();
   if (!nome) { alert('Nome é obrigatório'); return; }
   const data = {foto: (window._fotoTmp !== null ? window._fotoTmp : (u && u.foto) || ''), nome, email: document.getElementById('fu-email').value.trim(), cargo: document.getElementById('fu-cargo').value, ativo: document.getElementById('fu-ativo').value==='1'};
@@ -3411,6 +3524,7 @@ function salvarUsuario(id){
   closeModal(); saveState(); render();
 }
 function excluirUsuario(id){
+  if (estruturaBloqueada()) return;
   const u = state.usuarios.find(x=>String(x.id)===String(id));
   if (!u) { alert('Usuário não encontrado. Recarregue a página (Ctrl+Shift+R) e tente de novo.'); return; }
   if (confirm(`Excluir usuário "${u.nome}"?`)) {

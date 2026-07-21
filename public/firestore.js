@@ -59,6 +59,10 @@ function _fsCollectFromState() {
   if (state.sessao && state.sessao.cargo === 'Administrador' && state.gamificacao) {
     out.gamificacao = state.gamificacao;
   }
+  // v6.26.0 — protecao da estrutura: so o admin grava a config (senha/hash)
+  if (state.sessao && state.sessao.cargo === 'Administrador' && state.trava_edicao) {
+    out.trava_edicao = state.trava_edicao;
+  }
   return out;
 }
 
@@ -113,6 +117,12 @@ function _fsApplyToState(remote) {
     var _lg = state.gamificacao || null; var _rg = remote.gamificacao;
     var _tl = (_lg && _lg.atualizado_em) || ''; var _tr = _rg.atualizado_em || '';
     if (!_lg || _tr > _tl) { state.gamificacao = _rg; changed = true; }
+  }
+  // v6.26.0 — protecao da estrutura: todos adotam a config mais recente
+  if (remote && remote.trava_edicao && typeof remote.trava_edicao === 'object') {
+    var _lt = state.trava_edicao || null; var _rt = remote.trava_edicao;
+    var _tlt = (_lt && _lt.atualizado_em) || ''; var _trt = _rt.atualizado_em || '';
+    if (!_lt || _trt > _tlt) { state.trava_edicao = _rt; changed = true; }
   }
   // Campos simples: substitui se diferente
   // v6.0.8: merge por id — nao substitui arrays em bloco (evita perder itens criados em paralelo)
