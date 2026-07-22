@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.28 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.29 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -7569,16 +7569,29 @@ console.log('[v5.7.56] auto-sync usuarios armado');
     var valorAntes = el.value;
     var valorDepois = aplicaMascara(valorAntes);
     if(valorDepois === valorAntes) return;
-    el.value = valorDepois;
-    // Ajusta cursor pra ficar no mesmo lugar lógico (depois da barra inserida)
-    var novaPos = posCursor;
-    if(valorDepois.length > valorAntes.length){
-      // Inseriu barra automaticamente — move cursor pra depois dela
-      if(valorAntes.length === 2 || valorAntes.length === 5) novaPos++;
+
+    // [v6.0.29] Antes o cursor era reposicionado por tamanho do texto, o que errava
+    // sempre que a barra era inserida: o proximo digito entrava ANTES dela e a data
+    // saia fora de ordem (ex.: digitar 1,2,3,4 virava "12/43"). Agora a posicao e
+    // calculada por CONTAGEM DE DIGITOS, que funciona ao digitar, colar ou editar
+    // no meio do campo.
+    var apagando = ((e && e.inputType) || '').indexOf('delete') === 0;
+    var digitosAteCursor = (valorAntes.substring(0, posCursor).match(/\d/g) || []).length;
+    var novaPos = 0, vistos = 0;
+    while(novaPos < valorDepois.length && vistos < digitosAteCursor){
+      if(/\d/.test(valorDepois.charAt(novaPos))) vistos++;
+      novaPos++;
     }
+    // Ao DIGITAR, pula a barra recem-inserida (senao o proximo numero cai antes dela).
+    // Ao APAGAR, para antes da barra, para o backspace seguinte apagar o digito.
+    if(!apagando){
+      while(novaPos < valorDepois.length && valorDepois.charAt(novaPos) === '/') novaPos++;
+    }
+
+    el.value = valorDepois;
     try{ el.setSelectionRange(novaPos, novaPos); }catch(e2){}
   }, true);
-  console.log('[v5.7.60] mascara de data ativa');
+  console.log('[v6.0.29] mascara de data ativa (cursor por contagem de digitos)');
 })();
 
 
