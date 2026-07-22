@@ -19,8 +19,35 @@
     var s = String(v).trim();
     return s === '' || s === '-' || s === '—' || s.toLowerCase() === 'null';
   }
+  // [v6.0.31] O campo 'responsavel' do alvara guarda o NOME da pessoa (ex.: "Luanna"),
+  // nunca o e-mail. A versao anterior devolvia o e-mail, entao a comparacao virava
+  // "Luanna" === "luanna@azuoscontabil.com.br" e o filtro "So os meus" zerava a
+  // lista para TODOS os usuarios. Agora resolvemos o NOME de quem logou.
   function _meuNomeAtual(){
-    return (typeof state!=='undefined' && state.sessao) ? (state.sessao.email || state.sessao.nome || '') : '';
+    try{
+      if (typeof state==='undefined' || !state.sessao) return '';
+      var email = (state.sessao.email||'').toLowerCase().trim();
+      // 1) nome oficial cadastrado para este e-mail (fonte mais confiavel)
+      if (typeof window._azuosOficialPorEmail === 'function' && email){
+        var of = window._azuosOficialPorEmail(email);
+        if (of){
+          if (typeof of === 'string' && of) return of;
+          if (of.nome) return of.nome;
+        }
+      }
+      // 2) nome na lista de usuarios do sistema
+      var u = (state.usuarios||[]).filter(function(x){
+        return x && (x.email||'').toLowerCase().trim() === email;
+      })[0];
+      if (u && u.nome) return u.nome;
+      // 3) nome da propria sessao
+      return state.sessao.nome || '';
+    }catch(e){ return ''; }
+  }
+  // compara ignorando acento, maiuscula/minuscula e espacos sobrando
+  function _normNome(s){
+    try{ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase(); }
+    catch(e){ return String(s==null?'':s).trim().toLowerCase(); }
   }
   function _souAdmin(){
     return !!(typeof state!=='undefined' && state.sessao && state.sessao.cargo === 'Administrador');
@@ -178,7 +205,15 @@
   // "só os meus" é um filtro OPCIONAL (checkbox) disponível para qualquer usuário.
   function _passaEscopo(a){
     if (!window._auditProxSoMeu) return true; // base inteira
-    return (a.responsavel || '') === _meuNomeAtual();
+    var meu = _normNome(_meuNomeAtual());
+    if (!meu) return false;
+    var resp = _normNome(a && a.responsavel);
+    if (!resp) return false;
+    if (resp === meu) return true;
+    // A base costuma guardar so o primeiro nome ("Luanna"), enquanto o cadastro
+    // pode ter o nome completo — entao tambem casamos pelo primeiro nome.
+    var p1 = resp.split(/\s+/)[0], p2 = meu.split(/\s+/)[0];
+    return !!p1 && p1 === p2;
   }
 
   window._auditProxItens = function(){
