@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.29 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.30 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2591,7 +2591,28 @@ function adicionarAnexo(input) {
     try{ renderAnexosLista(anexos); }catch(e){}
     if (typeof toast==='function') toast('\u2b06\ufe0f Enviando anexo para a plataforma...', 'blue');
     // 1) cache local (IndexedDB)  2) envia para a plataforma (nuvem) e confirma para o usuario
-    _idbPut(id, b64).catch(function(){}).then(function(){
+    // [v6.0.30] O base64 NAO pode ficar no estado do alvara. Uma imagem de 3MB vira
+    // ~4MB de texto; isso estourava a cota do localStorage e o saveState() inteiro
+    // falhava \u2014 por isso o anexo "sumia" depois de salvar. O arquivo mora no
+    // IndexedDB (cache local) e na nuvem; no alvara fica so o ponteiro _idb.
+    // So limpamos 'dados' DEPOIS de confirmar que o IndexedDB gravou; se falhar,
+    // mantemos o base64 para nao perder o arquivo do usuario.
+    function _enxugarBase64(){
+      try{
+        var df = document.getElementById('fa-anexos-data');
+        if(!df) return;
+        var lista = JSON.parse(df.value || '[]');
+        var achou = false;
+        lista.forEach(function(a){ if(a && a._idb === id && a.dados){ a.dados = ''; a._local = true; achou = true; } });
+        if(achou){ df.value = JSON.stringify(lista); try{ renderAnexosLista(lista); }catch(e){} }
+      }catch(e){}
+    }
+    _idbPut(id, b64).then(function(){
+      // confirma que gravou mesmo antes de descartar o base64 do estado
+      return _idbGet(id).then(function(chk){
+        if(chk && chk.length === b64.length) _enxugarBase64();
+      }).catch(function(){});
+    }).catch(function(){}).then(function(){
       if(typeof _anexoCloudPush==='function') return _anexoCloudPush(id, b64, {nome:_nome, tipo:_tipo});
       return false;
     }).then(function(ok){
@@ -2783,7 +2804,17 @@ function salvarAlvara(id, empresaId){
     state.edicoes_alvaras[novoId] = {id: novoId, ...data};
     log('Cadastrou alvará', `${tipo} - ${empresa.nome}`);
   }
-  closeModal(); saveState(); render();
+  closeModal();
+  // [v6.0.30] Se o armazenamento local estourar, saveState() retorna false e o
+  // trabalho se perde SEM AVISO NENHUM. Melhor o usuario saber na hora do que
+  // descobrir depois que o anexo sumiu.
+  var _okSalvou = saveState();
+  if (_okSalvou === false) {
+    alert('⚠️ Nao consegui salvar neste navegador (armazenamento cheio).\n\n' +
+          'O alvara pode nao ter sido gravado. Recarregue a pagina (F5) e confira.\n' +
+          'Se o problema continuar, avise o administrador.');
+  }
+  render();
   // v6.0.8: SAVE direto no Firestore POR CAMPO — nao sobrescreve edicoes de outros paralegais
   try {
     if (firebase && firebase.firestore && _idSalvo != null && state.edicoes_alvaras && state.edicoes_alvaras[_idSalvo]) {
