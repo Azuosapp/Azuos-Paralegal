@@ -30,7 +30,10 @@ jobs:
       - name: Preparar credencial do Firebase (segredo)
         env:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: printf '%s' "$SA" > service-account.json
+        run: |
+          printf '%s' "$SA" > service-account.json
+          echo "DIAGNOSTICO: caracteres no segredo = ${#SA}"
+          node -e "try{JSON.parse(require('fs').readFileSync('service-account.json','utf8'));console.log('DIAGNOSTICO: JSON do segredo e VALIDO')}catch(e){console.log('DIAGNOSTICO: JSON INVALIDO -',e.message)}"
 
       - name: Instalar dependências
         run: npm install firebase-admin@13 --no-audit --no-fund --loglevel=error
