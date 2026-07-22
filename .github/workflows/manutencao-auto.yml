@@ -29,10 +29,12 @@ jobs:
 
       - name: Preparar credencial do Firebase (segredo)
         env:
-          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
         run: |
-          printf '%s' "$SA" > service-account.json
-          echo "DIAGNOSTICO: caracteres no segredo = ${#SA}"
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"
+          printf '%s' "$V" > service-account.json
+          echo "DIAGNOSTICO: caracteres no segredo = ${#V}"
           node -e "try{JSON.parse(require('fs').readFileSync('service-account.json','utf8'));console.log('DIAGNOSTICO: JSON do segredo e VALIDO')}catch(e){console.log('DIAGNOSTICO: JSON INVALIDO -',e.message)}"
 
       - name: Instalar dependências
