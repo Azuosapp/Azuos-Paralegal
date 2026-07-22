@@ -3434,6 +3434,7 @@ function renderManutencao(){
   return '<div class="p-6 max-w-3xl mx-auto">'
     +'<h1 class="text-2xl font-bold text-slate-800 mb-1">🛠️ Manutenção</h1>'
     +'<p class="text-sm text-slate-500 mb-5">Achou um bug ou tem uma ideia de melhoria? Conta pra gente. Pode colar um print com <strong>Ctrl+V</strong> ou anexar imagem.</p>'
+    +'<p class="text-xs text-slate-400 -mt-4 mb-5">Seu chamado é revisado pelo administrador antes de ser atendido.</p>'
     +'<div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-6">'
     +'<div class="mb-3 flex overflow-hidden rounded-xl border border-slate-200"><button type="button" id="manut-btn-bug" onclick="_manutSetTipo(\'bug\')" class="flex-1 px-4 py-2.5 text-sm font-bold '+(window._manutTipo==='bug'?'bg-red-500 text-white':'text-slate-500')+'">🐞 Reportar bug</button><button type="button" id="manut-btn-mel" onclick="_manutSetTipo(\'melhoria\')" class="flex-1 px-4 py-2.5 text-sm font-bold '+(window._manutTipo==='melhoria'?'bg-blue-600 text-white':'text-slate-500')+'">💡 Sugerir melhoria</button></div>'
     +'<label class="block"><span class="text-xs font-bold text-slate-500">Resumo *</span><input id="manut-titulo" maxlength="200" placeholder="Ex.: O botão de salvar não funciona" class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"></label>'
