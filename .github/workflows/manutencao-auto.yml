@@ -1,7 +1,12 @@
 name: Manutenção — implementar chamados aprovados
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      seed_teste:
+        description: 'Semear um chamado de teste antes de rodar (para validar)'
+        type: boolean
+        default: false
   # Depois de testar, descomente para rodar sozinho (ex.: de hora em hora):
   # schedule:
   #   - cron: '0 * * * *'
@@ -39,6 +44,10 @@ jobs:
 
       - name: Instalar dependências
         run: npm install firebase-admin@13 --no-audit --no-fund --loglevel=error
+
+      - name: Semear chamado de teste (opcional)
+        if: ${{ inputs.seed_teste }}
+        run: node scripts/ci/seed-test-ticket.mjs
 
       - name: Buscar chamado aprovado
         id: fetch
