@@ -33,25 +33,31 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Preparar credencial do Firebase (segredo)
+      - name: Preparar credenciais (segredos)
         env:
           SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
           CLAUDE_TOK: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
+          # Aceita o segredo com qualquer um dos dois nomes (um deles tem zero no lugar do O).
           V="$SA_A"; [ -z "$V" ] && V="$SA_B"
+          if [ -z "$V" ]; then
+            echo "ERRO: segredo do Firebase (FIREBASE_SERVICE_ACCOUNT) esta vazio."; exit 1
+          fi
           printf '%s' "$V" > service-account.json
-          echo "DIAGNOSTICO: caracteres no segredo = ${#V}"
-          node -e "try{JSON.parse(require('fs').readFileSync('service-account.json','utf8'));console.log('DIAGNOSTICO: JSON do segredo e VALIDO')}catch(e){console.log('DIAGNOSTICO: JSON INVALIDO -',e.message)}"
-          echo "DIAGNOSTICO: caracteres no token do Claude = ${#CLAUDE_TOK}"
-          # O token e copiado da tela do terminal, onde aparece quebrado em 2 linhas.
-          # A copia traz o "Enter" invisivel junto e o cabecalho Authorization rejeita
-          # qualquer espaco/quebra de linha. Limpamos aqui para nunca mais depender
-          # de a colagem ter sido perfeita.
+          node -e "JSON.parse(require('fs').readFileSync('service-account.json','utf8'))" \
+            || { echo 'ERRO: o segredo do Firebase nao e um JSON valido.'; exit 1; }
+
+          # O token do Claude e copiado da tela do terminal, onde aparece quebrado em
+          # 2 linhas. A copia traz o "Enter" invisivel junto e o cabecalho Authorization
+          # rejeita qualquer espaco/quebra de linha. Limpamos aqui para que a automacao
+          # nunca mais dependa de a colagem ter sido perfeita.
           CLAUDE_TOK_LIMPO="$(printf '%s' "$CLAUDE_TOK" | tr -d '[:space:]')"
+          if [ -z "$CLAUDE_TOK_LIMPO" ]; then
+            echo "ERRO: segredo CLAUDE_CODE_OAUTH_TOKEN esta vazio."; exit 1
+          fi
           echo "::add-mask::$CLAUDE_TOK_LIMPO"
           echo "CLAUDE_TOK_LIMPO=$CLAUDE_TOK_LIMPO" >> "$GITHUB_ENV"
-          echo "DIAGNOSTICO: token limpo = ${#CLAUDE_TOK_LIMPO} caracteres"
 
       - name: Instalar dependências
         run: npm install firebase-admin@13 --no-audit --no-fund --loglevel=error
@@ -69,7 +75,6 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ env.CLAUDE_TOK_LIMPO }}
-          show_full_output: true
           # Alternativa (se usar chave de API em vez do token da assinatura):
           # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           base_branch: main
