@@ -49,6 +49,25 @@
     try{ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase(); }
     catch(e){ return String(s==null?'':s).trim().toLowerCase(); }
   }
+  // [v6.0.31] Caixa de estado vazio. Antes, com o filtro "So os meus" ligado e
+  // zero resultados, aparecia "Tudo em dia! 🎉" — o que enganava: dava a impressao
+  // de que nao havia pendencia, quando na verdade so nao havia alvara COM O NOME
+  // da pessoa. Agora, com o filtro ligado, a mensagem e honesta e neutra.
+  function _emptyBox(tituloPadrao, subPadrao){
+    if (window._auditProxSoMeu){
+      var nome = _meuNomeAtual() || 'voce';
+      return '<div class="bg-white rounded-xl shadow-sm p-12 text-center">' +
+        '<div class="text-5xl mb-3">🔍</div>' +
+        '<div class="text-lg font-bold text-slate-800">Nenhum alvará com o seu nome nesta auditoria</div>' +
+        '<div class="text-sm text-slate-500 mt-1">O filtro <strong>“Só os meus”</strong> está ligado (responsável: ' + _esc(nome) + '). Desmarque para ver a base inteira.</div>' +
+        '</div>';
+    }
+    return '<div class="bg-white rounded-xl shadow-sm p-12 text-center">' +
+      '<div class="text-5xl mb-3">🎉</div>' +
+      '<div class="text-lg font-bold text-slate-800">' + tituloPadrao + '</div>' +
+      '<div class="text-sm text-slate-500 mt-1">' + subPadrao + '</div>' +
+      '</div>';
+  }
   function _souAdmin(){
     return !!(typeof state!=='undefined' && state.sessao && state.sessao.cargo === 'Administrador');
   }
@@ -616,13 +635,7 @@
         <button id="intel-export" class="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100">⬇️ Exportar CSV</button>
       </div>
 
-      ${totalAlv === 0 ? `
-        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
-          <div class="text-5xl mb-3">🎉</div>
-          <div class="text-lg font-bold text-slate-800">Tudo em dia!</div>
-          <div class="text-sm text-slate-500 mt-1">Nenhum alvará ativo ${q?'(no filtro atual) ':''}está sem data de próxima atualização.</div>
-        </div>
-      ` : `
+      ${totalAlv === 0 ? _emptyBox('Tudo em dia!', 'Nenhum alvará ativo ' + (q?'(no filtro atual) ':'') + 'está sem data de próxima atualização.') : `
         <div class="flex items-center justify-between mb-2 px-1">
           <div class="text-xs text-slate-500">${grupos.length} ${window._auditProxAgrupar==='empresa'?'empresa(s)':'responsável(is)'} · ${totalAlv} alvará(s)</div>
           <div class="flex items-center gap-2">
@@ -762,13 +775,7 @@
           <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa, cidade, responsável, tipo..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
         </div>
       </div>
-      ${itens.length === 0 ? `
-        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
-          <div class="text-5xl mb-3">🎉</div>
-          <div class="text-lg font-bold text-slate-800">Nenhuma próxima atualização vencida!</div>
-          <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}Todos os ciclos estão em dia.</div>
-        </div>
-      ` : `
+      ${itens.length === 0 ? _emptyBox('Nenhuma próxima atualização vencida!', (q?'(no filtro atual) ':'') + 'Todos os ciclos estão em dia.') : `
         <div class="flex items-center justify-between mb-2 px-1">
           <div class="text-xs text-slate-500">${grupos.length} empresa(s) · ${itens.length} vencida(s)</div>
           <div class="flex items-center gap-2">
@@ -883,13 +890,7 @@
           <input id="intel-busca" type="text" value="${_esc(window._auditProxBusca||'')}" placeholder="🔎 Filtrar por empresa ou cidade..." class="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
         </div>
       </div>
-      ${itens.length === 0 ? `
-        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
-          <div class="text-5xl mb-3">🎉</div>
-          <div class="text-lg font-bold text-slate-800">Todas as empresas têm responsável!</div>
-          <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}Nenhuma empresa ativa está sem dono.</div>
-        </div>
-      ` : `
+      ${itens.length === 0 ? _emptyBox('Todas as empresas têm responsável!', (q?'(no filtro atual) ':'') + 'Nenhuma empresa ativa está sem dono.') : `
         <div class="bg-white rounded-xl shadow-sm overflow-hidden border-l-4 border-amber-500 divide-y divide-slate-50">
           ${itens.map(function(e){
             return `<button class="intel-open w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-slate-50 group" data-eid="${e.id}">
@@ -1105,13 +1106,7 @@
         </div>
         <button id="intel-export" class="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100">⬇️ Exportar CSV</button>
       </div>
-      ${itens.length === 0 ? `
-        <div class="bg-white rounded-xl shadow-sm p-12 text-center">
-          <div class="text-5xl mb-3">🎉</div>
-          <div class="text-lg font-bold text-slate-800">Nada apontado!</div>
-          <div class="text-sm text-slate-500 mt-1">${q?'(no filtro atual) ':''}${_esc(cfg.vazio||'Nenhuma ocorrência encontrada.')}</div>
-        </div>
-      ` : `
+      ${itens.length === 0 ? _emptyBox('Nada apontado!', (q?'(no filtro atual) ':'') + _esc(cfg.vazio||'Nenhuma ocorrência encontrada.')) : `
         <div class="flex items-center justify-between mb-2 px-1">
           <div class="text-xs text-slate-500">${grupos.length} empresa(s) · ${itens.length} alvará(s)</div>
           <div class="flex items-center gap-2">
