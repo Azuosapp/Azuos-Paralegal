@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.32 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.33 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3634,7 +3634,12 @@ function salvarUsuario(id){
   if (estruturaBloqueada()) return;
   const nome = document.getElementById('fu-nome').value.trim();
   if (!nome) { alert('Nome é obrigatório'); return; }
-  const data = {foto: (window._fotoTmp !== null ? window._fotoTmp : (u && u.foto) || ''), nome, email: document.getElementById('fu-email').value.trim(), cargo: document.getElementById('fu-cargo').value, ativo: document.getElementById('fu-ativo').value==='1'};
+  // [v6.0.33] 'u' vinha do escopo do MODAL (openModalUsuario) e nao existe aqui —
+  // ao CRIAR usuario sem escolher foto, o codigo estourava com "u is not defined"
+  // e nao salvava. Buscamos o usuario existente para preservar a foto quando
+  // nenhuma nova foi enviada.
+  const _uExist = id ? state.usuarios.find(function(x){ return String(x.id)===String(id); }) : null;
+  const data = {foto: (window._fotoTmp !== null ? window._fotoTmp : ((_uExist && _uExist.foto) || '')), nome, email: document.getElementById('fu-email').value.trim(), cargo: document.getElementById('fu-cargo').value, ativo: document.getElementById('fu-ativo').value==='1'};
   try{ if(data.email && Array.isArray(state.usuarios_removidos)){ var _e=(data.email||'').toLowerCase().trim(); state.usuarios_removidos = state.usuarios_removidos.filter(function(x){return x!==_e;}); } }catch(e){}
   try{ state.fotos_usuarios = state.fotos_usuarios || {}; if(data.foto && data.email) state.fotos_usuarios[(data.email||'').toLowerCase().trim()] = data.foto; }catch(e){}
   if (id) {
