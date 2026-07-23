@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.33 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.34 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1371,6 +1371,7 @@ function attachPage(){
 let _busca = '';
 let _filtroResp = '';
 let _filtroStatus = 'ATIVO';
+let _filtroCidade = ''; // [v6.0.34] filtro por municipio na aba Empresas
 let _empView = 'tabela'; // 'cards' ou 'tabela' (padrão: tabela)
 let _pendDrill = null; // null, 'todos', 'hoje', 'ate3', 'ate10'
 
@@ -1393,9 +1394,14 @@ function renderEmpresas(){
     if (_filtroResp === '__SEM__') { if (e.responsavel) return false; }
     else if (_filtroResp && (e.responsavel||'') !== _filtroResp) return false;
     if (_filtroStatus && (e.status||'') !== _filtroStatus) return false;
+    // [v6.0.34] filtro por municipio (comparacao exata, case-insensitive)
+    if (_filtroCidade && (e.cidade||'').trim().toLowerCase() !== _filtroCidade.trim().toLowerCase()) return false;
     return true;
   });
   const respOpts = [...new Set(state.empresas.map(e => e.responsavel).filter(x => x))].sort();
+  // [v6.0.34] municipios distintos, ordenados alfabeticamente (pt-BR, ignora acento)
+  const cidadeOpts = [...new Set(state.empresas.map(e => (e.cidade||'').trim()).filter(x => x))]
+    .sort((a,b) => a.localeCompare(b, 'pt-BR', {sensitivity:'base'}));
   return `
     <div class="p-6">
       <header class="flex items-center justify-between mb-6">
@@ -1410,8 +1416,12 @@ function renderEmpresas(){
           <button id="nova-empresa" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Nova empresa</button>
         </div>
       </header>
-      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4 grid grid-cols-1 md:grid-cols-5 gap-3">
         <input id="busca-empresa" value="${esc(_busca)}" placeholder="Buscar por nome, CNPJ ou cidade..." class="md:col-span-2 px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+        <select id="filtro-cidade" class="px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
+          <option value="">Todos os municípios</option>
+          ${cidadeOpts.map(c => `<option value="${esc(c)}" ${c===_filtroCidade?'selected':''}>${esc(c)}</option>`).join('')}
+        </select>
         <select id="filtro-resp" class="px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500">
           <option value="">Todos os responsáveis</option>
           ${respOpts.map(r => `<option value="${esc(r)}" ${r===_filtroResp?'selected':''}>${esc(r)}</option>`).join('')}
@@ -1664,6 +1674,9 @@ function attachEmpresas(){
   // Filtros de responsável e status MUDAM o conjunto base — fazem re-render
   document.getElementById('filtro-resp').onchange = (e) => { _filtroResp = e.target.value; renderPartial(); };
   document.getElementById('filtro-status').onchange = (e) => { _filtroStatus = e.target.value; renderPartial(); };
+  // [v6.0.34] filtro por municipio
+  var _fc = document.getElementById('filtro-cidade');
+  if (_fc) _fc.onchange = (e) => { _filtroCidade = e.target.value; renderPartial(); };
   document.getElementById('nova-empresa').onclick = () => openModalEmpresa(null);
   document.getElementById('csv-file').onchange = handleCsvImport;
   document.getElementById('sync-drive').onclick = handleSyncDrive;
