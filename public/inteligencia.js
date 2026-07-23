@@ -53,17 +53,24 @@
   // zero resultados, aparecia "Tudo em dia! 🎉" — o que enganava: dava a impressao
   // de que nao havia pendencia, quando na verdade so nao havia alvara COM O NOME
   // da pessoa. Agora, com o filtro ligado, a mensagem e honesta e neutra.
+  // Zuzu (se carregado) acolhe o vazio; se o módulo faltar, cai no emoji.
+  function _zuzuOuEmoji(pose, anim, emoji){
+    return (typeof window.zuzu === 'function')
+      ? '<div class="mb-3 flex justify-center">' + window.zuzu({pose:pose, anim:anim, size:'md'}) + '</div>'
+      : '<div class="text-5xl mb-3">' + emoji + '</div>';
+  }
   function _emptyBox(tituloPadrao, subPadrao){
     if (window._auditProxSoMeu){
       var nome = _meuNomeAtual() || 'voce';
-      return '<div class="bg-white rounded-xl shadow-sm p-12 text-center">' +
-        '<div class="text-5xl mb-3">🔍</div>' +
+      return '<div class="bg-white rounded-xl shadow-sm p-12 text-center flex flex-col items-center">' +
+        _zuzuOuEmoji('pensativo','float','🔍') +
         '<div class="text-lg font-bold text-slate-800">Nenhum alvará com o seu nome nesta auditoria</div>' +
         '<div class="text-sm text-slate-500 mt-1">O filtro <strong>“Só os meus”</strong> está ligado (responsável: ' + _esc(nome) + '). Desmarque para ver a base inteira.</div>' +
         '</div>';
     }
-    return '<div class="bg-white rounded-xl shadow-sm p-12 text-center">' +
-      '<div class="text-5xl mb-3">🎉</div>' +
+    // base inteira, zero pendências = pequena vitória → Zuzu comemora
+    return '<div class="bg-white rounded-xl shadow-sm p-12 text-center flex flex-col items-center">' +
+      _zuzuOuEmoji('joinha','celebrate','🎉') +
       '<div class="text-lg font-bold text-slate-800">' + tituloPadrao + '</div>' +
       '<div class="text-sm text-slate-500 mt-1">' + subPadrao + '</div>' +
       '</div>';
@@ -1215,7 +1222,7 @@
         <div class="text-2xl leading-none">📊</div>
         <p class="text-sm text-blue-900 m-0">Resumo por responsável das pendências que as auditorias apontam: alvarás <b>sem próxima atualização</b>, <b>vencidos</b> e <b>sem status</b>. Use para distribuir esforço e acompanhar quem está com a carteira mais em dia.</p>
       </div>
-      ${linhas.length === 0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-5xl mb-3">🎉</div><div class="text-lg font-bold text-slate-800">Sem pendências!</div></div>` : `
+      ${linhas.length === 0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center flex flex-col items-center">${_zuzuOuEmoji('joinha','celebrate','🎉')}<div class="text-lg font-bold text-slate-800">Sem pendências!</div><div class="text-sm text-slate-500 mt-1">Carteira limpa — todo mundo em dia. 🎉</div></div>` : `
       <div class="bg-white rounded-xl shadow-sm overflow-hidden">
         <div class="grid grid-cols-12 gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wide">
           <div class="col-span-3">Responsável</div>
