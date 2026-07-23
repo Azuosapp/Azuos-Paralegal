@@ -516,7 +516,8 @@ function _azuosBannerErro(rec){
     var b=document.getElementById('azuos-erro-banner');
     if(!b){ b=document.createElement('div'); b.id='azuos-erro-banner'; b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#7f1d1d;color:#fff;padding:10px 14px;font:13px system-ui,Arial;box-shadow:0 2px 8px rgba(0,0,0,.4);display:flex;gap:10px;align-items:center;flex-wrap:wrap;'; document.body.appendChild(b); }
     var msg=(''+(rec.msg||'')).replace(/</g,'&lt;');
-    b.innerHTML='<strong>\u26A0\uFE0F Erro ao atualizar a tela</strong> <span style="opacity:.9">sua a\u00e7\u00e3o foi salva.</span> <code style="background:#00000030;padding:2px 6px;border-radius:4px;max-width:55vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+msg+'</code>';
+    var _zz=(typeof window.zuzu==='function')?window.zuzu({pose:'pensativo',anim:'float',size:36,alt:'Zuzu'}):'';
+    b.innerHTML=_zz+'<strong>\u26A0\uFE0F Erro ao atualizar a tela</strong> <span style="opacity:.9">sua a\u00e7\u00e3o foi salva.</span> <code style="background:#00000030;padding:2px 6px;border-radius:4px;max-width:55vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+msg+'</code>';
     var cp=document.createElement('button'); cp.textContent='Copiar detalhes'; cp.style.cssText='margin-left:auto;background:#fff;color:#7f1d1d;border:none;border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;'; cp.onclick=function(){ try{ navigator.clipboard.writeText(JSON.stringify(rec,null,2)); cp.textContent='Copiado!'; }catch(e){} };
     var rl=document.createElement('button'); rl.textContent='Recarregar'; rl.style.cssText='background:#fca5a5;color:#7f1d1d;border:none;border-radius:6px;padding:5px 10px;font-weight:700;cursor:pointer;'; rl.onclick=function(){ location.reload(); };
     var cl=document.createElement('button'); cl.textContent='\u2715'; cl.style.cssText='background:transparent;color:#fff;border:none;font-size:16px;cursor:pointer;'; cl.onclick=function(){ b.remove(); };
@@ -599,6 +600,7 @@ function renderLogin(){
       <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(circle at 20% 30%, white 1px, transparent 1px), radial-gradient(circle at 80% 70%, white 1px, transparent 1px); background-size: 60px 60px;"></div>
       <div class="bg-white rounded-3xl shadow-2xl p-10 w-full max-w-md relative z-10" style="backdrop-filter: blur(20px);">
         <div class="text-center mb-6">
+          ${(typeof window.zuzu === 'function') ? `<div class="mb-1 flex justify-center">${window.zuzu({pose:'acenando', anim:'wave', size:'lg'})}</div>` : ''}
           <img src="/brand/logo/azuos-logo-oficial-white.png" alt="Grupo Azuos" class="mb-4" style="display:inline-block;width:180px;max-width:70%;height:auto" />
           <h1 class="text-3xl font-extrabold text-slate-800 tracking-tight">AZUOS Paralegal</h1>
           <p class="text-sm text-slate-500 mt-2">Sistema de Gestão de Alvarás</p>
@@ -8365,5 +8367,7 @@ try{
 <script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}try{if(typeof _anexoBackfillCloud==="function")_anexoBackfillCloud();}catch(e){}}if(n>600)clearInterval(iv);},500);})();</script>
 <!-- Centro de Inteligência (módulo separado — NÃO é remendo IIFE no index) -->
 <script src="/inteligencia.js"></script>
+<!-- Zuzu, o mascote (módulo separado) — só em respiros: login, estados vazios, celebração, erro -->
+<script src="/zuzu.js"></script>
 </body>
 </html>
