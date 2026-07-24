@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.36 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.37 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -540,6 +540,34 @@ function _azuosOficialPorEmail(email){
   };
   return M[(email||'').toLowerCase().trim()]||null;
 }
+// [v6.0.37] Identidade unificada do usuario logado. Historicamente varios lugares
+// faziam `state.sessao.email || state.sessao.nome` e comparavam com campos que guardam
+// o NOME (responsavel, ciencia_por). Como sessao Firebase tem e-mail, a comparacao
+// `"Luanna" === "luanna@...com.br"` nunca casava e telas inteiras ficavam vazias.
+// _nomeUsuarioAtual devolve o NOME oficial; _ehMeuNome casa por nome-oficial, nome da
+// sessao OU e-mail, tudo normalizado (sem acento/caixa) e tambem pelo primeiro nome.
+function _normId(s){ try{ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase(); }catch(e){ return String(s==null?'':s).trim().toLowerCase(); } }
+function _nomeUsuarioAtual(){
+  try{
+    if(!state.sessao) return '';
+    var email=(state.sessao.email||'').toLowerCase().trim();
+    var of = (typeof _azuosOficialPorEmail==='function') ? _azuosOficialPorEmail(email) : null;
+    if(of && of.nome) return of.nome;
+    var u=(state.usuarios||[]).filter(function(x){return x&&(x.email||'').toLowerCase().trim()===email;})[0];
+    if(u&&u.nome) return u.nome;
+    return state.sessao.nome||'';
+  }catch(e){ return ''; }
+}
+function _ehMeuNome(valor){
+  var v=_normId(valor); if(!v) return false;
+  var alvos=[ _normId(_nomeUsuarioAtual()), _normId(state.sessao&&state.sessao.nome), _normId(state.sessao&&state.sessao.email) ].filter(Boolean);
+  for(var i=0;i<alvos.length;i++){
+    if(v===alvos[i]) return true;
+    var p1=v.split(/\s+/)[0], p2=alvos[i].split(/\s+/)[0];
+    if(p1&&p1===p2) return true;
+  }
+  return false;
+}
 // v6.5.0 — preserva fotos por e-mail em qualquer reset de usuarios (usa mapa duravel state.fotos_usuarios)
 function _preservaFotosOficiais(lista){
   var fotos = {};
@@ -797,7 +825,7 @@ function renderLayout(content){
   const meuNomeBadge = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
   const pendDia = (state.alvaras||[]).filter(a => {
     if (!a.vencimento) return false;
-    if (!ehAdminBadge && (a.responsavel||'') !== meuNomeBadge) return false;
+    if (!ehAdminBadge && !_ehMeuNome(a.responsavel)) return false; // [v6.0.37] casa por nome/e-mail
     const d = parseDataBR(a.vencimento);
     if (!d) return false;
     const diff = Math.round((d - hojeStr)/(1000*60*60*24));
@@ -2554,7 +2582,7 @@ function adicionarConversa() {
   const conversas = JSON.parse(dataField.value || '[]');
   conversas.push({
     data: new Date().toLocaleString('pt-BR'),
-    autor: state.sessao?.nome || 'Usuário',
+    autor: (typeof _nomeUsuarioAtual==='function' ? _nomeUsuarioAtual() : (state.sessao?.nome)) || 'Usuário', // [v6.0.37] nome oficial
     texto: txt
   });
   dataField.value = JSON.stringify(conversas);
@@ -2724,18 +2752,19 @@ function adicionarAnexo(input) {
 // 🤖 IA: lê documento via OCR e extrai datas (validade + ano)
 async function iaLerDocumento(dataUrl, nomeArq) {
   // Mostrar status na UI
-  let toast = document.createElement('div');
-  toast.id = 'ia-toast';
-  toast.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#1e40af,#1e3a8a);color:white;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(30,64,175,0.5);z-index:99999;font-family:Inter,sans-serif;font-size:13px;font-weight:500;max-width:320px;'; toast.className='toast-slide';
-  toast.innerHTML = `🤖 <strong>IA</strong> lendo o documento <em>${esc(nomeArq)}</em>...`;
-  document.body.appendChild(toast);
+  // [v6.0.37] renomeado de 'toast' para nao sombrear a funcao global toast()
+  let _iaToastEl = document.createElement('div');
+  _iaToastEl.id = 'ia-toast';
+  _iaToastEl.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#1e40af,#1e3a8a);color:white;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(30,64,175,0.5);z-index:99999;font-family:Inter,sans-serif;font-size:13px;font-weight:500;max-width:320px;'; _iaToastEl.className='toast-slide';
+  _iaToastEl.innerHTML = `🤖 <strong>IA</strong> lendo o documento <em>${esc(nomeArq)}</em>...`;
+  document.body.appendChild(_iaToastEl);
 
   try {
     const { data: { text } } = await Tesseract.recognize(dataUrl, 'por', {
       logger: m => {
-        if (m.status === 'recognizing text' && toast) {
+        if (m.status === 'recognizing text' && _iaToastEl) {
           const pct = Math.round((m.progress||0)*100);
-          toast.innerHTML = `🤖 <strong>IA</strong> lendo... ${pct}%`;
+          _iaToastEl.innerHTML = `🤖 <strong>IA</strong> lendo... ${pct}%`;
         }
       }
     });
@@ -2767,7 +2796,7 @@ async function iaLerDocumento(dataUrl, nomeArq) {
     const anoMaisRecente = anos.length ? Math.max(...anos) : (dataValidade?.y || null);
 
     // Atualizar o toast com resultado
-    if (toast) toast.remove();
+    if (_iaToastEl) _iaToastEl.remove();
     if (!dataValidade && !anoMaisRecente) {
       const t = document.createElement('div');
       t.style.cssText = 'position:fixed;top:16px;right:16px;background:#dc2626;color:white;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-family:sans-serif;font-size:13px;';
@@ -2796,7 +2825,7 @@ async function iaLerDocumento(dataUrl, nomeArq) {
     setTimeout(() => { if (t.parentElement) t.remove(); }, 15000);
   } catch (err) {
     console.error('OCR falhou:', err);
-    if (toast) toast.remove();
+    if (_iaToastEl) _iaToastEl.remove();
     const t = document.createElement('div');
     t.style.cssText = 'position:fixed;top:16px;right:16px;background:#dc2626;color:white;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-family:sans-serif;font-size:13px;';
     t.innerHTML = `🤖 IA: erro ao processar (${err.message})`;
@@ -4138,6 +4167,7 @@ function attachChecklists() {
 // ============ Diagnóstico de campos (v5.2) ============
 function verDadosCrus(empresaId) {
   const e = state.empresas.find(x => x.id === empresaId);
+  if (!e) { alert('Empresa não encontrada (pode ter sido removida ou re-sincronizada). Recarregue a página.'); return; } // [v6.0.37] evita null-deref
   const alvs = state.alvaras.filter(a => a.empresa_id === empresaId);
   const todosCampos = new Set();
   alvs.forEach(a => Object.keys(a).forEach(k => todosCampos.add(k)));
@@ -4525,7 +4555,7 @@ function renderResumoDia() {
   let alvsPend = (state.alvaras||[]).filter(a => empresasAtivoIds.has(a.empresa_id) && a.status && !STATUS_OK(a.status) && a.status !== 'Sem obrigatoriedade');
   if (!ehAdmin) {
     // Filtra por responsável da EMPRESA OU do alvará (união) - paralegal vê tudo da sua carteira
-    alvsPend = alvsPend.filter(a => (empresaRespMap2[a.empresa_id]||'') === meuNome || (a.responsavel||'') === meuNome);
+    alvsPend = alvsPend.filter(a => _ehMeuNome(empresaRespMap2[a.empresa_id]) || _ehMeuNome(a.responsavel));
   }
 
   // Categoriza por vencimento
@@ -4549,7 +4579,7 @@ function renderResumoDia() {
   const conhecidas = _cienciasUsr().map(c=>c.key);
   let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !_empresaTemCiencia(e));
   if (!ehAdmin) {
-    novasEmp = novasEmp.filter(e => (e.responsavel||'') === meuNome);
+    novasEmp = novasEmp.filter(e => _ehMeuNome(e.responsavel));
   }
 
   // Pendências de revisão (admin)
@@ -4771,7 +4801,7 @@ function renderEmExecucao() {
   let emExec = empresasAtivo.filter(e => cienciaPorKey[empresaKey(e)]).map(e => {
     const cienciasDela = cienciaPorKey[empresaKey(e)];
     // Pega ciência específica do usuário (paralegal) ou mostra todas (admin)
-    const cienciaUsr = cienciasDela.find(c => c.ciencia_por === meuNome) || cienciasDela[0];
+    const cienciaUsr = cienciasDela.find(c => _ehMeuNome(c.ciencia_por)) || cienciasDela[0];
     return {
       ...e,
       ciencias: cienciasDela, // todas
@@ -4781,10 +4811,10 @@ function renderEmExecucao() {
 
   // Para paralegal: só vê empresas onde ELE mesmo deu ciência
   if (!ehAdmin) {
-    emExec = emExec.filter(e => e.ciencias.some(c => c.ciencia_por === meuNome));
+    emExec = emExec.filter(e => e.ciencias.some(c => _ehMeuNome(c.ciencia_por)));
     emExec = emExec.map(e => ({
       ...e,
-      ciencia: e.ciencias.find(c => c.ciencia_por === meuNome) || e.ciencia
+      ciencia: e.ciencias.find(c => _ehMeuNome(c.ciencia_por)) || e.ciencia
     }));
   } else if (_execFiltroResp) {
     emExec = emExec.filter(e => e.ciencias.some(c => c.ciencia_por === _execFiltroResp));
@@ -4949,7 +4979,7 @@ function mostrarPopupResumoDia() {
   let alvsPend = (state.alvaras||[]).filter(a => empresasAtivoIds.has(a.empresa_id) && a.status && !STATUS_OK(a.status) && a.status !== 'Sem obrigatoriedade');
   if (!ehAdmin) {
     // Filtra por responsável da EMPRESA OU do alvará (união)
-    alvsPend = alvsPend.filter(a => (empresaRespMap[a.empresa_id]||'') === meuNome || (a.responsavel||'') === meuNome);
+    alvsPend = alvsPend.filter(a => _ehMeuNome(empresaRespMap[a.empresa_id]) || _ehMeuNome(a.responsavel));
   }
 
   const vencidos = [], hoje0 = [], proximos7 = [], proximos30 = [];
@@ -4965,7 +4995,7 @@ function mostrarPopupResumoDia() {
 
   const conhecidasKeys = _cienciasUsr().map(c => c.key);
   let novasEmp = state.empresas.filter(e => (e.status||'').toUpperCase()==='ATIVO' && !_empresaTemCiencia(e));
-  if (!ehAdmin) novasEmp = novasEmp.filter(e => (e.responsavel||'') === meuNome);
+  if (!ehAdmin) novasEmp = novasEmp.filter(e => _ehMeuNome(e.responsavel));
   // novasEmp já é por responsavel da empresa (correto)
 
   const naoRevisados = ehAdmin ? alvsPend.filter(a => !a.revisado).length : 0;
@@ -7421,6 +7451,11 @@ window._sanitizar54 = function(obj){
   var o={};
   for(var k in obj){
     var v=obj[k];
+    // [v6.0.37] NUNCA deixar base64 de anexo ir para o doc 'shared' (limite 1MB).
+    // Estes hooks de 20s gravavam o mapa inteiro de edicoes sem enxugar; um anexo
+    // recem-adicionado (ainda com base64 em memoria) estourava o doc e quebrava o
+    // sync de TODOS. O arquivo mora no IndexedDB + docs irmaos; aqui so o ponteiro.
+    if(k==='dados' && typeof v==='string' && v.indexOf('data:')===0){ o[k]=''; o._local=true; continue; }
     if(v===undefined) o[k]='';
     else if(typeof v==='object'&&v!==null) o[k]=window._sanitizar54(v);
     else o[k]=v;

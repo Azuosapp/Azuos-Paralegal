@@ -55,9 +55,14 @@ function _persistirEstadoAgora() {
 // Descarga garantida ao ocultar/fechar a aba (pagehide/beforeunload/visibilitychange).
 var _persistTimer = null;
 function _persistirEstado() {
-  if (_persistTimer) clearTimeout(_persistTimer);
-  _persistTimer = setTimeout(function(){ _persistTimer = null; _persistirEstadoAgora(); }, 400);
-  return true;
+  // [v6.0.37] Antes isto era debounced e retornava `true` "no escuro": o resultado
+  // REAL (false quando o localStorage estoura) so nascia 400ms depois, de forma
+  // assincrona, e era descartado. Ou seja, todo `if(saveState()===false)` do app
+  // era codigo morto e o usuario perdia trabalho sem aviso quando a cota estourava.
+  // Agora grava na hora e devolve o resultado verdadeiro. saveState roda em acoes
+  // pontuais (salvar/editar/dar ciencia), nao a cada tecla, entao o custo e minimo.
+  if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
+  return _persistirEstadoAgora();
 }
 function _flushPersistir() {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
