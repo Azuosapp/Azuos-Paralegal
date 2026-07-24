@@ -62,10 +62,12 @@
   function _emptyBox(tituloPadrao, subPadrao){
     if (window._auditProxSoMeu){
       var nome = _meuNomeAtual() || 'voce';
+      // Sua carteira limpa nesta auditoria = vitória pessoal (o "inbox zero").
+      // Mantém a honestidade: deixa explícito que é SÓ a sua carteira, nesta auditoria.
       return '<div class="bg-white rounded-xl shadow-sm p-12 text-center flex flex-col items-center">' +
-        _zuzuOuEmoji('pensativo','float','🔍') +
-        '<div class="text-lg font-bold text-slate-800">Nenhum alvará com o seu nome nesta auditoria</div>' +
-        '<div class="text-sm text-slate-500 mt-1">O filtro <strong>“Só os meus”</strong> está ligado (responsável: ' + _esc(nome) + '). Desmarque para ver a base inteira.</div>' +
+        _zuzuOuEmoji('asas','celebrate','🎉') +
+        '<div class="text-lg font-bold text-slate-800">Sua carteira está limpa aqui!</div>' +
+        '<div class="text-sm text-slate-500 mt-1">Nenhuma pendência com o seu nome (' + _esc(nome) + ') nesta auditoria. Desmarque <strong>“Só os meus”</strong> para ver a base inteira.</div>' +
         '</div>';
     }
     // base inteira, zero pendências = pequena vitória → Zuzu comemora

@@ -1173,9 +1173,12 @@ function renderPremiacao(){
     <header class="mb-5">
       <div class="rounded-2xl p-6 text-white shadow-lg" style="background:linear-gradient(135deg,#f59e0b,#d97706 60%,#b45309);">
         <div class="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 class="text-2xl font-extrabold flex items-center gap-2">🏆 Premiacao por Produtividade</h1>
-            <p class="text-amber-50 text-sm mt-1">Ganhe por cada alvara concluido — ranking de <strong>${_gamMesLabel(mesSel)}</strong>.</p>
+          <div class="flex items-center gap-3">
+            ${(rank.length>0 && typeof window.zuzu==='function') ? `<div class="shrink-0 drop-shadow-lg">${window.zuzu({pose:'asas',anim:'celebrate',size:64,alt:'Zuzu comemorando'})}</div>` : ''}
+            <div>
+              <h1 class="text-2xl font-extrabold flex items-center gap-2">🏆 Premiacao por Produtividade</h1>
+              <p class="text-amber-50 text-sm mt-1">Ganhe por cada alvara concluido — ranking de <strong>${_gamMesLabel(mesSel)}</strong>.</p>
+            </div>
           </div>
           <div class="text-right flex flex-col items-end gap-2">
             <div>
@@ -1207,7 +1210,11 @@ function renderPremiacao(){
       </div>
     </header>
     ${ehAdmin ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800 flex items-center justify-between flex-wrap gap-2"><span>⚙️ Os valores e regras ficam em um menu separado.</span><button onclick="setState({page:'valores'})" class="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-semibold text-xs hover:bg-amber-700">Abrir 💰 Valores</button></div>` : ''}
-    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_gamMesLabel(mesSel)} ainda.</div>` : `
+    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center flex flex-col items-center">
+      ${(typeof window.zuzu==='function') ? `<div class="mb-2">${window.zuzu({pose:'apontando',anim:'float',size:'md'})}</div>` : `<div class="text-4xl mb-2">🏁</div>`}
+      <div class="font-bold text-slate-700">A corrida ainda não começou</div>
+      <div class="text-sm text-slate-400 mt-1">Conclua o primeiro alvará de ${_gamMesLabel(mesSel)} e apareça no pódio!</div>
+    </div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
         <div onclick="_gamAbrirDetalhe('${r.chave}','${mesSel}','${(r.nome||'').replace(/'/g,'')}')" class="text-center cursor-pointer">
@@ -1339,7 +1346,7 @@ function renderPage(){
     case 'resumo': return renderResumoDia();
     case 'empresas': return renderEmpresas();
     case 'dashboard': return renderDashboard();
-    case 'inteligencia': return (typeof window.renderInteligencia === 'function') ? window.renderInteligencia() : '<div class="p-6 text-slate-500">Carregando Centro de Inteligência…</div>';
+    case 'inteligencia': return (typeof window.renderInteligencia === 'function') ? window.renderInteligencia() : ('<div class="p-10 text-center text-slate-500 flex flex-col items-center gap-2">' + ((typeof window.zuzu==='function')?window.zuzu({pose:'voando',anim:'float',size:'md'}):'') + '<div>Varrendo a base… já te trago o resultado.</div></div>');
     case 'premiacao': return renderPremiacao();
     case 'valores': return renderValores();
     case 'alertas': return renderAlertas();
@@ -4274,10 +4281,10 @@ function renderNovasEmpresas() {
       </header>
 
       ${novasFinal.length === 0 ? `
-        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center">
-          <div class="text-4xl mb-2">✅</div>
-          <h3 class="font-bold text-emerald-800 mb-1">Nenhuma empresa nova!</h3>
-          <p class="text-sm text-emerald-700">Você está em dia. Empresas adicionadas na planilha vão aparecer aqui.</p>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-6 text-center flex flex-col items-center">
+          ${(typeof window.zuzu==='function') ? `<div class="mb-1">${window.zuzu({pose:'joinha',anim:'celebrate',size:'md'})}</div>` : `<div class="text-4xl mb-2">✅</div>`}
+          <h3 class="font-bold text-emerald-800 mb-1">Você está em dia!</h3>
+          <p class="text-sm text-emerald-700">Nenhuma empresa nova esperando. As adicionadas na planilha aparecem aqui.</p>
         </div>
       ` : `
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-sm">
@@ -4739,10 +4746,10 @@ function renderEmExecucao() {
       </div>` : ''}
 
       ${emExec.length === 0 ? `
-        <div class="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center">
-          <div class="text-4xl mb-2">📭</div>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center">
+          ${(typeof window.zuzu==='function') ? `<div class="mb-1">${window.zuzu({pose:'apontando',anim:'float',size:'md'})}</div>` : `<div class="text-4xl mb-2">📭</div>`}
           <h3 class="font-bold text-slate-700 mb-1">Nenhuma empresa em execução</h3>
-          <p class="text-sm text-slate-500">${ehAdmin?'Empresas com ciência dada aparecem aqui.':'Você ainda não deu ciência em nenhuma empresa. Vá em "Novas Empresas".'}</p>
+          <p class="text-sm text-slate-500">${ehAdmin?'Empresas com ciência dada aparecem aqui.':'Você ainda não deu ciência em nenhuma empresa. Bora começar em "Novas Empresas"?'}</p>
         </div>
       ` : `
       <div class="bg-white rounded-xl shadow-sm overflow-hidden">
