@@ -23,7 +23,16 @@
     ideia:     '/brand/mascote/zuzu-ideia.png',
     laptop:    '/brand/mascote/zuzu-laptop.png',
     voando:    '/brand/mascote/zuzu-voando.png',
-    debrucado: '/brand/mascote/zuzu-debrucado.png'
+    debrucado: '/brand/mascote/zuzu-debrucado.png',
+    festejando:  '/brand/mascote/zuzu-festejando.png',
+    trofeu:      '/brand/mascote/zuzu-trofeu.png',
+    dormindo:    '/brand/mascote/zuzu-dormindo.png',
+    continencia: '/brand/mascote/zuzu-continencia.png',
+    coracao:     '/brand/mascote/zuzu-coracao.png',
+    lendo:       '/brand/mascote/zuzu-lendo.png',
+    medalha:     '/brand/mascote/zuzu-medalha.png',
+    segredo:     '/brand/mascote/zuzu-segredo.png',
+    timido:      '/brand/mascote/zuzu-timido.png'
   };
   var SIZE_PX = { sm:64, md:112, lg:176, xl:260 };
 
@@ -36,12 +45,18 @@
       + '@keyframes zuzu-wave{0%,100%{transform:rotate(0)}25%{transform:rotate(-5deg)}75%{transform:rotate(4deg)}}'
       + '@keyframes zuzu-celebrate{0%{transform:translateY(0) scale(1)}30%{transform:translateY(-14px) scale(1.06)}60%{transform:translateY(0) scale(1)}80%{transform:translateY(-6px) scale(1.02)}100%{transform:translateY(0) scale(1)}}'
       + '@keyframes zuzu-peek{from{transform:translateX(-32%);opacity:0}to{transform:translateX(0);opacity:1}}'
+      + '@keyframes zuzu-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}'
+      + '@keyframes zuzu-shy{0%,100%{transform:translateX(0) rotate(0)}20%{transform:translateX(-2px) rotate(-1.5deg)}60%{transform:translateX(2px) rotate(1.5deg)}}'
+      + '@keyframes zuzu-pulse{0%,100%{transform:scale(1)}40%{transform:scale(1.07)}70%{transform:scale(0.98)}}'
       + '.zuzu-anim-sway{transform-origin:top center;animation:zuzu-sway 3.2s ease-in-out infinite}'
       + '.zuzu-anim-float{animation:zuzu-float 3s ease-in-out infinite}'
       + '.zuzu-anim-wave{transform-origin:bottom center;animation:zuzu-wave 2.6s ease-in-out infinite}'
       + '.zuzu-anim-celebrate{animation:zuzu-celebrate 1.1s ease-out both}'
       + '.zuzu-anim-peek{animation:zuzu-peek .5s ease-out both}'
-      + '@media (prefers-reduced-motion:reduce){.zuzu-anim-sway,.zuzu-anim-float,.zuzu-anim-wave,.zuzu-anim-celebrate,.zuzu-anim-peek{animation:none}}';
+      + '.zuzu-anim-breathe{animation:zuzu-breathe 3.6s ease-in-out infinite}'
+      + '.zuzu-anim-shy{transform-origin:bottom center;animation:zuzu-shy 2.8s ease-in-out infinite}'
+      + '.zuzu-anim-pulse{animation:zuzu-pulse 1.6s ease-in-out infinite}'
+      + '@media (prefers-reduced-motion:reduce){.zuzu-anim-sway,.zuzu-anim-float,.zuzu-anim-wave,.zuzu-anim-celebrate,.zuzu-anim-peek,.zuzu-anim-breathe,.zuzu-anim-shy,.zuzu-anim-pulse{animation:none}}';
     var s = document.createElement('style');
     s.id = 'zuzu-anim-css';
     s.textContent = css;
