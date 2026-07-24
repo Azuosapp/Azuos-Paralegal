@@ -32,7 +32,16 @@
     lendo:       '/brand/mascote/zuzu-lendo.png',
     medalha:     '/brand/mascote/zuzu-medalha.png',
     segredo:     '/brand/mascote/zuzu-segredo.png',
-    timido:      '/brand/mascote/zuzu-timido.png'
+    timido:      '/brand/mascote/zuzu-timido.png',
+    moeda:       '/brand/mascote/zuzu-moeda.png',
+    calculadora: '/brand/mascote/zuzu-calculadora.png',
+    lupa:        '/brand/mascote/zuzu-lupa.png',
+    alerta:      '/brand/mascote/zuzu-alerta.png',
+    foguete:     '/brand/mascote/zuzu-foguete.png',
+    relogio:     '/brand/mascote/zuzu-relogio.png',
+    aperto:      '/brand/mascote/zuzu-aperto.png',
+    confuso:     '/brand/mascote/zuzu-confuso.png',
+    headset:     '/brand/mascote/zuzu-headset.png'
   };
   var SIZE_PX = { sm:64, md:112, lg:176, xl:260 };
 
