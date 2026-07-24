@@ -154,6 +154,9 @@ try {
 <script src="/lib.js"></script>
 <script src="/data.js"></script>
 <script src="/firestore.js"></script>
+<!-- Zuzu carrega ANTES do script principal: só define window.zuzu + injeta CSS,
+     não depende de state/render. Assim o mascote existe no 1º render (login/vazios). -->
+<script src="/zuzu.js"></script>
 <script>
 'use strict';
 const STORAGE_KEY = 'azuos_paralegal_v4';
@@ -8374,7 +8377,5 @@ try{
 <script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}try{if(typeof _anexoBackfillCloud==="function")_anexoBackfillCloud();}catch(e){}}if(n>600)clearInterval(iv);},500);})();</script>
 <!-- Centro de Inteligência (módulo separado — NÃO é remendo IIFE no index) -->
 <script src="/inteligencia.js"></script>
-<!-- Zuzu, o mascote (módulo separado) — só em respiros: login, estados vazios, celebração, erro -->
-<script src="/zuzu.js"></script>
 </body>
 </html>
