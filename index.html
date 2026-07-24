@@ -844,6 +844,7 @@ function renderLayout(content){
             </button>
           `).join('')}
         </nav>
+        ${(typeof window.zuzu==='function') ? `<div class="flex justify-center -mb-2 pointer-events-none" title="Zuzu">${window.zuzu({pose:'debrucado', anim:'sway', size:88, alt:'Zuzu'})}</div>` : ''}
         <div class="p-4 border-t border-white/10">
           <div class="flex items-center gap-3 mb-3 px-2">
             <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0">${_fotoSes?'<img src="'+_fotoSes+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
@@ -4495,17 +4496,42 @@ function renderResumoDia() {
   const rankPend = Object.entries(pendPorResp).sort((a,b) => b[1]-a[1]).slice(0, 6);
 
   const nome = state.sessao ? (state.sessao.email || state.sessao.nome) : '';
+  const primeiroNome = String(state.sessao && state.sessao.nome || nome || '').split(' ')[0] || '';
+
+  // Saudação contextual do Zuzu — pose + fala reagem ao estado REAL do dia.
+  const _horaH = new Date().getHours();
+  const _saud = _horaH < 12 ? 'Bom dia' : (_horaH < 18 ? 'Boa tarde' : 'Boa noite');
+  let _zPose, _zFala;
+  if (vencidos.length > 0) {
+    _zPose = 'apontando';
+    _zFala = `${_saud}, ${primeiroNome}! Tem <b>${vencidos.length} alvará(s) vencido(s)</b> pedindo atenção. Bora resolver?`;
+  } else if (hoje0.length > 0) {
+    _zPose = 'apontando';
+    _zFala = `${_saud}, ${primeiroNome}! <b>${hoje0.length} vence(m) hoje</b> — melhor não deixar pra depois.`;
+  } else if (proximos7.length > 0) {
+    _zPose = 'laptop';
+    _zFala = `${_saud}, ${primeiroNome}! Nada urgente agora. <b>${proximos7.length} vence(m) nos próximos 7 dias</b> — dá pra adiantar com calma.`;
+  } else {
+    _zPose = 'joinha';
+    _zFala = `${_saud}, ${primeiroNome}! Tudo tranquilo por aqui — nenhuma pendência apertando. 🎉`;
+  }
+  const _zSaudacao = (typeof window.zuzu==='function') ? `
+    <div class="flex items-center gap-4 bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-5">
+      <div class="shrink-0">${window.zuzu({pose:_zPose, anim:'float', size:96, alt:'Zuzu'})}</div>
+      <p class="text-sm text-slate-600 leading-relaxed m-0">${_zFala}</p>
+    </div>` : '';
 
   return `
     <div class="p-6 max-w-4xl mx-auto">
       <!-- Header gradient -->
-      <div class="mb-6 flex items-center justify-between">
+      <div class="mb-4 flex items-center justify-between">
         <div>
           <h1 class="text-3xl font-extrabold text-slate-800">📣 Resumo do Dia</h1>
           <p class="text-sm text-slate-500 mt-1">Olá, ${esc(nome)}! Aqui está o que precisa da sua atenção hoje. ${ehAdmin ? `<span class="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-bold uppercase tracking-wider">🔓 Visão Admin · todos os responsáveis</span>` : `<span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold uppercase tracking-wider">👤 Suas pendências</span>`}</p>
         </div>
         <button onclick="window._resumoMarcado=true;render();" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 text-sm font-medium">↻ Atualizar</button>
       </div>
+      ${_zSaudacao}
 
       <!-- Card estilo GOB -->
       <div class="bg-slate-900 rounded-3xl p-6 text-slate-100 shadow-2xl mb-6 relative overflow-hidden">
