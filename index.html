@@ -865,6 +865,7 @@ function renderLayout(content){
       <button onclick="document.getElementById('cfg-import').click()" class="px-3 py-1.5 bg-blue-700 text-white rounded-lg text-xs shadow opacity-70 hover:opacity-100" title="Carregar configurações de um JSON exportado">📂 Importar config</button>
       <button id="reset-btn" class="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs shadow opacity-50 hover:opacity-100" title="Limpar tudo e voltar ao estado inicial">Reset demo</button>
     </div>
+    ${(typeof window.zuzuDicaBar==='function') ? window.zuzuDicaBar(state.page) : ''}
   `;
 }
 function attachLayout(){

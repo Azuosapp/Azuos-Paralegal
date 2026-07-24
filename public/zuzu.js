@@ -109,4 +109,81 @@
       + (acao ? '<div class="mt-4">' + acao + '</div>' : '')
       + '</div>';
   };
+
+  // ==========================================================================
+  //  ZUZU DICAS — rodapé discreto e dispensável, presente em todas as telas.
+  //  Mistura dicas de USO do sistema, BOAS PRÁTICAS de gestão e CONTEXTUAIS
+  //  (por página). Não repete a mesma dica na mesma sessão; pode ser fechado.
+  // ==========================================================================
+  // dicas gerais (uso + boas práticas)
+  var _DICAS_GERAIS = [
+    '💡 No Centro de Inteligência, use "Aplicar em todos" pra agendar a próxima atualização de vários alvarás de uma vez.',
+    '💡 Boa prática: agende a próxima atualização pelo menos 10 dias antes do vencimento — dá folga pra resolver.',
+    '💡 O filtro "Só os meus" mostra apenas os alvarás da sua carteira em qualquer auditoria.',
+    '💡 Clique no nome de uma empresa na auditoria pra abrir e corrigir direto.',
+    '💡 A auditoria "Vencidos há +30 dias" mostra o atraso crônico — comece por ela pra desafogar.',
+    '💡 Exporte qualquer auditoria em CSV pelo botão no topo da lista.',
+    '💡 No Dashboard, clique numa fatia do gráfico pra ver as empresas por trás do número.',
+    '💡 Agrupe a auditoria por Responsável pra ver rapidinho a carga de cada um.',
+    '💡 Recolha os grupos das auditorias e expanda só a empresa que você vai tratar — a lista fica mais limpa.',
+    '💡 O Placar por Responsável mostra a saúde da carteira de cada pessoa da equipe.'
+  ];
+  // dicas contextuais por página (state.page)
+  var _DICAS_CTX = {
+    empresas: ['💡 Use a busca por nome, CNPJ ou cidade pra achar uma empresa na hora.',
+               '💡 Alterne entre visão Tabela e Cards no canto superior direito da lista.'],
+    inteligencia: ['💡 Cada card do hub é uma auditoria diferente — o número mostra quantas pendências tem.',
+                   '💡 Comece pelas auditorias com mais pendências pra ter mais impacto.'],
+    dashboard: ['💡 Os números em cima das barras mostram o total de cada tipo de alvará.'],
+    premiacao: ['💡 A Premiação conta os alvarás concluídos no mês — mantenha o status atualizado pra pontuar.'],
+    resumo: ['💡 O Resumo do Dia já separa o que vence hoje, em 7 e em 30 dias pra você priorizar.'],
+    novas: ['💡 Dê ciência nas novas empresas pra elas entrarem no seu fluxo de acompanhamento.']
+  };
+
+  function _dicaJaVistas(){
+    try { return JSON.parse(window.sessionStorage.getItem('zuzu_dicas_vistas') || '[]'); } catch(e){ return []; }
+  }
+  function _marcaVista(t){
+    try { var v=_dicaJaVistas(); v.push(t); window.sessionStorage.setItem('zuzu_dicas_vistas', JSON.stringify(v.slice(-30))); } catch(e){}
+  }
+  // escolhe uma dica: prioriza contextual da página, evita repetir na sessão.
+  function _escolheDica(page, idx){
+    var ctx = _DICAS_CTX[page] || [];
+    var pool = ctx.concat(_DICAS_GERAIS);
+    var vistas = _dicaJaVistas();
+    var frescas = pool.filter(function(d){ return vistas.indexOf(d) < 0; });
+    var lista = frescas.length ? frescas : pool; // se viu todas, recicla
+    // idx determinístico (passado por quem renderiza) pra não usar Math.random
+    var i = (typeof idx === 'number' ? idx : vistas.length) % lista.length;
+    return lista[i];
+  }
+
+  // barra de dica: slim, bottom-center, dispensável. Fica escondida se o usuário
+  // fechou nesta sessão. Retorna '' se dispensada.
+  window.zuzuDicaBar = function(page, idx){
+    try { if (window.sessionStorage.getItem('zuzu_dica_fechada') === '1') return ''; } catch(e){}
+    var esc = (typeof window.esc === 'function') ? window.esc : function(s){ return String(s==null?'':s); };
+    var dica = _escolheDica(page, idx);
+    _marcaVista(dica);
+    return '<div id="zuzu-dica-bar" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 max-w-[520px] w-[calc(100%-220px)] min-w-[240px] flex items-center gap-2 bg-white/95 backdrop-blur border border-amber-200 shadow-lg rounded-full pl-1 pr-2 py-1" style="pointer-events:auto">'
+      + '<div class="shrink-0">' + window.zuzu({pose:'ideia', anim:'float', size:34, alt:'Dica do Zuzu'}) + '</div>'
+      + '<span class="flex-1 text-[12px] text-slate-600 truncate" title="' + esc(dica).replace(/"/g,'&quot;') + '">' + esc(dica) + '</span>'
+      + '<button onclick="window.zuzuProxDica&&window.zuzuProxDica()" class="shrink-0 text-[11px] font-semibold text-amber-600 hover:text-amber-800 px-1" title="Próxima dica">↻</button>'
+      + '<button onclick="window.zuzuFecharDica&&window.zuzuFecharDica()" class="shrink-0 text-slate-400 hover:text-slate-600 text-sm px-1" title="Fechar dicas por agora">✕</button>'
+      + '</div>';
+  };
+  // fecha as dicas nesta sessão
+  window.zuzuFecharDica = function(){
+    try { window.sessionStorage.setItem('zuzu_dica_fechada','1'); } catch(e){}
+    var el = document.getElementById('zuzu-dica-bar'); if (el) el.remove();
+  };
+  // troca pra próxima dica sem re-renderizar a tela toda
+  window.zuzuProxDica = function(){
+    var page = (typeof state!=='undefined' && state && state.page) || '';
+    var idx = _dicaJaVistas().length; // avança
+    var el = document.getElementById('zuzu-dica-bar');
+    if (!el) return;
+    var nova = window.zuzuDicaBar(page, idx);
+    if (nova) { var tmp = document.createElement('div'); tmp.innerHTML = nova; el.replaceWith(tmp.firstChild); }
+  };
 })();
