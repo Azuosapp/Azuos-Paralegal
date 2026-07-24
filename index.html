@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.35 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.36 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2268,8 +2268,32 @@ function showModal(content){
   div.onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
 }
 function closeModal(){
+  // [v6.0.36] Rede de seguranca: ao FECHAR o alvara (X, clicar fora, ou navegar),
+  // qualquer alteracao pendente e salva automaticamente. Assim nunca mais se perde
+  // trabalho por esquecer de clicar "Salvar". So o botao "Cancelar" descarta de
+  // proposito (ele seta window._alvDescartar = true antes de fechar).
+  try{ _autoSalvarAlvaraSeMudou(); }catch(e){}
   const m = document.getElementById('modal-overlay');
   if (m) m.remove();
+  window._alvAtual = null;
+  window._alvDescartar = false;
+}
+function _autoSalvarAlvaraSeMudou(){
+  if (window._alvDescartar) return;                 // "Cancelar": descarte intencional
+  var ctx = window._alvAtual;
+  if (!ctx || ctx.id == null || !ctx.snap) return;  // sem alvara existente aberto
+  var g = function(elid){ var el=document.getElementById(elid); return el ? el.value : undefined; };
+  var st=g('fa-status'), rp=g('fa-resp'), vc=g('fa-venc'), px=g('fa-prox'), ob=g('fa-obs');
+  if (st===undefined && rp===undefined) return;     // modal do alvara nao esta na tela
+  var mud = {};
+  if (st!==undefined && st!==ctx.snap.status) mud.status = st;
+  if (rp!==undefined && rp!==ctx.snap.responsavel) mud.responsavel = rp;
+  if (vc!==undefined && vc!==ctx.snap.vencimento) mud.vencimento = vc;
+  if (px!==undefined && px!==ctx.snap.proxima_atualizacao) mud.proxima_atualizacao = px;
+  if (ob!==undefined && ob!==ctx.snap.observacao) mud.observacao = ob;
+  if (Object.keys(mud).length){
+    if (_persistirCamposAlvaraAtual(mud) && typeof toast==='function') toast('💾 Alterações salvas', 'emerald');
+  }
 }
 
 function openModalEmpresa(empresa){
@@ -2336,8 +2360,11 @@ function openModalAlvara(alvara, empresaId, tipoSugerido){
   // Novo alvará herda automaticamente o responsável da empresa
   const respPadrao = alvara?.responsavel || empresa?.responsavel || '';
   const a = alvara || {empresa_id: empresaId, tipo: tipoSugerido||'', status: 'Não iniciado', responsavel: respPadrao, vencimento:'', proxima_atualizacao:'', observacao:''};
-  // [v6.0.35] guarda o alvara aberto para auto-salvar comentarios/prints na hora
-  window._alvAtual = { id: (isEdit ? a.id : null), empresaId: (a.empresa_id || empresaId) };
+  // [v6.0.35/36] guarda o alvara aberto + o "snapshot" dos campos, para auto-salvar
+  // comentarios/prints na hora E qualquer alteracao ao fechar o modal.
+  window._alvDescartar = false;
+  window._alvAtual = { id: (isEdit ? a.id : null), empresaId: (a.empresa_id || empresaId),
+    snap: { status:a.status||'', responsavel:a.responsavel||'', vencimento:a.vencimento||'', proxima_atualizacao:a.proxima_atualizacao||'', observacao:a.observacao||'' } };
   const respOpts = state.usuarios.filter(u => u.ativo).map(u => u.nome);
   showModal(`
     <div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center">
@@ -2472,7 +2499,7 @@ function openModalAlvara(alvara, empresaId, tipoSugerido){
       <input type="hidden" id="fa-anexos-data" value="${esc(JSON.stringify(a.anexos||[]))}">
     </div>
     <div class="px-5 py-4 border-t border-slate-200 flex justify-end gap-2">
-      <button onclick="closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Cancelar</button>
+      <button onclick="window._alvDescartar=true;closeModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Cancelar</button>
       <button onclick="salvarAlvara(${isEdit?a.id:'null'},${a.empresa_id})" class="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700">Salvar</button>
     </div>
   `);
@@ -2873,6 +2900,7 @@ function salvarAlvara(id, empresaId){
     state.edicoes_alvaras[novoId] = {id: novoId, ...data};
     log('Cadastrou alvará', `${tipo} - ${empresa.nome}`);
   }
+  window._alvDescartar = true; // [v6.0.36] ja salvamos tudo aqui; evita auto-save duplicado no closeModal
   closeModal();
   // [v6.0.30] Se o armazenamento local estourar, saveState() retorna false e o
   // trabalho se perde SEM AVISO NENHUM. Melhor o usuario saber na hora do que
