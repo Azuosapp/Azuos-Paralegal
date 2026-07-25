@@ -176,13 +176,15 @@
               ${doMes.map(function(r){
                 var acc = accMap[r.chave] || {valor:0, qtd:0};
                 var pago = window._gestaoPago(r.chave, mesSel);
-                return `<tr class="hover:bg-slate-50">
-                  <td class="px-4 py-3"><div class="font-semibold text-slate-700">${_esc(r.nome||'—')}</div><div class="text-[11px] text-slate-400">${_esc(r.email||'')}</div></td>
+                var ck = _esc(r.chave).replace(/'/g,"\\'");
+                var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_esc(mesSel)+"','"+_esc(r.nome||'').replace(/'/g,"\\'")+"')" : "";
+                return `<tr class="hover:bg-blue-50 cursor-pointer" onclick="${vd}" title="Clique para ver os alvarás deste colaborador">
+                  <td class="px-4 py-3"><div class="font-semibold text-blue-700 flex items-center gap-1.5">${_esc(r.nome||'—')} <span class="text-[10px] text-slate-400 font-normal">🔍 detalhar</span></div><div class="text-[11px] text-slate-400">${_esc(r.email||'')}</div></td>
                   <td class="text-center px-3 py-3 text-slate-600">${r.qtd}</td>
                   <td class="text-right px-3 py-3 font-bold text-slate-800">${_fmt(r.valor)}</td>
                   <td class="text-right px-3 py-3 text-slate-500">${_fmt(acc.valor)} <span class="text-[10px] text-slate-400">(${acc.qtd})</span></td>
                   <td class="text-center px-4 py-3">
-                    <button onclick="window._gestaoMarcarPago('${_esc(r.chave).replace(/'/g,"\\'")}','${_esc(mesSel)}',${pago?'false':'true'})" class="px-3 py-1.5 rounded-lg text-xs font-bold ${pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100'}">${pago?'✓ Pago':'A pagar'}</button>
+                    <button onclick="event.stopPropagation();window._gestaoMarcarPago('${ck}','${_esc(mesSel)}',${pago?'false':'true'})" class="px-3 py-1.5 rounded-lg text-xs font-bold ${pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100'}">${pago?'✓ Pago':'A pagar'}</button>
                   </td>
                 </tr>`;
               }).join('')}
@@ -195,6 +197,13 @@
       `}
     </div>`;
   }
+
+  // ver os alvarás que compõem o valor de um colaborador (reusa o modal da Premiação)
+  window._gestaoVerDetalhe = function(chave, mes, nome){
+    if (typeof window._gamAbrirDetalhe === 'function') { window._gamAbrirDetalhe(chave, mes, nome); return; }
+    if (typeof _gamAbrirDetalhe === 'function') { _gamAbrirDetalhe(chave, mes, nome); return; }
+    alert('Detalhe indisponível.');
+  };
 
   window._gestaoExportCSV = function(){
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
