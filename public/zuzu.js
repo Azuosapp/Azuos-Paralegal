@@ -111,33 +111,75 @@
   };
 
   // ==========================================================================
+  //  ZUZU HUMOR — lê o estado real da carteira e devolve {pose,anim,msg} pra
+  //  saudação do Resumo. O Zuzu reage: alerta / atento / relax / trabalhador.
+  // ==========================================================================
+  window.zuzuHumor = function(cfg){
+    cfg = cfg || {};
+    var vencidos = +cfg.vencidos || 0;      // já vencidos (não concluídos)
+    var venceHoje = +cfg.venceHoje || 0;
+    var vence7 = +cfg.vence7 || 0;
+    var pendAudit = +cfg.pendAudit || 0;
+    var nome = cfg.nome ? (', ' + cfg.nome) : '';
+    var hora = (typeof cfg.hora === 'number') ? cfg.hora : 12;
+    var saud = hora < 12 ? 'Bom dia' : (hora < 18 ? 'Boa tarde' : 'Boa noite');
+    if (vencidos >= 5)
+      return { pose:'alerta', anim:'pulse', msg: saud+nome+'! Acumulou <b>'+vencidos+' alvará(s) vencido(s)</b>. Bora desafogar pelos mais antigos?' };
+    if (venceHoje > 0)
+      return { pose:'relogio', anim:'pulse', msg: saud+nome+'! <b>'+venceHoje+'</b> vence(m) <b>hoje</b> — melhor não deixar pra depois.' };
+    if (vence7 > 0)
+      return { pose:'relogio', anim:'float', msg: saud+nome+'! Tem <b>'+vence7+' pra essa semana</b>. Já separei aqui embaixo — dá uma olhada quando puder.' };
+    if (vencidos > 0)
+      return { pose:'apontando', anim:'float', msg: saud+nome+'! Tem <b>'+vencidos+' vencido(s)</b> esperando. Quando puder, uma olhada resolve.' };
+    if (pendAudit > 0)
+      return { pose:'lupa', anim:'float', msg: saud+nome+'! Farejei <b>'+pendAudit+' pendência(s)</b> nas auditorias. Bora limpar?' };
+    return { pose:'dormindo', anim:'breathe', msg: saud+nome+'! Dia tranquilo — nada te cobrando agora. Eu fico de olho, pode respirar. ☕' };
+  };
+  // renderiza a barra de saudação (card) pra plugar no topo do Resumo
+  window.zuzuSaudacao = function(cfg){
+    if (typeof window.zuzu !== 'function') return '';
+    var h = window.zuzuHumor(cfg);
+    return '<div class="flex items-center gap-4 bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-5">'
+      + '<div class="shrink-0">' + window.zuzu({pose:h.pose, anim:h.anim, size:88, alt:'Zuzu'}) + '</div>'
+      + '<p class="text-sm text-slate-600 leading-relaxed m-0">' + h.msg + '</p>'
+      + '</div>';
+  };
+
+  // ==========================================================================
   //  ZUZU DICAS — rodapé discreto e dispensável, presente em todas as telas.
   //  Mistura dicas de USO do sistema, BOAS PRÁTICAS de gestão e CONTEXTUAIS
   //  (por página). Não repete a mesma dica na mesma sessão; pode ser fechado.
   // ==========================================================================
-  // dicas gerais (uso + boas práticas)
+  // Banco de dicas — voz do Zuzu: colega veterano de plantão, informal-profissional.
+  // Cada dica sempre aponta um próximo passo. (uso do sistema + boas práticas + atalhos)
   var _DICAS_GERAIS = [
-    '💡 No Centro de Inteligência, use "Aplicar em todos" pra agendar a próxima atualização de vários alvarás de uma vez.',
-    '💡 Boa prática: agende a próxima atualização pelo menos 10 dias antes do vencimento — dá folga pra resolver.',
-    '💡 O filtro "Só os meus" mostra apenas os alvarás da sua carteira em qualquer auditoria.',
-    '💡 Clique no nome de uma empresa na auditoria pra abrir e corrigir direto.',
-    '💡 A auditoria "Vencidos há +30 dias" mostra o atraso crônico — comece por ela pra desafogar.',
-    '💡 Exporte qualquer auditoria em CSV pelo botão no topo da lista.',
-    '💡 No Dashboard, clique numa fatia do gráfico pra ver as empresas por trás do número.',
-    '💡 Agrupe a auditoria por Responsável pra ver rapidinho a carga de cada um.',
-    '💡 Recolha os grupos das auditorias e expanda só a empresa que você vai tratar — a lista fica mais limpa.',
-    '💡 O Placar por Responsável mostra a saúde da carteira de cada pessoa da equipe.'
+    '💡 No Centro de Inteligência, cada card é uma auditoria diferente. O número é quantas pendências te esperam ali — comece pelo maior que o impacto é maior.',
+    '💡 Regra de ouro: agende a próxima atualização com pelo menos 10 dias de folga antes do vencimento. Prazo apertado é onde a gente escorrega.',
+    '💡 Clicou no nome da empresa dentro de uma auditoria? Ela abre já no ponto certo pra corrigir. Nada de caçar na lista.',
+    '💡 Tem "Aplicar em todos" nas auditorias — agenda a próxima atualização de vários alvarás de uma vez. Poupa uns bons cliques.',
+    '💡 Alvará vencido há mais de 30 dias é atraso crônico. Ataca esses primeiro — é o que mais pesa na saúde da carteira.',
+    '💡 Toda auditoria tem export CSV lá no topo. Bom pra levar pro Excel ou fechar o mês.',
+    '💡 Perdido numa lista grande? Recolhe todos os grupos e abre só a empresa que você vai tratar agora. A tela respira.',
+    '💡 Alvará sem data de vencimento é ponto cego — você não sabe quando ele te cobra. Preenche a data que o sistema te avisa sozinho.',
+    '💡 Antes de dar um alvará como concluído, confere se o status bate com a realidade. Status certo hoje é relatório certo no fim do mês.',
+    '💡 Carteira saudável não é a que tem zero alvará — é a que não tem surpresa. Zero vencido esquecido, zero sem próxima atualização.',
+    '💡 Busca por nome, CNPJ ou cidade acha a empresa na hora. Não rola a lista inteira — digita e pronto.',
+    '💡 Agrupe a auditoria por Responsável e você vê num relance a carga de cada um da equipe. Ótimo pra distribuir plantão.',
+    '💡 Empresa sem responsável definido é alvará que ninguém acompanha. Vale uma passada de olho de vez em quando.',
+    '💡 Bateu dúvida num alvará estranho? Registra na observação. O próximo que pegar (talvez você semana que vem) agradece.',
+    '💡 O Placar por Responsável mostra a saúde da carteira de cada um — dá pra ver quem tá voando e quem precisa de reforço.'
   ];
-  // dicas contextuais por página (state.page)
+  // dicas contextuais por página (state.page) — a 1ª dica da tela é a dela
   var _DICAS_CTX = {
-    empresas: ['💡 Use a busca por nome, CNPJ ou cidade pra achar uma empresa na hora.',
-               '💡 Alterne entre visão Tabela e Cards no canto superior direito da lista.'],
-    inteligencia: ['💡 Cada card do hub é uma auditoria diferente — o número mostra quantas pendências tem.',
-                   '💡 Comece pelas auditorias com mais pendências pra ter mais impacto.'],
-    dashboard: ['💡 Os números em cima das barras mostram o total de cada tipo de alvará.'],
-    premiacao: ['💡 A Premiação conta os alvarás concluídos no mês — mantenha o status atualizado pra pontuar.'],
-    resumo: ['💡 O Resumo do Dia já separa o que vence hoje, em 7 e em 30 dias pra você priorizar.'],
-    novas: ['💡 Dê ciência nas novas empresas pra elas entrarem no seu fluxo de acompanhamento.']
+    empresas: ['💡 Alterne entre Cards e Tabela no canto superior direito da lista — vai do gosto do dia.',
+               '💡 Busca por nome, CNPJ ou cidade acha a empresa na hora. Digita e pronto.'],
+    inteligencia: ['💡 Cada card do hub é uma auditoria diferente. O número mostra quantas pendências te esperam.',
+                   '💡 Comece pelas auditorias com mais pendências — é onde você tem mais impacto.'],
+    dashboard: ['💡 Clica numa fatia do gráfico pra ver quais empresas estão por trás daquele número.'],
+    premiacao: ['💡 A Premiação conta os alvarás concluídos no mês. Status em dia = pontos garantidos, sem esforço extra.'],
+    resumo: ['💡 O Resumo já separa o que vence hoje, em 7 e em 30 dias. Começa de cima que você nunca é pego de surpresa.'],
+    gestao: ['💡 No Financeiro, clique no nome de um colaborador pra ver os alvarás que compõem o valor dele.'],
+    novas: ['💡 Empresa nova chegou? Dá a ciência pra ela entrar no seu fluxo. Assim nada nasce órfão.']
   };
 
   function _dicaJaVistas(){

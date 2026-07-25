@@ -1,0 +1,76 @@
+/* ==========================================================================
+   AZUOS UI — refino visual INCREMENTAL do Paralegal.
+   NÃO muda a característica (sidebar azul, cards brancos, layout atual).
+   Só POLE o acabamento: sombras em camadas mais suaves, radius consistente,
+   focus na cor da marca, hover mais vivo. Aplicado por cima das classes que
+   já existem (bg-white, rounded-xl/2xl, shadow-sm), sem trocar markup.
+   ========================================================================== */
+
+:root{
+  --azuos-brand: #2B3A8C;
+  --azuos-brand-600: #2B3A8C;
+  --azuos-brand-glow: rgba(43,58,140,.18);
+  /* sombras em 3 camadas — mais suaves e "premium" que shadow-sm chapada */
+  --az-e1: 0 1px 2px rgba(20,26,46,.05), 0 1px 3px rgba(20,26,46,.04);
+  --az-e2: 0 2px 6px rgba(20,26,46,.06), 0 10px 24px -10px rgba(20,26,46,.14);
+  --az-e3: 0 4px 10px rgba(20,26,46,.07), 0 22px 46px -16px rgba(20,26,46,.22);
+}
+
+/* --- Focus ring na cor da marca (antes era azul genérico #3b82f6) --- */
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px var(--azuos-brand-glow) !important;
+}
+
+/* --- Cards (bg-white + rounded-xl/2xl): borda sutil + sombra em camadas + hover que sobe --- */
+.bg-white.rounded-xl.shadow-sm,
+.bg-white.rounded-2xl.shadow-sm{
+  border: 1px solid #EAEDF4;
+  box-shadow: var(--az-e1);
+  transition: box-shadow .22s cubic-bezier(.4,0,.2,1), transform .18s cubic-bezier(.4,0,.2,1), border-color .2s;
+}
+.bg-white.rounded-xl.shadow-sm:hover,
+.bg-white.rounded-2xl.shadow-sm:hover{
+  box-shadow: var(--az-e2);
+  border-color: #DDE2EE;
+}
+
+/* --- Botões primários (bg-blue-600) ganham micro-sombra colorida e lift --- */
+button.bg-blue-600, a.bg-blue-600, .bg-blue-600.rounded-lg, .bg-blue-600.rounded-xl{
+  box-shadow: 0 1px 2px rgba(20,26,46,.10), 0 6px 16px -8px rgba(43,58,140,.45);
+  transition: transform .14s ease, box-shadow .2s ease, filter .2s ease;
+}
+button.bg-blue-600:hover, a.bg-blue-600:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(20,26,46,.12), 0 10px 22px -8px rgba(43,58,140,.55);
+}
+button.bg-blue-600:active, a.bg-blue-600:active{ transform: translateY(0); }
+
+/* --- Números em colunas: tabular (cara de software financeiro sério) --- */
+td, .tnum, [class*="text-2xl"], [class*="text-3xl"]{ font-variant-numeric: tabular-nums; }
+
+/* --- Cabeçalho de tabela: um respiro a mais + tracking --- */
+thead th{ letter-spacing: .045em; }
+
+/* --- Título de tela: um pouco mais de presença tipográfica --- */
+h1.text-2xl, h1.text-3xl{ letter-spacing: -.025em; }
+
+/* --- Sidebar: item ativo ganha o toque do amarelo da marca (barrinha discreta) --- */
+aside.bg-gradient-azuos .nav-btn.bg-blue-600{
+  position: relative;
+}
+aside.bg-gradient-azuos .nav-btn.bg-blue-600::before{
+  content:''; position:absolute; left:-8px; top:50%; transform:translateY(-50%);
+  width:3px; height:18px; border-radius:0 3px 3px 0;
+  background:#F5C518; box-shadow:0 0 9px rgba(245,197,24,.5);
+}
+
+/* --- Scrollbar um tico mais elegante (mantém o comportamento) --- */
+::-webkit-scrollbar-thumb{ background:#d5dbe8; }
+::-webkit-scrollbar-thumb:hover{ background:#bcc5d8; }
+
+/* Respeita quem pediu menos movimento */
+@media (prefers-reduced-motion: reduce){
+  .bg-white.rounded-xl.shadow-sm, .bg-white.rounded-2xl.shadow-sm,
+  button.bg-blue-600, a.bg-blue-600{ transition: none; }
+}
