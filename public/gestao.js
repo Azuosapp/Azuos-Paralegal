@@ -486,9 +486,10 @@
       var base = window._gestaoAgrega(null);
       var chaves = base.map(function(x){ return {chave:x.chave, nome:(x.nome||'').split(' ')[0]||x.nome}; });
       var paletaMes = ['#2B3A8C','#F5C518','#10b981','#8B5CF6','#f59e0b','#0891b2'];
+      var mLbl = function(m){ return (typeof _gamMesLabel==='function') ? _gamMesLabel(m).split(' ')[0] : m; }; // "Junho"
       var datasets = mesesCmp.map(function(m, mi){
         var rr = window._gestaoAgrega(m); var byKey={}; rr.forEach(function(x){ byKey[x.chave]=x.valor; });
-        return { label:m, data: chaves.map(function(c){ return byKey[c.chave]||0; }),
+        return { label:mLbl(m), data: chaves.map(function(c){ return byKey[c.chave]||0; }),
                  backgroundColor: paletaMes[mi%paletaMes.length], borderRadius:5 };
       });
       return { multi:true, type:'bar', money:true,
@@ -568,11 +569,30 @@
     }
     // ---- modo MULTI-MÊS (barras agrupadas: colaborador × mês) ----
     if (d.multi) {
+      // valores acima de CADA barra de CADA dataset (pula zeros pra não poluir)
+      var _valLabelsMulti = {
+        id:'gestaoValLabelsMulti',
+        afterDatasetsDraw: function(chart){
+          var cx = chart.ctx;
+          cx.save(); cx.font='700 10px -apple-system,"Segoe UI",sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+          chart.data.datasets.forEach(function(ds, di){
+            var meta = chart.getDatasetMeta(di); if (meta.hidden) return;
+            cx.fillStyle = ds.backgroundColor || '#1e293b';
+            meta.data.forEach(function(el,i){
+              var v = ds.data[i]; if (v==null || v===0) return; // não rotula barra zerada
+              cx.fillText('R$ '+Number(v).toFixed(0), el.x, el.y - 4);
+            });
+          });
+          cx.restore();
+        }
+      };
       window._gestaoChart = new Chart(ctx, {
         type: 'bar',
         data: { labels: d.labels, datasets: d.datasets },
+        plugins: [_valLabelsMulti],
         options: {
           responsive:true, maintainAspectRatio:false,
+          layout:{ padding:{ top: 18 } }, // espaço pros valores acima das barras
           plugins:{
             legend:{ display:true, position:'top', labels:{font:{size:11}, boxWidth:12, usePointStyle:true} },
             tooltip:{ callbacks:{ label:function(c){ return c.dataset.label+': '+fmtBRL(c.parsed.y); } } }
