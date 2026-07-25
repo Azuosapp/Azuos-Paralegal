@@ -164,6 +164,7 @@ const STORAGE_KEY = 'azuos_paralegal_v4';
 
 // ============ State ============
 let state = loadState();
+try { window._sidebarRecolhida = localStorage.getItem('azuos_sidebar_recolhida')==='1'; } catch(e){ window._sidebarRecolhida = false; }
 try { _prepararAnexosLazy(); } catch(e){}
 function _prepararAnexosLazy(){
   // v6.1.8 — enxuga base64 pesado do estado ANTES de render/persistir (nunca trava); preserva no IndexedDB (async).
@@ -855,7 +856,6 @@ function renderLayout(content){
     {key:'dashboard', label:'Dashboard', icon:'📊'},
     {key:'inteligencia', label:'Inteligência', icon:'🧠', badge: badgeIntel},
     {key:'premiacao', label:'Premiação', icon:'🏆'},
-    ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
     {key:'historico', label:'Histórico', icon:'🕒'},
     {key:'manutencao', label:'Manutenção', icon:'🛠️', badge: badgeManut},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
@@ -863,22 +863,27 @@ function renderLayout(content){
   ];
   const initialsUser = (state.sessao.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
   const _fotoSes = (()=>{try{const e=state.sessao&&state.sessao.email;if(!e||!state.usuarios)return null;const us=Object.values(state.usuarios);const u=us.find(x=>x&&(x.email||'').toLowerCase()===(e||'').toLowerCase());return (u&&u.foto)||null;}catch(_){return null}})();
+  const _recolhida = !!window._sidebarRecolhida;
   return `
     <div class="min-h-screen flex">
-      <aside class="w-64 bg-gradient-azuos text-slate-200 flex flex-col shadow-2xl">
-        <div class="p-6 border-b border-white/10">
-          <div class="flex items-center gap-3">
-            <img src="/brand/logo/azuos-logo-oficial-white.png" alt="Grupo Azuos" style="width:120px;max-width:100%;height:auto;display:block" />
-          </div>
+      <aside class="${_recolhida?'w-16':'w-64'} bg-gradient-azuos text-slate-200 flex flex-col shadow-2xl sticky top-0 h-screen shrink-0 transition-[width] duration-200" style="align-self:flex-start">
+        <div class="${_recolhida?'p-3':'p-6'} border-b border-white/10 flex items-center ${_recolhida?'justify-center':'justify-between'} gap-2">
+          ${_recolhida ? '' : `<img src="/brand/logo/azuos-logo-oficial-white.png" alt="Grupo Azuos" style="width:110px;max-width:100%;height:auto;display:block" />`}
+          <button onclick="window._sidebarRecolhida=!window._sidebarRecolhida;try{localStorage.setItem('azuos_sidebar_recolhida',window._sidebarRecolhida?'1':'0')}catch(e){};render()" class="shrink-0 w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-sm" title="${_recolhida?'Expandir menu':'Recolher menu'}">${_recolhida?'»':'«'}</button>
         </div>
-        <nav class="flex-1 py-4 px-2 space-y-1">
+        <nav class="flex-1 py-4 ${_recolhida?'px-1.5':'px-2'} space-y-1 overflow-y-auto">
           ${menu.map(m => `
-            <button data-page="${m.key}" class="nav-btn w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm font-medium rounded-xl ${state.page===m.key ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-300 hover:bg-white/5 hover:text-white'}">
-              <span class="text-base">${m.icon}</span><span class="flex-1">${m.label}</span>${m.badge||''}
+            <button data-page="${m.key}" title="${m.label}" class="nav-btn w-full flex items-center gap-3 ${_recolhida?'justify-center px-2':'px-4'} py-2.5 text-left text-sm font-medium rounded-xl ${state.page===m.key ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/40' : 'text-slate-300 hover:bg-white/5 hover:text-white'}">
+              <span class="text-base">${m.icon}</span>${_recolhida?'':`<span class="flex-1">${m.label}</span>${m.badge||''}`}
             </button>
           `).join('')}
         </nav>
-        <div class="p-4 border-t border-white/10">
+        <div class="${_recolhida?'p-2':'p-4'} border-t border-white/10">
+          ${_recolhida ? `
+            <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm" title="${esc(state.sessao.nome)}">${_fotoSes?'<img src="'+_fotoSes+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
+            ${ehAdmin ? `<button onclick="setState({page:'gestao', empresaAtiva:null})" class="w-full mb-1.5 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 text-slate-900 flex items-center justify-center" title="Painel de Gestão">🛡️</button>` : ''}
+            <button id="logout-btn" class="w-full py-2 rounded-lg bg-white/10 hover:bg-red-500 text-white flex items-center justify-center" title="Sair">⏻</button>
+          ` : `
           <div class="flex items-center gap-3 mb-3 px-2">
             <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0">${_fotoSes?'<img src="'+_fotoSes+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
             <div class="flex-1 min-w-0">
@@ -888,9 +893,10 @@ function renderLayout(content){
           </div>
           ${ehAdmin ? `<button onclick="setState({page:'gestao', empresaAtiva:null})" class="w-full mb-2 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 text-slate-900 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 hover:from-amber-300 hover:to-amber-400"><span>🛡️</span> Painel de Gestão</button>` : ''}
           <button id="logout-btn" class="w-full py-2 rounded-lg bg-white/10 hover:bg-red-500 hover:text-white text-sm font-medium flex items-center justify-center gap-2"><span>⏻</span> Sair</button>
+          `}
         </div>
       </aside>
-      <main class="flex-1 overflow-x-hidden pb-12 bg-slate-50">${content}</main>
+      <main class="flex-1 min-w-0 overflow-x-hidden pb-12 bg-slate-50">${content}</main>
     </div>
     <div class="fixed bottom-3 left-3 z-40 px-2 py-1 bg-emerald-600 text-white rounded text-[10px] opacity-90 pointer-events-none" id="ver-tag">v7.12 - baseline rapido</div>
     <div class="fixed bottom-3 right-3 z-40 flex gap-2 items-center">
@@ -8492,7 +8498,31 @@ try{
   function abrirWhats(txt){ try{ window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank'); }catch(e){ avisa('Nao consegui abrir o WhatsApp','amber'); } }
   function avisa(msg,cor){ try{ if(typeof toast==='function') toast(msg,cor||'emerald'); }catch(e){} }
   function mkBtn(id,txt,title,bg){ var b=document.createElement('button'); b.id=id; b.textContent=txt; b.title=title; b.style.cssText='display:block;width:100%;margin:0 0 6px 0;background:'+bg+';color:#fff;border:none;border-radius:12px;padding:9px 13px;font:600 12px Inter,system-ui,sans-serif;box-shadow:0 6px 18px -6px rgba(0,0,0,.4);cursor:pointer;text-align:left;'; return b; }
-  function addBox(){ if(document.getElementById('ux609-box')) return; var box=document.createElement('div'); box.id='ux609-box'; box.style.cssText='position:fixed;bottom:18px;left:18px;z-index:99998;width:186px;'; var bCopy=mkBtn('ux609-copy','📋 Copiar vencimentos','Copiar vencidos + proximos '+JANELA+' dias','#25D366'); var bWa=mkBtn('ux609-wa','💬 Abrir no WhatsApp','Abrir o WhatsApp com a lista pronta','#128C7E'); var bCsv=mkBtn('ux609-csv','⬇️ Baixar CSV','Baixar planilha dos vencimentos (Excel)','#2563eb'); bCsv.style.marginBottom='0'; bCopy.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } copiar(texto(l)).then(function(){ avisa('Copiado! Cole no WhatsApp ('+l.length+' itens)','emerald'); }).catch(function(){ avisa('Nao consegui copiar','amber'); }); }; bWa.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } abrirWhats(texto(l)); }; bCsv.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } baixarCSV(l); avisa('CSV gerado ('+l.length+' itens)','emerald'); }; box.appendChild(bCopy); box.appendChild(bWa); box.appendChild(bCsv); document.body.appendChild(box); }
+  // v7.13 — antes eram 3 botões fixos empilhados no canto (sobrepunham a tag de
+  // versão e o "Tema escuro"). Agora é um FAB único que EXPANDE os 3 ao clicar.
+  function addBox(){
+    if(document.getElementById('ux609-box')) return;
+    var box=document.createElement('div'); box.id='ux609-box';
+    box.style.cssText='position:fixed;bottom:16px;left:16px;z-index:99998;width:200px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;';
+    // painel dos 3 botões (começa recolhido)
+    var painel=document.createElement('div'); painel.id='ux609-painel'; painel.style.cssText='width:100%;display:none;flex-direction:column;gap:6px;margin-bottom:2px;';
+    var bCopy=mkBtn('ux609-copy','📋 Copiar vencimentos','Copiar vencidos + proximos '+JANELA+' dias','#25D366');
+    var bWa=mkBtn('ux609-wa','💬 Abrir no WhatsApp','Abrir o WhatsApp com a lista pronta','#128C7E');
+    var bCsv=mkBtn('ux609-csv','⬇️ Baixar CSV','Baixar planilha dos vencimentos (Excel)','#2563eb');
+    [bCopy,bWa,bCsv].forEach(function(b){ b.style.marginBottom='0'; });
+    bCopy.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } copiar(texto(l)).then(function(){ avisa('Copiado! Cole no WhatsApp ('+l.length+' itens)','emerald'); }).catch(function(){ avisa('Nao consegui copiar','amber'); }); };
+    bWa.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } abrirWhats(texto(l)); };
+    bCsv.onclick=function(){ var l=criticos(); if(!l.length){ avisa('Nenhum alvara vencendo em '+JANELA+' dias 🎉','emerald'); return; } baixarCSV(l); avisa('CSV gerado ('+l.length+' itens)','emerald'); };
+    painel.appendChild(bCopy); painel.appendChild(bWa); painel.appendChild(bCsv);
+    // FAB (o gatilho): compacto, mostra a contagem de vencimentos
+    var fab=document.createElement('button'); fab.id='ux609-fab';
+    fab.style.cssText='background:#0f2460;color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:999px;padding:8px 14px;font:700 12px Inter,system-ui,sans-serif;box-shadow:0 8px 22px -6px rgba(0,0,0,.55);cursor:pointer;display:flex;align-items:center;gap:7px;';
+    function atualizaFab(){ var n=0; try{ n=criticos().length; }catch(e){} var aberto=painel.style.display==='flex'; fab.innerHTML='📤 Vencimentos'+(n?' <span style="background:#e11d48;border-radius:999px;padding:1px 7px;font-size:11px">'+n+'</span>':'')+' <span style="opacity:.6">'+(aberto?'▾':'▸')+'</span>'; }
+    fab.onclick=function(){ var aberto=painel.style.display==='flex'; painel.style.display=aberto?'none':'flex'; atualizaFab(); };
+    box.appendChild(painel); box.appendChild(fab);
+    document.body.appendChild(box); atualizaFab();
+    box._atualizaFab=atualizaFab;
+  }
   function notificar(){ try{ if(!('Notification' in window)) return; if(sessionStorage.getItem('ux609_notif')) return; var urg=criticos().filter(function(i){return i.dias<=7;}); if(!urg.length) return; function go(){ try{ new Notification('AZUOS Paralegal - atencao aos prazos',{body:urg.length+' alvara(s) vencem em ate 7 dias. Abra os Alertas.',tag:'ux609'}); sessionStorage.setItem('ux609_notif','1'); }catch(e){} } if(Notification.permission==='granted') go(); else if(Notification.permission!=='denied') Notification.requestPermission().then(function(p){ if(p==='granted') go(); }); }catch(e){} }
   var jaNotif=false;
   function tick(){ var logged=false; try{ logged=!!(state&&state.sessao&&state.sessao.nome); }catch(e){} var box=document.getElementById('ux609-box'); if(logged){ if(!box) addBox(); if(!jaNotif){ jaNotif=true; setTimeout(notificar,3000); } } else if(box){ box.remove(); } }
