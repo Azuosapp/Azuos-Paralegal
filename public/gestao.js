@@ -56,6 +56,32 @@
     return arr;
   };
 
+  // agrega por INTERVALO DE DATAS (de/ate em 'YYYY-MM-DD', inclusivo). Trabalhar
+  // com datas em vez de mês fechado. Se de/ate vazios, considera tudo.
+  window._gestaoAgregaPeriodo = function(de, ate){
+    var por = {}; var eds = (typeof state!=='undefined' && state.edicoes_alvaras) || {};
+    var idx = _idxValores();
+    var dDe = de ? de : null;              // compara string ISO 'YYYY-MM-DD' lexicograficamente
+    var dAte = ate ? (ate + 'T23:59:59') : null;
+    Object.keys(eds).forEach(function(aid){
+      var e = eds[aid];
+      if(!e || !e._editado_por || !e._editado_em) return;
+      if(typeof _gamConta==='function' && !_gamConta(e.status)) return;
+      var em = e._editado_em || '';
+      if(dDe && em < dDe) return;
+      if(dAte && em > dAte) return;
+      var u = (typeof _gamUser==='function') ? _gamUser(e._editado_por) : null; if(!u) return;
+      if(typeof _gamEhGestor==='function' && _gamEhGestor(u.cargo)) return;
+      var k = (u.email||u.nome||'').toLowerCase(); if(!k) return;
+      if(!por[k]) por[k] = {nome:u.nome, email:u.email, cargo:u.cargo, foto:u.foto||'', qtd:0, valor:0, chave:k};
+      por[k].qtd++;
+      por[k].valor += window._gamValorDoTipo(e.tipo, idx);
+    });
+    var arr = Object.keys(por).map(function(k){ return por[k]; });
+    arr.sort(function(a,b){ return (b.valor-a.valor) || (b.qtd-a.qtd) || (a.nome||'').localeCompare(b.nome||''); });
+    return arr;
+  };
+
   // pagamentos marcados (a pagar / pago) por chave|mes → salvo em state.gamificacao.pagamentos
   function _pagKey(chave, mes){ return chave + '|' + mes; }
   window._gestaoPago = function(chave, mes){
@@ -74,6 +100,17 @@
   // estado local da seção
   window._gestaoView = window._gestaoView || 'hub';   // 'hub' | 'financeiro'
   window._gestaoMes = window._gestaoMes || null;       // null = mês atual
+  window._gestaoPeriodoModo = window._gestaoPeriodoModo || 'mes'; // 'mes' | 'datas'
+  window._gestaoDe = window._gestaoDe || '';           // 'YYYY-MM-DD'
+  window._gestaoAte = window._gestaoAte || '';
+  // helper: retorna as linhas do período ativo (mês OU intervalo de datas)
+  window._gestaoLinhasAtivas = function(){
+    if (window._gestaoPeriodoModo === 'datas' && (window._gestaoDe || window._gestaoAte)) {
+      return window._gestaoAgregaPeriodo(window._gestaoDe, window._gestaoAte);
+    }
+    var m = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
+    return window._gestaoAgrega(m);
+  };
 
   // ============================ HUB ============================
   var _SECOES = [
@@ -138,7 +175,8 @@
     if(!window.ehAdminGestao()) return _renderHub();
     var meses = (typeof _gamMeses==='function') ? _gamMeses() : [];
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
-    var doMes = window._gestaoAgrega(mesSel);
+    var porDatas = (window._gestaoPeriodoModo==='datas' && (window._gestaoDe||window._gestaoAte));
+    var doMes = window._gestaoLinhasAtivas(); // respeita mês OU intervalo de datas
     var acumulado = window._gestaoAgrega(null); // todos os meses
     var accMap = {}; acumulado.forEach(function(r){ accMap[r.chave]=r; });
     var totalMes = doMes.reduce(function(s,r){ return s+r.valor; }, 0);
@@ -153,10 +191,21 @@
           <h1 class="text-2xl font-extrabold text-slate-800">💰 Financeiro / Produtividade</h1>
           <p class="text-sm text-slate-500 mt-0.5">Quanto cada colaborador gerou — pago pelo valor real de cada tipo de alvará.</p>
         </div>
-        <div class="flex items-center gap-2">
-          <select onchange="window._gestaoMes=this.value;render()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold">
-            ${meses.map(function(m){ return '<option value="'+_esc(m)+'"'+(m===mesSel?' selected':'')+'>'+_esc(m)+'</option>'; }).join('')}
-          </select>
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- alternar Mês ↔ Datas -->
+          <div class="flex rounded-lg overflow-hidden border border-slate-200 text-xs font-semibold">
+            <button onclick="window._gestaoPeriodoModo='mes';render()" class="px-3 py-2 ${window._gestaoPeriodoModo!=='datas'?'bg-blue-600 text-white':'bg-white text-slate-600 hover:bg-slate-50'}">Mês</button>
+            <button onclick="window._gestaoPeriodoModo='datas';render()" class="px-3 py-2 ${window._gestaoPeriodoModo==='datas'?'bg-blue-600 text-white':'bg-white text-slate-600 hover:bg-slate-50'}">Datas</button>
+          </div>
+          ${window._gestaoPeriodoModo==='datas' ? `
+            <input type="date" value="${_esc(window._gestaoDe||'')}" onchange="window._gestaoDe=this.value;render()" class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm" title="De">
+            <span class="text-slate-400 text-sm">→</span>
+            <input type="date" value="${_esc(window._gestaoAte||'')}" onchange="window._gestaoAte=this.value;render()" class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm" title="Até">
+          ` : `
+            <select onchange="window._gestaoMes=this.value;render()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold">
+              ${meses.map(function(m){ return '<option value="'+_esc(m)+'"'+(m===mesSel?' selected':'')+'>'+_esc(m)+'</option>'; }).join('')}
+            </select>
+          `}
           <button onclick="window._gestaoExportCSV()" class="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100">⬇️ Exportar CSV</button>
         </div>
       </div>
@@ -228,13 +277,16 @@
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
     var COR = '#2B3A8C', COR2 = '#F5C518', COR3 = '#10b981';
     if (view === 'valor_colab' || view === 'alv_colab') {
-      var r = window._gestaoAgrega(mesSel);
+      // respeita o período ativo (mês OU intervalo de datas)
+      var porDatas = (window._gestaoPeriodoModo==='datas' && (window._gestaoDe||window._gestaoAte));
+      var r = window._gestaoLinhasAtivas();
+      var rotulo = porDatas ? ((window._gestaoDe||'…')+' a '+(window._gestaoAte||'…')) : mesSel;
       return { type:'bar',
         labels: r.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
         data: r.map(function(x){ return view==='valor_colab' ? x.valor : x.qtd; }),
-        label: view==='valor_colab' ? 'Valor (R$) — '+mesSel : 'Alvarás — '+mesSel,
+        label: (view==='valor_colab' ? 'Valor (R$) — ' : 'Alvarás — ') + rotulo,
         cor: COR, money: view==='valor_colab',
-        meta: r.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes:mesSel}; }) };
+        meta: r.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes: porDatas?null:mesSel}; }) };
     }
     if (view === 'acumulado_colab') {
       var a = window._gestaoAgrega(null);
@@ -474,9 +526,11 @@
       var _t;
       b.oninput = function(){ clearTimeout(_t); var v=b.value; _t=setTimeout(function(){ window._gestaoUserBusca=v; render(); var el=document.getElementById('gestao-user-busca'); if(el){ el.focus(); el.selectionStart=el.selectionEnd=el.value.length; } }, 250); };
     }
-    // gráfico do Financeiro: sincroniza o select e desenha
-    var sel = document.getElementById('gestao-chart-view');
-    if (sel) { sel.value = window._gestaoChartView || 'valor_colab'; if (window._gestaoDesenhaChart) setTimeout(window._gestaoDesenhaChart, 30); }
+    // gráfico do Financeiro: desenha sempre que o canvas existir (as visões agora
+    // são botões, não um <select> — antes dependia do select e o gráfico sumia).
+    if (document.getElementById('gestao-chart') && window._gestaoDesenhaChart) {
+      setTimeout(window._gestaoDesenhaChart, 30);
+    }
   };
 
   // ---- URL própria (#painel) — hash routing simples p/ o SPA ----
