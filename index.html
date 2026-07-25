@@ -1134,7 +1134,60 @@ function _gamAbrirDetalhe(chave, mes, nome){
     ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Anexo</th><th class="text-right pr-2">Concluído</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table>'
     : '<div class="text-center text-slate-400 py-10">Nenhum alvará concluído neste mês.</div>';
   var resumo = lista.length ? ('<strong>'+validados+'</strong> de <strong>'+lista.length+'</strong> validados (só validados contam no ranking)') : '';
-  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><div><h3 class="text-lg font-bold text-slate-800">✅ Alvarás concluídos</h3><p class="text-xs text-slate-500">'+esc(nome)+' · '+_gamMesLabel(mes)+' · '+resumo+'</p></div><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button></div><div class="p-5 max-h-[60vh] overflow-auto">'+corpo+'</div>');
+  // guarda o contexto pra exportar/PDF
+  window._gamDetCtx = { lista: lista, nome: nome, mes: mes, mesLabel: _gamMesLabel(mes), validados: validados };
+  var acoesTopo = lista.length
+    ? '<button onclick="_gamDetExportCSV()" class="px-2.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-semibold hover:bg-emerald-100">⬇️ CSV</button>'
+      + '<button onclick="_gamDetPDF()" class="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-100">📄 PDF</button>'
+    : '';
+  showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center gap-3"><div class="min-w-0"><h3 class="text-lg font-bold text-slate-800">✅ Alvarás concluídos</h3><p class="text-xs text-slate-500 truncate">'+esc(nome)+' · '+_gamMesLabel(mes)+' · '+resumo+'</p></div><div class="flex items-center gap-2 shrink-0">'+acoesTopo+'<button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none ml-1">×</button></div></div><div class="p-5 max-h-[60vh] overflow-auto">'+corpo+'</div>');
+}
+
+// exporta o detalhe (alvarás concluídos da pessoa/mês) em CSV
+function _gamDetExportCSV(){
+  var ctx = window._gamDetCtx; if(!ctx || !ctx.lista) return;
+  var linhas = [['Empresa','Tipo','Anexo','Concluido em','Responsavel','Mes']];
+  ctx.lista.forEach(function(r){
+    var d=r.data?new Date(r.data):null; var ds=(d&&!isNaN(d))?d.toLocaleDateString('pt-BR'):'';
+    var anexo = r.validado?'validado':(r.temAnexo?'pendente':'sem anexo');
+    linhas.push([r.empresa||'', r.tipo||'', anexo, ds, ctx.nome||'', ctx.mesLabel||'']);
+  });
+  var csv = linhas.map(function(row){ return row.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(';'); }).join('\r\n');
+  var blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a'); a.href=url;
+  a.download = 'alvaras-concluidos-'+String(ctx.nome||'').split('@')[0]+'-'+(ctx.mes||'')+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+  if(typeof toast==='function') toast('CSV gerado ('+ctx.lista.length+' itens)','emerald');
+}
+
+// abre uma janela imprimível → o usuário salva como PDF (print nativo, sem lib)
+function _gamDetPDF(){
+  var ctx = window._gamDetCtx; if(!ctx || !ctx.lista) return;
+  var linhas = ctx.lista.map(function(r){
+    var d=r.data?new Date(r.data):null; var ds=(d&&!isNaN(d))?d.toLocaleDateString('pt-BR'):'—';
+    var st = r.validado?'✅ validado':(r.temAnexo?'⚠ pendente':'✗ sem anexo');
+    return '<tr><td>'+esc(r.empresa||'')+'</td><td>'+esc(r.tipo||'')+'</td><td>'+st+'</td><td style="text-align:right;white-space:nowrap">'+ds+'</td></tr>';
+  }).join('');
+  var hoje = new Date().toLocaleString('pt-BR');
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Alvarás concluídos — '+esc(ctx.nome)+'</title>'
+    + '<style>body{font-family:-apple-system,Arial,sans-serif;color:#1e293b;padding:28px;margin:0}'
+    + 'h1{font-size:18px;margin:0 0 2px}.sub{color:#64748b;font-size:12px;margin:0 0 16px}'
+    + 'table{width:100%;border-collapse:collapse;font-size:12px}'
+    + 'th{background:#1B3A8C;color:#fff;text-align:left;padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.04em}'
+    + 'td{padding:6px 9px;border-bottom:1px solid #e5e7eb}'
+    + 'tr:nth-child(even) td{background:#f8fafc}'
+    + '.ft{margin-top:16px;color:#94a3b8;font-size:10px;text-align:center}'
+    + '@media print{@page{margin:14mm}}</style></head><body>'
+    + '<h1>Alvarás concluídos — '+esc(ctx.nome)+'</h1>'
+    + '<p class="sub">'+esc(ctx.mesLabel)+' · '+ctx.validados+' de '+ctx.lista.length+' validados · Gerado em '+hoje+' · AZUOS Paralegal</p>'
+    + '<table><thead><tr><th>Empresa</th><th>Tipo</th><th>Anexo</th><th style="text-align:right">Concluído</th></tr></thead><tbody>'+linhas+'</tbody></table>'
+    + '<p class="ft">AZUOS Paralegal · paralegal.grupoazuos.com.br</p>'
+    + '<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script></body></html>';
+  var w = window.open('', '_blank');
+  if(!w){ if(typeof toast==='function') toast('Permita pop-ups pra gerar o PDF','amber'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 
 /* ===== v6.15.0 — Corrida da Produtividade em PISTA (circuito) — modo monitor/TV ===== */

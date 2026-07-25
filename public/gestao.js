@@ -195,18 +195,26 @@
       </div>
       <p class="text-[11px] text-slate-400 mt-3">O "Acumulado" soma todos os meses. Valores calculados pelo tipo de cada alvará (tabela em Valores). "Pago" é um controle manual do admin — sincronizado.</p>
 
-      <!-- Gráfico único com seletor de visualização -->
+      <!-- Gráfico único com botões de visualização SEMPRE VISÍVEIS (pills) -->
       <div class="bg-white rounded-xl shadow-sm p-4 mt-5">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <h3 class="text-base font-bold text-slate-800">📊 Visão gráfica</h3>
-          <select id="gestao-chart-view" onchange="window._gestaoChartView=this.value;window._gestaoDesenhaChart&&window._gestaoDesenhaChart()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-semibold">
-            <option value="valor_colab">💰 Valor por colaborador (mês)</option>
-            <option value="alv_colab">📄 Alvarás por colaborador (mês)</option>
-            <option value="valor_mes">📈 Valor por mês (evolução)</option>
-            <option value="alv_mes">📈 Alvarás por mês (evolução)</option>
-            <option value="acumulado_colab">🏆 Acumulado por colaborador (total)</option>
-          </select>
+        <h3 class="text-base font-bold text-slate-800 mb-3">📊 Visão gráfica</h3>
+        <div class="flex flex-wrap gap-2 mb-4">
+          ${[
+            {v:'valor_colab', t:'💰 Valor por colaborador'},
+            {v:'alv_colab',   t:'📄 Alvarás por colaborador'},
+            {v:'valor_mes',   t:'📈 Valor por mês'},
+            {v:'alv_mes',     t:'📈 Alvarás por mês'},
+            {v:'comparar_meses', t:'📅 Comparar meses'},
+            {v:'acumulado_colab', t:'🏆 Acumulado (total)'}
+          ].map(function(o){
+            var on = (window._gestaoChartView||'valor_colab') === o.v;
+            return '<button onclick="window._gestaoChartView=\''+o.v+'\';render()" class="px-3 py-1.5 rounded-lg text-sm font-semibold transition '+(on?'bg-blue-600 text-white shadow-sm':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+o.t+'</button>';
+          }).join('')}
         </div>
+        ${(window._gestaoChartView==='comparar_meses') ? `<div class="flex items-center gap-2 mb-3 text-xs text-slate-500">
+          <span class="font-semibold">Quantos meses:</span>
+          ${[3,6,12].map(function(n){ var on=(window._gestaoNMeses||3)===n; return '<button onclick="window._gestaoNMeses='+n+';render()" class="px-2.5 py-1 rounded-lg font-semibold '+(on?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+n+' meses</button>'; }).join('')}
+        </div>` : ''}
         <div style="position:relative;height:300px"><canvas id="gestao-chart"></canvas></div>
       </div>
       `}
@@ -235,6 +243,23 @@
         data: a.map(function(x){ return x.valor; }),
         label: 'Acumulado total (R$)', cor: COR2, money: true,
         meta: a.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes:null}; }) };
+    }
+    if (view === 'comparar_meses') {
+      // barras agrupadas: cada colaborador tem 1 barra por mês (compara meses lado a lado)
+      var todosMeses = ((typeof _gamMeses==='function') ? _gamMeses() : []).slice().sort();
+      var mesesCmp = todosMeses.slice(-(window._gestaoNMeses||3)); // últimos N meses (padrão 3)
+      // universo de colaboradores (acumulado) pra manter a mesma ordem/eixo
+      var base = window._gestaoAgrega(null);
+      var chaves = base.map(function(x){ return {chave:x.chave, nome:(x.nome||'').split(' ')[0]||x.nome}; });
+      var paletaMes = ['#2B3A8C','#F5C518','#10b981','#8B5CF6','#f59e0b','#0891b2'];
+      var datasets = mesesCmp.map(function(m, mi){
+        var rr = window._gestaoAgrega(m); var byKey={}; rr.forEach(function(x){ byKey[x.chave]=x.valor; });
+        return { label:m, data: chaves.map(function(c){ return byKey[c.chave]||0; }),
+                 backgroundColor: paletaMes[mi%paletaMes.length], borderRadius:5 };
+      });
+      return { multi:true, type:'bar', money:true,
+        labels: chaves.map(function(c){ return c.nome; }),
+        datasets: datasets, mesesCmp: mesesCmp };
     }
     // por mês (evolução): valor_mes / alv_mes
     var meses = (typeof _gamMeses==='function') ? _gamMeses().slice().sort() : [];
@@ -273,6 +298,24 @@
         cx.restore();
       }
     };
+    // ---- modo MULTI-MÊS (barras agrupadas: colaborador × mês) ----
+    if (d.multi) {
+      window._gestaoChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: d.labels, datasets: d.datasets },
+        options: {
+          responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{ display:true, position:'top', labels:{font:{size:11}, boxWidth:12, usePointStyle:true} },
+            tooltip:{ callbacks:{ label:function(c){ return c.dataset.label+': '+fmtBRL(c.parsed.y); } } }
+          },
+          scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){ return 'R$ '+v; }, font:{size:11} }, grid:{color:'#eef1f7'} },
+                   x:{ ticks:{font:{size:11}}, grid:{display:false} } }
+        }
+      });
+      return;
+    }
+    // ---- modo simples (1 dataset) ----
     window._gestaoChart = new Chart(ctx, {
       type: d.type,
       data: { labels: d.labels, datasets: [{
