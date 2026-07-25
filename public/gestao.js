@@ -100,6 +100,35 @@
   // estado local da seção
   window._gestaoView = window._gestaoView || 'hub';   // 'hub' | 'financeiro'
   window._gestaoMes = window._gestaoMes || null;       // null = mês atual
+  window._gestaoMesesSel = Array.isArray(window._gestaoMesesSel) ? window._gestaoMesesSel : []; // vazio = 1 mês; 2+ = consolidado
+  // clique num mês: alterna inclusão no período. 1 selecionado volta pro modo single.
+  window._gestaoToggleMes = function(m){
+    var sel = (window._gestaoMesesSel||[]).slice();
+    var mesUnico = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
+    if (!sel.length) sel = [mesUnico]; // começa do mês que estava ativo
+    var i = sel.indexOf(m);
+    if (i>=0) sel.splice(i,1); else sel.push(m);
+    if (sel.length <= 1) { // voltou a 1 (ou 0) → modo single
+      window._gestaoMesesSel = [];
+      window._gestaoMes = sel[0] || m;
+    } else {
+      window._gestaoMesesSel = sel;
+    }
+    render();
+  };
+  // agrega somando VÁRIOS meses (consolidado). Reusa _gestaoAgrega por mês e soma por pessoa.
+  window._gestaoAgregaMeses = function(mesesArr){
+    if (!mesesArr || !mesesArr.length) return [];
+    var por = {};
+    mesesArr.forEach(function(m){
+      window._gestaoAgrega(m).forEach(function(r){
+        if(!por[r.chave]) por[r.chave] = {nome:r.nome, email:r.email, cargo:r.cargo, foto:r.foto, qtd:0, valor:0, chave:r.chave};
+        por[r.chave].qtd += r.qtd; por[r.chave].valor += r.valor;
+      });
+    });
+    return Object.keys(por).map(function(k){ return por[k]; })
+      .sort(function(a,b){ return (b.valor-a.valor)||(b.qtd-a.qtd)||(a.nome||'').localeCompare(b.nome||''); });
+  };
   window._gestaoPeriodoModo = window._gestaoPeriodoModo || 'mes'; // 'mes' | 'datas'
   window._gestaoDe = window._gestaoDe || '';           // 'YYYY-MM-DD'
   window._gestaoAte = window._gestaoAte || '';
@@ -189,10 +218,15 @@
     if(!window.ehAdminGestao()) return _renderHub();
     var meses = (typeof _gamMeses==='function') ? _gamMeses() : [];
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
+    // MULTI-MÊS: se 2+ meses selecionados, consolida o período
+    var selN = (window._gestaoMesesSel||[]).slice().sort();
+    var multi = selN.length >= 2;
+    var mLbl = function(m){ return (typeof _gamMesLabel==='function') ? _gamMesLabel(m) : m; };
+    var periodoLabel = multi ? (mLbl(selN[0])+' … '+mLbl(selN[selN.length-1])+' ('+selN.length+' meses)') : mLbl(mesSel);
     var mesAnt = _mesAnterior(mesSel);
-    var nomeMesAnt = (typeof _gamMesLabel==='function') ? _gamMesLabel(mesAnt) : mesAnt;
-    var doMes = window._gestaoAgrega(mesSel);
-    var doAnt = window._gestaoAgrega(mesAnt);
+    var nomeMesAnt = mLbl(mesAnt);
+    var doMes = multi ? window._gestaoAgregaMeses(selN) : window._gestaoAgrega(mesSel);
+    var doAnt = multi ? [] : window._gestaoAgrega(mesAnt); // comparação só faz sentido em 1 mês
     var antMap = {}; doAnt.forEach(function(r){ antMap[r.chave]=r; });
     var acumulado = window._gestaoAgrega(null);
     var accMap = {}; acumulado.forEach(function(r){ accMap[r.chave]=r; });
@@ -202,7 +236,10 @@
     var qtdMes = doMes.reduce(function(s,r){ return s+r.qtd; }, 0);
     var totalAnt = doAnt.reduce(function(s,r){ return s+r.valor; }, 0);
     var qtdAnt = doAnt.reduce(function(s,r){ return s+r.qtd; }, 0);
-    var totalPago = doMes.filter(function(r){ return window._gestaoPago(r.chave,mesSel); }).reduce(function(s,r){ return s+r.valor; }, 0);
+    // pago: em multi-mês, soma o valor pago por (pessoa × cada mês do período)
+    var totalPago = multi
+      ? selN.reduce(function(s,m){ return s + window._gestaoAgrega(m).filter(function(r){ return window._gestaoPago(r.chave,m); }).reduce(function(ss,r){ return ss+r.valor; },0); }, 0)
+      : doMes.filter(function(r){ return window._gestaoPago(r.chave,mesSel); }).reduce(function(s,r){ return s+r.valor; }, 0);
     var totalAPagar = totalMes - totalPago;
     var pctPago = totalMes>0 ? Math.round(totalPago/totalMes*100) : 0;
     var ticket = qtdMes>0 ? totalMes/qtdMes : 0;
@@ -237,34 +274,36 @@
           <h1 class="text-2xl font-extrabold text-slate-800">💰 Financeiro / Produtividade</h1>
           <p class="text-sm text-slate-500 mt-0.5">Quanto a equipe produziu e quanto há a pagar — por tipo de alvará.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <div class="flex gap-1">
-            <button onclick="window._gestaoMes=null;render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold ${(!window._gestaoMes||mesSel===(_gamMesAtual&&_gamMesAtual()))?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">Este mês</button>
-            <button onclick="window._gestaoMes='${_esc(mesAnt)}';render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold ${mesSel===mesAnt?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">Mês passado</button>
-          </div>
-          <select onchange="window._gestaoMes=this.value;render()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold">
-            ${meses.map(function(m){ return '<option value="'+_esc(m)+'"'+(m===mesSel?' selected':'')+'>'+((typeof _gamMesLabel==='function')?_esc(_gamMesLabel(m)):_esc(m))+'</option>'; }).join('')}
-          </select>
-          <button onclick="window._gestaoExportCSV()" class="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100">⬇️ CSV</button>
-        </div>
+        <button onclick="window._gestaoExportCSV()" class="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100 shrink-0">⬇️ CSV</button>
       </div>
 
-      <!-- KPIs com comparação vs mês anterior -->
+      <!-- Seletor de MESES (multi): clique pra somar mais de um mês no período -->
+      <div class="bg-white rounded-xl shadow-sm p-3 flex flex-wrap items-center gap-2">
+        <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wide mr-1">Período:</span>
+        ${meses.slice(0,12).map(function(m){
+          var lbl = (typeof _gamMesLabel==='function') ? _gamMesLabel(m) : m;
+          var on = multi ? (selN.indexOf(m)>=0) : (m===mesSel);
+          return '<button onclick="window._gestaoToggleMes(\''+_esc(m)+'\')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition '+(on?'bg-blue-600 text-white shadow-sm':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+(on&&multi?'✓ ':'')+_esc(lbl)+'</button>';
+        }).join('')}
+        ${multi ? '<button onclick="window._gestaoMesesSel=[];render()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100">✕ limpar seleção</button>' : '<span class="text-[11px] text-slate-400 ml-1">clique em 2+ meses pra consolidar o período</span>'}
+      </div>
+
+      <!-- KPIs (com comparação vs mês anterior — só no modo 1 mês) -->
       <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        ${kpi('Total produzido', _fmt(totalMes), _delta(totalMes, totalAnt, true))}
+        ${kpi(multi?'Total do período':'Total produzido', _fmt(totalMes), multi?null:_delta(totalMes, totalAnt, true), multi?_esc(periodoLabel):null)}
         ${kpi('A pagar', _fmt(totalAPagar), null, 'de '+_fmt(totalMes)+' · '+pctPago+'% pago', true)}
         ${kpi('Já pago', _fmt(totalPago), null, pctPago+'% da folha')}
-        ${kpi('Alvarás', String(qtdMes), _delta(qtdMes, qtdAnt, true))}
-        ${kpi('Ticket médio', _fmt(ticket), _delta(ticket, ticketAnt, true))}
-        ${kpi('Média/pessoa', _fmt(mediaPessoa), _delta(mediaPessoa, mediaAnt, true))}
+        ${kpi('Alvarás', String(qtdMes), multi?null:_delta(qtdMes, qtdAnt, true), multi?'no período':null)}
+        ${kpi('Ticket médio', _fmt(ticket), multi?null:_delta(ticket, ticketAnt, true), multi?'por alvará':null)}
+        ${kpi('Média/pessoa', _fmt(mediaPessoa), multi?null:_delta(mediaPessoa, mediaAnt, true), multi?'no período':null)}
       </div>
 
-      ${doMes.length===0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-4xl mb-2">🗓️</div><div class="font-bold text-slate-700">Nenhuma produtividade em ${_esc((typeof _gamMesLabel==='function')?_gamMesLabel(mesSel):mesSel)}</div><div class="text-sm text-slate-500 mt-1">Escolha outro mês acima.</div></div>` : `
+      ${doMes.length===0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-4xl mb-2">🗓️</div><div class="font-bold text-slate-700">Nenhuma produtividade em ${_esc(periodoLabel)}</div><div class="text-sm text-slate-500 mt-1">Escolha outro período acima.</div></div>` : `
 
-      <!-- Destaque do mês + Gráfico de evolução -->
+      <!-- Destaque + Gráfico de evolução -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div class="rounded-2xl shadow-sm p-5 flex flex-col justify-center text-white relative overflow-hidden" style="background:linear-gradient(135deg,#2B3A8C,#141A42)">
-          <div class="text-xs font-semibold uppercase tracking-wide" style="color:#F5C518">🏆 Destaque de ${_esc((typeof _gamMesLabel==='function')?_gamMesLabel(mesSel):mesSel)}</div>
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color:#F5C518">🏆 Destaque ${multi?'do período':'de '+_esc(mLbl(mesSel))}</div>
           <div class="flex items-center gap-3 mt-3">
             <div class="w-14 h-14 rounded-full bg-white/15 ring-2 ring-white/30 flex items-center justify-center text-xl font-bold shrink-0">${top.foto?('<img src="'+top.foto+'" class="w-full h-full rounded-full" style="object-fit:cover">'):_esc(((top.nome||'?')[0]||'?').toUpperCase())}</div>
             <div class="min-w-0">
@@ -294,24 +333,31 @@
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-              <tr><th class="text-left px-4 py-3 font-semibold">Colaborador</th><th class="text-center px-3 py-3 font-semibold">Alvarás</th><th class="text-right px-3 py-3 font-semibold">Valor do mês</th><th class="text-center px-3 py-3 font-semibold">vs ${_esc(nomeMesAnt)}</th><th class="text-left px-3 py-3 font-semibold">% do total</th><th class="text-center px-4 py-3 font-semibold">Pagamento</th></tr>
+              <tr><th class="text-left px-4 py-3 font-semibold">Colaborador</th><th class="text-center px-3 py-3 font-semibold">Alvarás</th><th class="text-right px-3 py-3 font-semibold">${multi?'Valor do período':'Valor do mês'}</th><th class="text-center px-3 py-3 font-semibold">${multi?'—':'vs '+_esc(nomeMesAnt)}</th><th class="text-left px-3 py-3 font-semibold">% do total</th><th class="text-center px-4 py-3 font-semibold">Pagamento</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
               ${doMes.map(function(r){
-                var pago = window._gestaoPago(r.chave, mesSel);
                 var ck = _esc(r.chave).replace(/'/g,"\\'");
-                var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_esc(mesSel)+"','"+_esc(r.nome||'').replace(/'/g,"\\'")+"')" : "";
-                var dr = _delta(r.valor, (antMap[r.chave]||{}).valor, true);
+                var detMes = multi ? selN[selN.length-1] : mesSel; // no multi, detalhe abre o mês mais recente
+                var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_esc(detMes)+"','"+_esc(r.nome||'').replace(/'/g,"\\'")+"')" : "";
+                var dr = multi ? null : _delta(r.valor, (antMap[r.chave]||{}).valor, true);
                 var pct = totalMes>0 ? Math.round(r.valor/totalMes*100) : 0;
+                // pago: single = toggle do mês; multi = quantos dos meses já pagos
+                var pagoCell;
+                if (multi) {
+                  var pagosN = selN.filter(function(m){ return window._gestaoPago(r.chave, m); }).length;
+                  pagoCell = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold '+(pagosN===selN.length?'bg-emerald-100 text-emerald-700':(pagosN>0?'bg-amber-100 text-amber-700':'bg-rose-50 text-rose-600'))+'" title="pago em '+pagosN+' de '+selN.length+' meses">'+pagosN+'/'+selN.length+'</span>';
+                } else {
+                  var pago = window._gestaoPago(r.chave, mesSel);
+                  pagoCell = '<button onclick="event.stopPropagation();window._gestaoMarcarPago(\''+ck+'\',\''+_esc(mesSel)+'\','+(pago?'false':'true')+')" class="px-3 py-1.5 rounded-lg text-xs font-bold '+(pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100')+'">'+(pago?'✓ Pago':'A pagar')+'</button>';
+                }
                 return `<tr class="hover:bg-blue-50 cursor-pointer" onclick="${vd}" title="Clique para ver os alvarás">
                   <td class="px-4 py-3"><div class="font-semibold text-blue-700 flex items-center gap-1.5">${_esc(r.nome||'—')} <span class="text-[10px] text-slate-400 font-normal">🔍</span></div><div class="text-[11px] text-slate-400">${_esc(r.email||'')}</div></td>
                   <td class="text-center px-3 py-3 text-slate-600">${r.qtd}</td>
                   <td class="text-right px-3 py-3 font-bold text-slate-800">${_fmt(r.valor)}</td>
-                  <td class="text-center px-3 py-3 text-xs font-semibold ${dr.cls}">${dr.arr} ${dr.txt}</td>
+                  <td class="text-center px-3 py-3 text-xs font-semibold ${dr?dr.cls:'text-slate-300'}">${dr?(dr.arr+' '+dr.txt):'—'}</td>
                   <td class="px-3 py-3"><div class="flex items-center gap-2"><div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden min-w-[40px]"><div class="h-full bg-blue-500" style="width:${pct}%"></div></div><span class="text-[11px] text-slate-500 w-8 text-right">${pct}%</span></div></td>
-                  <td class="text-center px-4 py-3">
-                    <button onclick="event.stopPropagation();window._gestaoMarcarPago('${ck}','${_esc(mesSel)}',${pago?'false':'true'})" class="px-3 py-1.5 rounded-lg text-xs font-bold ${pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100'}">${pago?'✓ Pago':'A pagar'}</button>
-                  </td>
+                  <td class="text-center px-4 py-3">${pagoCell}</td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -331,10 +377,11 @@
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
     var COR = '#2B3A8C', COR2 = '#F5C518', COR3 = '#10b981';
     if (view === 'valor_colab' || view === 'alv_colab') {
-      // respeita o período ativo (mês OU intervalo de datas)
-      var porDatas = (window._gestaoPeriodoModo==='datas' && (window._gestaoDe||window._gestaoAte));
-      var r = window._gestaoLinhasAtivas();
-      var rotulo = porDatas ? ((window._gestaoDe||'…')+' a '+(window._gestaoAte||'…')) : mesSel;
+      // respeita o período ativo (1 mês OU vários meses consolidados)
+      var selMulti = (window._gestaoMesesSel||[]);
+      var multiC = selMulti.length >= 2;
+      var r = multiC ? window._gestaoAgregaMeses(selMulti) : window._gestaoAgrega(mesSel);
+      var rotulo = multiC ? (selMulti.length+' meses') : mesSel;
       return { type:'bar',
         labels: r.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
         data: r.map(function(x){ return view==='valor_colab' ? x.valor : x.qtd; }),
