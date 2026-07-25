@@ -849,6 +849,7 @@ function renderLayout(content){
     {key:'dashboard', label:'Dashboard', icon:'📊'},
     {key:'inteligencia', label:'Inteligência', icon:'🧠', badge: badgeIntel},
     {key:'premiacao', label:'Premiação', icon:'🏆'},
+    ...(ehAdmin ? [{key:'gestao', label:'Gestão', icon:'🛡️', soAdmin:true}] : []),
     ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
     {key:'historico', label:'Histórico', icon:'🕒'},
     {key:'manutencao', label:'Manutenção', icon:'🛠️', badge: badgeManut},
@@ -1372,6 +1373,7 @@ function renderPage(){
     case 'dashboard': return renderDashboard();
     case 'inteligencia': return (typeof window.renderInteligencia === 'function') ? window.renderInteligencia() : '<div class="p-6 text-slate-500">Carregando Centro de Inteligência…</div>';
     case 'premiacao': return renderPremiacao();
+    case 'gestao': return (typeof window.renderGestao==='function') ? window.renderGestao() : '<div class="p-6 text-slate-500">Carregando Painel de Gestão…</div>';
     case 'valores': return renderValores();
     case 'alertas': return renderAlertas();
     case 'historico': return renderHistorico();
@@ -1390,6 +1392,7 @@ function attachPage(){
     case 'empresas': return attachEmpresas();
     case 'dashboard': return attachDashboard();
     case 'inteligencia': return (typeof window.attachInteligencia === 'function') ? window.attachInteligencia() : undefined;
+    case 'gestao': return (typeof window.attachGestao === 'function') ? window.attachGestao() : undefined;
     case 'alertas': return attachAlertas();
     case 'historico': return attachHistorico();
     case 'manutencao': return attachManutencao();
@@ -3640,6 +3643,10 @@ function attachHistorico(){}
 
 // ============ Usuários ============
 function renderUsuarios(){
+  // v7 — gestão de usuários é exclusiva do administrador (antes qualquer um editava)
+  if (!(state.sessao && state.sessao.cargo === 'Administrador')) {
+    return `<div class="p-10 text-center"><div class="text-5xl mb-3">🔒</div><div class="text-lg font-bold text-slate-800">Acesso restrito</div><div class="text-sm text-slate-500 mt-1">A gestão de usuários é exclusiva do administrador.</div></div>`;
+  }
   return `
     <div class="p-6">
       <div class="flex items-center justify-between mb-6">
@@ -8489,5 +8496,7 @@ try{
 <script>/* v6.1.9 */(function _bootIDB(){var n=0;var primeira=true;var iv=setInterval(function(){n++;if(typeof state!=="undefined"&&state&&Array.isArray(state.alvaras)){if(primeira){primeira=false;try{if(typeof _reidratarAnexosIDB==="function")_reidratarAnexosIDB();}catch(e){}}try{if(typeof _prepararAnexosLazy==="function")_prepararAnexosLazy();}catch(e){}try{if(typeof _anexoBackfillCloud==="function")_anexoBackfillCloud();}catch(e){}}if(n>600)clearInterval(iv);},500);})();</script>
 <!-- Centro de Inteligência (módulo separado — NÃO é remendo IIFE no index) -->
 <script src="/inteligencia.js"></script>
+<!-- Painel de Gestão (admin) — módulo separado -->
+<script src="/gestao.js"></script>
 </body>
 </html>
