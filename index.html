@@ -588,6 +588,12 @@ function render() {
   if (!app) return;
   try {
     if (!state.sessao) { app.innerHTML = renderLogin(); attachLogin(); return; }
+    // Painel de Gestão = PÁGINA SEPARADA (tela cheia própria, sem a sidebar do app).
+    if (state.page === 'gestao' && !state.empresaAtiva && typeof window.renderGestaoPagina === 'function') {
+      app.innerHTML = window.renderGestaoPagina();
+      try { if (typeof window.attachGestao === 'function') window.attachGestao(); } catch(e){}
+      return;
+    }
     var _html = renderLayout(renderPage());
     if (typeof _html !== 'string' || _html.length === 0) throw new Error('conteudo vazio (page=' + state.page + ')');
     app.innerHTML = _html;
@@ -849,7 +855,6 @@ function renderLayout(content){
     {key:'dashboard', label:'Dashboard', icon:'📊'},
     {key:'inteligencia', label:'Inteligência', icon:'🧠', badge: badgeIntel},
     {key:'premiacao', label:'Premiação', icon:'🏆'},
-    ...(ehAdmin ? [{key:'gestao', label:'Gestão', icon:'🛡️', soAdmin:true}] : []),
     ...(ehAdmin ? [{key:'valores', label:'Valores', icon:'💰', soAdmin:true}] : []),
     {key:'historico', label:'Histórico', icon:'🕒'},
     {key:'manutencao', label:'Manutenção', icon:'🛠️', badge: badgeManut},
@@ -881,6 +886,7 @@ function renderLayout(content){
               <div class="text-[10px] text-blue-300 uppercase tracking-wider">${esc(state.sessao.cargo)}</div>
             </div>
           </div>
+          ${ehAdmin ? `<button onclick="setState({page:'gestao', empresaAtiva:null})" class="w-full mb-2 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 text-slate-900 text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 hover:from-amber-300 hover:to-amber-400"><span>🛡️</span> Painel de Gestão</button>` : ''}
           <button id="logout-btn" class="w-full py-2 rounded-lg bg-white/10 hover:bg-red-500 hover:text-white text-sm font-medium flex items-center justify-center gap-2"><span>⏻</span> Sair</button>
         </div>
       </aside>

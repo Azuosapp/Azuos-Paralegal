@@ -80,8 +80,8 @@
     { c:'#10B981', ic:'💰', titulo:'Financeiro / Produtividade', desc:'Quanto cada um gerou, acumulado e folha.',
       itens:[ {t:'Acompanhar valores por usuário', act:"window._gestaoView='financeiro';render()"},
               {t:'Definir valores por atividade', act:"setState({page:'valores'})"} ] },
-    { c:'#2B5CE6', ic:'👥', titulo:'Pessoas & Acesso', desc:'Quem usa o sistema e o que pode.',
-      itens:[ {t:'Gerenciar usuários', act:"setState({page:'usuarios'})"} ] },
+    { c:'#2B5CE6', ic:'👥', titulo:'Pessoas & Acesso', desc:'Quem usa o sistema, cargos e produtividade.',
+      itens:[ {t:'Gerenciar usuários', act:"window._gestaoView='usuarios';render()"} ] },
     { c:'#8B5CF6', ic:'🏆', titulo:'Premiação', desc:'Ranking, regras e corrida.',
       itens:[ {t:'Ver ranking do mês', act:"setState({page:'premiacao'})"} ] },
     { c:'#d97706', ic:'📋', titulo:'Qualidade', desc:'Controle do trabalho e auditorias.',
@@ -214,11 +214,129 @@
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   };
 
-  // roteador da seção
+  // ======================= USUÁRIOS (melhorado) =======================
+  window._gestaoUserBusca = window._gestaoUserBusca || '';
+  function _renderUsuariosPainel(){
+    if(!window.ehAdminGestao()) return _renderHub();
+    var us = (typeof state!=='undefined' && Array.isArray(state.usuarios)) ? state.usuarios : [];
+    // produtividade acumulada por usuário (reusa o motor do financeiro)
+    var acc = {}; try { window._gestaoAgrega(null).forEach(function(r){ acc[(r.email||r.nome||'').toLowerCase()] = r; }); } catch(e){}
+    var q = (window._gestaoUserBusca||'').trim().toLowerCase();
+    var lista = us.filter(function(u){ return u && (!q || ((u.nome||'')+' '+(u.email||'')+' '+(u.cargo||'')).toLowerCase().indexOf(q)>=0); });
+    var admins = lista.filter(function(u){ return /administrador/i.test(u.cargo||''); });
+    var equipe = lista.filter(function(u){ return !/administrador/i.test(u.cargo||''); });
+    var ativos = us.filter(function(u){ return u.ativo!==false; }).length;
+    var inativos = us.length - ativos;
+
+    function card(u){
+      var key = (u.email||u.nome||'').toLowerCase();
+      var prod = acc[key];
+      var ini = _esc((u.nome&&u.nome[0])||'?').toUpperCase();
+      var foto = u.foto ? '<img src="'+u.foto+'" class="w-full h-full" style="object-fit:cover">' : ini;
+      var inativo = u.ativo===false;
+      return `<div class="bg-white rounded-xl shadow-sm p-4 flex flex-col ${inativo?'opacity-60':''}">
+        <div class="flex items-center gap-3 mb-2">
+          <div class="w-11 h-11 rounded-full overflow-hidden bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0">${foto}</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-slate-800 truncate">${_esc(u.nome||'—')}</div>
+            <div class="text-[11px] text-slate-500 truncate">${_esc(u.email||'')}</div>
+          </div>
+          <span class="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${inativo?'bg-slate-100 text-slate-500':'bg-emerald-100 text-emerald-700'}">${inativo?'Inativo':'Ativo'}</span>
+        </div>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${/administrador/i.test(u.cargo||'')?'bg-purple-100 text-purple-700':'bg-blue-50 text-blue-600'}">${_esc(u.cargo||'—')}</span>
+        </div>
+        ${prod ? `<div class="flex items-center gap-3 text-[12px] text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mb-2">
+            <span>📊 <b>${prod.qtd}</b> concluídos</span>
+            <span class="ml-auto font-bold text-emerald-600">${_fmt(prod.valor)}</span>
+          </div>` : `<div class="text-[11px] text-slate-400 bg-slate-50 rounded-lg px-3 py-2 mb-2">Sem produtividade registrada</div>`}
+        <div class="flex gap-1 mt-auto pt-2 border-t border-slate-100">
+          <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50 font-medium">✏️ Editar</button>
+          <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50 font-medium">🗑️ Excluir</button>
+        </div>
+      </div>`;
+    }
+
+    return `
+    <div class="p-6">
+      <button onclick="window._gestaoView='hub';render()" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Painel de Gestão</button>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h1 class="text-2xl font-extrabold text-slate-800">👥 Usuários</h1>
+          <p class="text-sm text-slate-500 mt-0.5">${us.length} cadastrados · ${ativos} ativos${inativos?' · '+inativos+' inativos':''}</p>
+        </div>
+        <button onclick="openModalUsuario(null)" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm">+ Novo usuário</button>
+      </div>
+      <div class="mb-5"><input id="gestao-user-busca" type="text" value="${_esc(window._gestaoUserBusca||'')}" placeholder="🔎 Buscar por nome, e-mail ou cargo..." class="w-full max-w-md px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"></div>
+      ${admins.length ? `<div class="mb-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Administradores</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">${admins.map(card).join('')}</div>` : ''}
+      <div class="mb-2 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Equipe (${equipe.length})</div>
+      ${equipe.length ? `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">${equipe.map(card).join('')}</div>`
+        : `<div class="bg-white rounded-xl shadow-sm p-8 text-center text-slate-400 text-sm">${q?'Ninguém encontrado no filtro.':'Nenhum membro na equipe ainda.'}</div>`}
+      <p class="text-[11px] text-slate-400 mt-4">A produtividade (concluídos e valor) é acumulada de todos os meses. Só o administrador vê e edita esta tela.</p>
+    </div>`;
+  }
+
+  // roteador do conteúdo interno
   window.renderGestao = function(){
-    return (window._gestaoView === 'financeiro') ? _renderFinanceiro() : _renderHub();
+    if (window._gestaoView === 'financeiro') return _renderFinanceiro();
+    if (window._gestaoView === 'usuarios') return _renderUsuariosPainel();
+    return _renderHub();
   };
-  window.attachGestao = function(){ /* handlers são inline (onclick) */ };
+
+  // PÁGINA SEPARADA — tela cheia com topbar própria (sem a sidebar do app).
+  window.renderGestaoPagina = function(){
+    var nome = (typeof state!=='undefined' && state.sessao) ? (state.sessao.nome||'') : '';
+    var voltarInterno = (window._gestaoView && window._gestaoView !== 'hub');
+    return `
+    <div class="min-h-screen" style="background:#F0F4FF">
+      <!-- topbar do painel -->
+      <div class="sticky top-0 z-30 text-white shadow-lg" style="background:linear-gradient(135deg,#0A1A4A,#1B3A8C 60%,#2B5CE6)">
+        <div class="max-w-5xl mx-auto px-5 py-3 flex items-center gap-3">
+          ${voltarInterno
+            ? `<button onclick="window._gestaoView='hub';render()" class="flex items-center gap-1.5 text-sm font-medium text-blue-100 hover:text-white">← Visão geral</button>`
+            : `<span class="font-extrabold tracking-tight flex items-center gap-2">🛡️ Painel de Gestão</span>`}
+          <span class="ml-auto text-[12px] text-blue-100 hidden sm:inline">${_esc(nome)}</span>
+          <button onclick="window._gestaoView='hub';setState({page:'resumo'})" class="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-semibold">← Voltar ao sistema</button>
+        </div>
+      </div>
+      <div class="max-w-5xl mx-auto">${window.renderGestao()}</div>
+    </div>`;
+  };
+
+  window.attachGestao = function(){
+    // busca de usuários (não é inline pra manter foco/cursor)
+    var b = document.getElementById('gestao-user-busca');
+    if (b) {
+      var _t;
+      b.oninput = function(){ clearTimeout(_t); var v=b.value; _t=setTimeout(function(){ window._gestaoUserBusca=v; render(); var el=document.getElementById('gestao-user-busca'); if(el){ el.focus(); el.selectionStart=el.selectionEnd=el.value.length; } }, 250); };
+    }
+  };
+
+  // ---- URL própria (#painel) — hash routing simples p/ o SPA ----
+  function _syncHash(){
+    try {
+      if (typeof state==='undefined' || !state) return;
+      var querPainel = (state.page==='gestao' && !state.empresaAtiva);
+      var temHash = location.hash === '#painel';
+      if (querPainel && !temHash) history.replaceState(null,'','#painel');
+      else if (!querPainel && temHash) history.replaceState(null,'','#');
+    } catch(e){}
+  }
+  // ao abrir o app já com #painel, entra no painel (se admin)
+  try {
+    if (location.hash === '#painel' && window.ehAdminGestao && window.ehAdminGestao()) {
+      if (typeof state!=='undefined' && state) { state.page='gestao'; }
+    }
+  } catch(e){}
+  // mantém o hash em sincronia a cada render (envelopa o render existente uma vez)
+  try {
+    if (typeof window.render==='function' && !window.__gestaoHashWrap){
+      window.__gestaoHashWrap = true;
+      var _origRender = window.render;
+      window.render = function(){ var r=_origRender.apply(this, arguments); _syncHash(); return r; };
+    }
+  } catch(e){}
 
   // se o app já estiver na aba Gestão quando este módulo carregar, re-renderiza
   try { if (typeof state!=='undefined' && state && state.page==='gestao' && typeof render==='function') render(); } catch(e){}
