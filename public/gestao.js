@@ -194,9 +194,83 @@
         </div>
       </div>
       <p class="text-[11px] text-slate-400 mt-3">O "Acumulado" soma todos os meses. Valores calculados pelo tipo de cada alvará (tabela em Valores). "Pago" é um controle manual do admin — sincronizado.</p>
+
+      <!-- Gráfico único com seletor de visualização -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mt-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 class="text-base font-bold text-slate-800">📊 Visão gráfica</h3>
+          <select id="gestao-chart-view" onchange="window._gestaoChartView=this.value;window._gestaoDesenhaChart&&window._gestaoDesenhaChart()" class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-semibold">
+            <option value="valor_colab">💰 Valor por colaborador (mês)</option>
+            <option value="alv_colab">📄 Alvarás por colaborador (mês)</option>
+            <option value="valor_mes">📈 Valor por mês (evolução)</option>
+            <option value="alv_mes">📈 Alvarás por mês (evolução)</option>
+            <option value="acumulado_colab">🏆 Acumulado por colaborador (total)</option>
+          </select>
+        </div>
+        <div style="position:relative;height:300px"><canvas id="gestao-chart"></canvas></div>
+      </div>
       `}
     </div>`;
   }
+
+  // ---- dados do gráfico por modo de visualização ----
+  window._gestaoChartView = window._gestaoChartView || 'valor_colab';
+  function _gestaoChartData(){
+    var view = window._gestaoChartView;
+    var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
+    var COR = '#2B3A8C', COR2 = '#F5C518', COR3 = '#10b981';
+    if (view === 'valor_colab' || view === 'alv_colab') {
+      var r = window._gestaoAgrega(mesSel);
+      return { type:'bar',
+        labels: r.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
+        data: r.map(function(x){ return view==='valor_colab' ? x.valor : x.qtd; }),
+        label: view==='valor_colab' ? 'Valor (R$) — '+mesSel : 'Alvarás — '+mesSel,
+        cor: COR, money: view==='valor_colab' };
+    }
+    if (view === 'acumulado_colab') {
+      var a = window._gestaoAgrega(null);
+      return { type:'bar',
+        labels: a.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
+        data: a.map(function(x){ return x.valor; }),
+        label: 'Acumulado total (R$)', cor: COR2, money: true };
+    }
+    // por mês (evolução): valor_mes / alv_mes
+    var meses = (typeof _gamMeses==='function') ? _gamMeses().slice().sort() : [];
+    var dataM = meses.map(function(m){
+      var rr = window._gestaoAgrega(m);
+      return view==='valor_mes' ? rr.reduce(function(s,x){return s+x.valor;},0)
+                                : rr.reduce(function(s,x){return s+x.qtd;},0);
+    });
+    return { type:'line', labels: meses, data: dataM,
+      label: view==='valor_mes' ? 'Valor total (R$)/mês' : 'Alvarás/mês',
+      cor: view==='valor_mes' ? COR3 : COR, money: view==='valor_mes' };
+  }
+
+  window._gestaoChart = window._gestaoChart || null;
+  window._gestaoDesenhaChart = function(){
+    var ctx = document.getElementById('gestao-chart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    if (window._gestaoChart && window._gestaoChart.destroy) window._gestaoChart.destroy();
+    var d = _gestaoChartData();
+    var money = d.money;
+    var fmtBRL = function(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); };
+    window._gestaoChart = new Chart(ctx, {
+      type: d.type,
+      data: { labels: d.labels, datasets: [{
+        label: d.label, data: d.data,
+        backgroundColor: d.type==='line' ? 'rgba(43,58,140,.08)' : d.cor,
+        borderColor: d.cor, borderWidth: d.type==='line'?2:0, borderRadius: d.type==='bar'?6:0,
+        fill: d.type==='line', tension:.3, pointBackgroundColor: d.cor, pointRadius: d.type==='line'?4:0
+      }]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false},
+          tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y!=null?c.parsed.y:c.parsed; return money?fmtBRL(v):(v+' alvará(s)'); } } } },
+        scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){ return money?('R$ '+v):v; }, font:{size:11} }, grid:{color:'#eef1f7'} },
+                 x:{ ticks:{font:{size:11}}, grid:{display:false} } }
+      }
+    });
+  };
 
   // ver os alvarás que compõem o valor de um colaborador (reusa o modal da Premiação)
   window._gestaoVerDetalhe = function(chave, mes, nome){
@@ -320,6 +394,9 @@
       var _t;
       b.oninput = function(){ clearTimeout(_t); var v=b.value; _t=setTimeout(function(){ window._gestaoUserBusca=v; render(); var el=document.getElementById('gestao-user-busca'); if(el){ el.focus(); el.selectionStart=el.selectionEnd=el.value.length; } }, 250); };
     }
+    // gráfico do Financeiro: sincroniza o select e desenha
+    var sel = document.getElementById('gestao-chart-view');
+    if (sel) { sel.value = window._gestaoChartView || 'valor_colab'; if (window._gestaoDesenhaChart) setTimeout(window._gestaoDesenhaChart, 30); }
   };
 
   // ---- URL própria (#painel) — hash routing simples p/ o SPA ----
