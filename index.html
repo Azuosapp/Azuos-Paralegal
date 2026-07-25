@@ -150,6 +150,10 @@ try {
 
 <div id="app"></div>
 
+<!-- Bloqueio do domínio antigo (módulo). Carrega ANTES de tudo: no endereço antigo
+     (*.web.app / *.firebaseapp.com) mostra o aviso e o app nem monta. -->
+<script src="/dominio-guard.js"></script>
+
 <script src="/seed.js"></script>
 <script src="/lib.js"></script>
 <script src="/data.js"></script>
@@ -579,6 +583,7 @@ function _preservaFotosOficiais(lista){
   }catch(e){ return lista||[]; }
 }
 function render() {
+  if (window.__AZUOS_BLOQUEADO__) return; // domínio antigo bloqueado — não renderiza o app
   var app = document.getElementById('app');
   if (!app) return;
   try {
