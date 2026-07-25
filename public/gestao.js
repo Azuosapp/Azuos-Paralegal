@@ -171,107 +171,161 @@
   }
 
   // ======================= FINANCEIRO / PRODUTIVIDADE =======================
+  // mês anterior a partir de 'YYYY-MM'
+  function _mesAnterior(m){
+    try { var d = new Date(m + '-01T00:00:00'); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7); } catch(e){ return ''; }
+  }
+  // delta (comparação): retorna seta/cor/texto. sobeBom=true → verde quando sobe.
+  function _delta(atual, ant, sobeBom){
+    if (ant == null || ant === 0) return {arr:'', txt:'sem base', cls:'text-slate-400'};
+    var p = Math.round((atual-ant)/ant*100);
+    if (p === 0) return {arr:'=', txt:'estável', cls:'text-slate-400'};
+    var up = p > 0;
+    var bom = (sobeBom===false) ? !up : up;
+    return { arr: up?'▲':'▼', txt: (up?'+':'')+p+'%', cls: bom?'text-emerald-600':'text-rose-500' };
+  }
+
   function _renderFinanceiro(){
     if(!window.ehAdminGestao()) return _renderHub();
     var meses = (typeof _gamMeses==='function') ? _gamMeses() : [];
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
-    var porDatas = (window._gestaoPeriodoModo==='datas' && (window._gestaoDe||window._gestaoAte));
-    var doMes = window._gestaoLinhasAtivas(); // respeita mês OU intervalo de datas
-    var acumulado = window._gestaoAgrega(null); // todos os meses
+    var mesAnt = _mesAnterior(mesSel);
+    var nomeMesAnt = (typeof _gamMesLabel==='function') ? _gamMesLabel(mesAnt) : mesAnt;
+    var doMes = window._gestaoAgrega(mesSel);
+    var doAnt = window._gestaoAgrega(mesAnt);
+    var antMap = {}; doAnt.forEach(function(r){ antMap[r.chave]=r; });
+    var acumulado = window._gestaoAgrega(null);
     var accMap = {}; acumulado.forEach(function(r){ accMap[r.chave]=r; });
+
+    // agregados do mês e do mês anterior
     var totalMes = doMes.reduce(function(s,r){ return s+r.valor; }, 0);
+    var qtdMes = doMes.reduce(function(s,r){ return s+r.qtd; }, 0);
+    var totalAnt = doAnt.reduce(function(s,r){ return s+r.valor; }, 0);
+    var qtdAnt = doAnt.reduce(function(s,r){ return s+r.qtd; }, 0);
     var totalPago = doMes.filter(function(r){ return window._gestaoPago(r.chave,mesSel); }).reduce(function(s,r){ return s+r.valor; }, 0);
     var totalAPagar = totalMes - totalPago;
+    var pctPago = totalMes>0 ? Math.round(totalPago/totalMes*100) : 0;
+    var ticket = qtdMes>0 ? totalMes/qtdMes : 0;
+    var ticketAnt = qtdAnt>0 ? totalAnt/qtdAnt : 0;
+    var mediaPessoa = doMes.length>0 ? totalMes/doMes.length : 0;
+    var mediaAnt = doAnt.length>0 ? totalAnt/doAnt.length : 0;
+    var top = doMes[0]; // destaque (já ordenado por valor)
+    var topPct = (top && totalMes>0) ? Math.round(top.valor/totalMes*100) : 0;
+    // posição do top no mês anterior (pra "subiu N posições")
+    var topSubiu = '';
+    if (top) {
+      var posAnt = doAnt.findIndex(function(r){ return r.chave===top.chave; });
+      if (posAnt > 0) topSubiu = '▲ subiu '+posAnt+' posição'+(posAnt>1?'es':'');
+      else if (posAnt === 0) topSubiu = 'manteve a liderança';
+    }
+
+    // helper de card KPI com comparação
+    function kpi(label, valor, delta, sub, destaque){
+      return '<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 '+(destaque?'border-l-4 border-l-amber-400':'')+'">'
+        + '<div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">'+label+'</div>'
+        + '<div class="text-2xl font-bold '+(destaque?'text-amber-600':'text-slate-800')+' mt-1 leading-none">'+valor+'</div>'
+        + (delta ? '<div class="text-[11px] mt-1.5 '+delta.cls+' font-semibold">'+delta.arr+' '+delta.txt+' <span class="text-slate-400 font-normal">vs '+_esc(nomeMesAnt)+'</span></div>'
+                 : (sub ? '<div class="text-[11px] mt-1.5 text-slate-400">'+sub+'</div>' : ''))
+        + '</div>';
+    }
 
     return `
-    <div class="p-6 max-w-5xl mx-auto">
-      <button onclick="window._gestaoView='hub';render()" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600 mb-3">← Painel de Gestão</button>
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="p-6 max-w-6xl mx-auto space-y-5">
+      <button onclick="window._gestaoView='hub';render()" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600">← Painel de Gestão</button>
+      <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 class="text-2xl font-extrabold text-slate-800">💰 Financeiro / Produtividade</h1>
-          <p class="text-sm text-slate-500 mt-0.5">Quanto cada colaborador gerou — pago pelo valor real de cada tipo de alvará.</p>
+          <p class="text-sm text-slate-500 mt-0.5">Quanto a equipe produziu e quanto há a pagar — por tipo de alvará.</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <!-- alternar Mês ↔ Datas -->
-          <div class="flex rounded-lg overflow-hidden border border-slate-200 text-xs font-semibold">
-            <button onclick="window._gestaoPeriodoModo='mes';render()" class="px-3 py-2 ${window._gestaoPeriodoModo!=='datas'?'bg-blue-600 text-white':'bg-white text-slate-600 hover:bg-slate-50'}">Mês</button>
-            <button onclick="window._gestaoPeriodoModo='datas';render()" class="px-3 py-2 ${window._gestaoPeriodoModo==='datas'?'bg-blue-600 text-white':'bg-white text-slate-600 hover:bg-slate-50'}">Datas</button>
+          <div class="flex gap-1">
+            <button onclick="window._gestaoMes=null;render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold ${(!window._gestaoMes||mesSel===(_gamMesAtual&&_gamMesAtual()))?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">Este mês</button>
+            <button onclick="window._gestaoMes='${_esc(mesAnt)}';render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold ${mesSel===mesAnt?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">Mês passado</button>
           </div>
-          ${window._gestaoPeriodoModo==='datas' ? `
-            <input type="date" value="${_esc(window._gestaoDe||'')}" onchange="window._gestaoDe=this.value;render()" class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm" title="De">
-            <span class="text-slate-400 text-sm">→</span>
-            <input type="date" value="${_esc(window._gestaoAte||'')}" onchange="window._gestaoAte=this.value;render()" class="px-2 py-1.5 border border-slate-200 rounded-lg text-sm" title="Até">
-          ` : `
-            <select onchange="window._gestaoMes=this.value;render()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold">
-              ${meses.map(function(m){ return '<option value="'+_esc(m)+'"'+(m===mesSel?' selected':'')+'>'+_esc(m)+'</option>'; }).join('')}
-            </select>
-          `}
-          <button onclick="window._gestaoExportCSV()" class="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100">⬇️ Exportar CSV</button>
+          <select onchange="window._gestaoMes=this.value;render()" class="px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold">
+            ${meses.map(function(m){ return '<option value="'+_esc(m)+'"'+(m===mesSel?' selected':'')+'>'+((typeof _gamMesLabel==='function')?_esc(_gamMesLabel(m)):_esc(m))+'</option>'; }).join('')}
+          </select>
+          <button onclick="window._gestaoExportCSV()" class="px-3 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-sm font-semibold hover:bg-emerald-100">⬇️ CSV</button>
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-3 mb-5">
-        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-slate-400"><div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Total do mês</div><div class="text-2xl font-bold text-slate-800 mt-1">${_fmt(totalMes)}</div></div>
-        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-500"><div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Já pago</div><div class="text-2xl font-bold text-emerald-600 mt-1">${_fmt(totalPago)}</div></div>
-        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-rose-500"><div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">A pagar</div><div class="text-2xl font-bold text-rose-600 mt-1">${_fmt(totalAPagar)}</div></div>
+
+      <!-- KPIs com comparação vs mês anterior -->
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        ${kpi('Total produzido', _fmt(totalMes), _delta(totalMes, totalAnt, true))}
+        ${kpi('A pagar', _fmt(totalAPagar), null, 'de '+_fmt(totalMes)+' · '+pctPago+'% pago', true)}
+        ${kpi('Já pago', _fmt(totalPago), null, pctPago+'% da folha')}
+        ${kpi('Alvarás', String(qtdMes), _delta(qtdMes, qtdAnt, true))}
+        ${kpi('Ticket médio', _fmt(ticket), _delta(ticket, ticketAnt, true))}
+        ${kpi('Média/pessoa', _fmt(mediaPessoa), _delta(mediaPessoa, mediaAnt, true))}
       </div>
-      ${doMes.length===0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-4xl mb-2">🗓️</div><div class="font-bold text-slate-700">Nenhuma produtividade em ${_esc(mesSel)}</div><div class="text-sm text-slate-500 mt-1">Escolha outro mês no seletor acima.</div></div>` : `
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+
+      ${doMes.length===0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-4xl mb-2">🗓️</div><div class="font-bold text-slate-700">Nenhuma produtividade em ${_esc((typeof _gamMesLabel==='function')?_gamMesLabel(mesSel):mesSel)}</div><div class="text-sm text-slate-500 mt-1">Escolha outro mês acima.</div></div>` : `
+
+      <!-- Destaque do mês + Gráfico de evolução -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="rounded-2xl shadow-sm p-5 flex flex-col justify-center text-white relative overflow-hidden" style="background:linear-gradient(135deg,#2B3A8C,#141A42)">
+          <div class="text-xs font-semibold uppercase tracking-wide" style="color:#F5C518">🏆 Destaque de ${_esc((typeof _gamMesLabel==='function')?_gamMesLabel(mesSel):mesSel)}</div>
+          <div class="flex items-center gap-3 mt-3">
+            <div class="w-14 h-14 rounded-full bg-white/15 ring-2 ring-white/30 flex items-center justify-center text-xl font-bold shrink-0">${top.foto?('<img src="'+top.foto+'" class="w-full h-full rounded-full" style="object-fit:cover">'):_esc(((top.nome||'?')[0]||'?').toUpperCase())}</div>
+            <div class="min-w-0">
+              <div class="text-lg font-bold truncate">${_esc(top.nome||'—')}</div>
+              <div class="text-sm text-blue-100">${_fmt(top.valor)} · ${top.qtd} alvarás</div>
+              <div class="text-xs mt-0.5" style="color:#F5C518">${topSubiu?topSubiu+' · ':''}${topPct}% da produção</div>
+            </div>
+          </div>
+          ${(typeof window.zuzu==='function') ? '<div class="absolute -bottom-2 -right-2 opacity-90 pointer-events-none">'+window.zuzu({pose:'trofeu',anim:'sway',size:70,alt:'Zuzu'})+'</div>' : ''}
+        </div>
+        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm p-4">
+          <div class="flex items-center justify-between mb-3 gap-2">
+            <h3 class="text-base font-bold text-slate-800">📊 Evolução</h3>
+            <div class="flex gap-1">
+              ${[{v:'valor_mes',t:'Últimos 6 meses'},{v:'valor_colab',t:'Por colaborador'}].map(function(o){
+                var on=(window._gestaoChartView||'valor_mes')===o.v;
+                return '<button onclick="window._gestaoChartView=\''+o.v+'\';render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold '+(on?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+o.t+'</button>';
+              }).join('')}
+            </div>
+          </div>
+          <div style="position:relative;height:250px"><canvas id="gestao-chart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Tabela — a folha -->
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-              <tr><th class="text-left px-4 py-3 font-semibold">Colaborador</th><th class="text-center px-3 py-3 font-semibold">Alvarás (mês)</th><th class="text-right px-3 py-3 font-semibold">Valor do mês</th><th class="text-right px-3 py-3 font-semibold">Acumulado (total)</th><th class="text-center px-4 py-3 font-semibold">Pagamento</th></tr>
+              <tr><th class="text-left px-4 py-3 font-semibold">Colaborador</th><th class="text-center px-3 py-3 font-semibold">Alvarás</th><th class="text-right px-3 py-3 font-semibold">Valor do mês</th><th class="text-center px-3 py-3 font-semibold">vs ${_esc(nomeMesAnt)}</th><th class="text-left px-3 py-3 font-semibold">% do total</th><th class="text-center px-4 py-3 font-semibold">Pagamento</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
               ${doMes.map(function(r){
-                var acc = accMap[r.chave] || {valor:0, qtd:0};
                 var pago = window._gestaoPago(r.chave, mesSel);
                 var ck = _esc(r.chave).replace(/'/g,"\\'");
                 var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_esc(mesSel)+"','"+_esc(r.nome||'').replace(/'/g,"\\'")+"')" : "";
-                return `<tr class="hover:bg-blue-50 cursor-pointer" onclick="${vd}" title="Clique para ver os alvarás deste colaborador">
-                  <td class="px-4 py-3"><div class="font-semibold text-blue-700 flex items-center gap-1.5">${_esc(r.nome||'—')} <span class="text-[10px] text-slate-400 font-normal">🔍 detalhar</span></div><div class="text-[11px] text-slate-400">${_esc(r.email||'')}</div></td>
+                var dr = _delta(r.valor, (antMap[r.chave]||{}).valor, true);
+                var pct = totalMes>0 ? Math.round(r.valor/totalMes*100) : 0;
+                return `<tr class="hover:bg-blue-50 cursor-pointer" onclick="${vd}" title="Clique para ver os alvarás">
+                  <td class="px-4 py-3"><div class="font-semibold text-blue-700 flex items-center gap-1.5">${_esc(r.nome||'—')} <span class="text-[10px] text-slate-400 font-normal">🔍</span></div><div class="text-[11px] text-slate-400">${_esc(r.email||'')}</div></td>
                   <td class="text-center px-3 py-3 text-slate-600">${r.qtd}</td>
                   <td class="text-right px-3 py-3 font-bold text-slate-800">${_fmt(r.valor)}</td>
-                  <td class="text-right px-3 py-3 text-slate-500">${_fmt(acc.valor)} <span class="text-[10px] text-slate-400">(${acc.qtd})</span></td>
+                  <td class="text-center px-3 py-3 text-xs font-semibold ${dr.cls}">${dr.arr} ${dr.txt}</td>
+                  <td class="px-3 py-3"><div class="flex items-center gap-2"><div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden min-w-[40px]"><div class="h-full bg-blue-500" style="width:${pct}%"></div></div><span class="text-[11px] text-slate-500 w-8 text-right">${pct}%</span></div></td>
                   <td class="text-center px-4 py-3">
                     <button onclick="event.stopPropagation();window._gestaoMarcarPago('${ck}','${_esc(mesSel)}',${pago?'false':'true'})" class="px-3 py-1.5 rounded-lg text-xs font-bold ${pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100'}">${pago?'✓ Pago':'A pagar'}</button>
                   </td>
                 </tr>`;
               }).join('')}
             </tbody>
-            <tfoot class="bg-slate-50 font-bold"><tr><td class="px-4 py-3 text-slate-700">Total</td><td class="text-center px-3 py-3 text-slate-600">${doMes.reduce(function(s,r){return s+r.qtd;},0)}</td><td class="text-right px-3 py-3 text-slate-800">${_fmt(totalMes)}</td><td></td><td></td></tr></tfoot>
+            <tfoot class="bg-slate-50 font-bold"><tr><td class="px-4 py-3 text-slate-700">Total</td><td class="text-center px-3 py-3 text-slate-600">${qtdMes}</td><td class="text-right px-3 py-3 text-slate-800">${_fmt(totalMes)}</td><td></td><td class="px-3 py-3 text-[11px] text-slate-400">100%</td><td></td></tr></tfoot>
           </table>
         </div>
       </div>
-      <p class="text-[11px] text-slate-400 mt-3">O "Acumulado" soma todos os meses. Valores calculados pelo tipo de cada alvará (tabela em Valores). "Pago" é um controle manual do admin — sincronizado.</p>
-
-      <!-- Gráfico único com botões de visualização SEMPRE VISÍVEIS (pills) -->
-      <div class="bg-white rounded-xl shadow-sm p-4 mt-5">
-        <h3 class="text-base font-bold text-slate-800 mb-3">📊 Visão gráfica</h3>
-        <div class="flex flex-wrap gap-2 mb-4">
-          ${[
-            {v:'valor_colab', t:'💰 Valor por colaborador'},
-            {v:'alv_colab',   t:'📄 Alvarás por colaborador'},
-            {v:'valor_mes',   t:'📈 Valor por mês'},
-            {v:'alv_mes',     t:'📈 Alvarás por mês'},
-            {v:'comparar_meses', t:'📅 Comparar meses'},
-            {v:'acumulado_colab', t:'🏆 Acumulado (total)'}
-          ].map(function(o){
-            var on = (window._gestaoChartView||'valor_colab') === o.v;
-            return '<button onclick="window._gestaoChartView=\''+o.v+'\';render()" class="px-3 py-1.5 rounded-lg text-sm font-semibold transition '+(on?'bg-blue-600 text-white shadow-sm':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+o.t+'</button>';
-          }).join('')}
-        </div>
-        ${(window._gestaoChartView==='comparar_meses') ? `<div class="flex items-center gap-2 mb-3 text-xs text-slate-500">
-          <span class="font-semibold">Quantos meses:</span>
-          ${[3,6,12].map(function(n){ var on=(window._gestaoNMeses||3)===n; return '<button onclick="window._gestaoNMeses='+n+';render()" class="px-2.5 py-1 rounded-lg font-semibold '+(on?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+n+' meses</button>'; }).join('')}
-        </div>` : ''}
-        <div style="position:relative;height:300px"><canvas id="gestao-chart"></canvas></div>
-      </div>
+      <p class="text-[11px] text-slate-400">Valores pelo tipo de cada alvará (tabela em Valores). Clique numa linha pra ver os alvarás e o acumulado. "Pago" é controle manual do admin.</p>
       `}
     </div>`;
   }
 
   // ---- dados do gráfico por modo de visualização ----
-  window._gestaoChartView = window._gestaoChartView || 'valor_colab';
+  window._gestaoChartView = window._gestaoChartView || 'valor_mes';
   function _gestaoChartData(){
     var view = window._gestaoChartView;
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
@@ -313,16 +367,16 @@
         labels: chaves.map(function(c){ return c.nome; }),
         datasets: datasets, mesesCmp: mesesCmp };
     }
-    // por mês (evolução): valor_mes / alv_mes
-    var meses = (typeof _gamMeses==='function') ? _gamMeses().slice().sort() : [];
+    // evolução: últimos 6 meses (barras, mês selecionado destacado)
+    var meses = ((typeof _gamMeses==='function') ? _gamMeses().slice().sort() : []).slice(-6);
+    var mLabel = function(m){ return (typeof _gamMesLabel==='function') ? _gamMesLabel(m).slice(0,3)+'/'+m.slice(2,4) : m; };
     var dataM = meses.map(function(m){
       var rr = window._gestaoAgrega(m);
-      return view==='valor_mes' ? rr.reduce(function(s,x){return s+x.valor;},0)
-                                : rr.reduce(function(s,x){return s+x.qtd;},0);
+      return rr.reduce(function(s,x){return s+x.valor;},0);
     });
-    return { type:'line', labels: meses, data: dataM,
-      label: view==='valor_mes' ? 'Valor total (R$)/mês' : 'Alvarás/mês',
-      cor: view==='valor_mes' ? COR3 : COR, money: view==='valor_mes',
+    var corBar = meses.map(function(m){ return m===mesSel ? '#2B3A8C' : '#c7ccdf'; }); // destaca o mês atual
+    return { type:'bar', labels: meses.map(mLabel), data: dataM,
+      label: 'Valor total (R$)/mês', cor: corBar, money: true,
       meta: meses.map(function(m){ return {kind:'mes', mes:m}; }) };
   }
 
