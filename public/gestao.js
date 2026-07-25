@@ -256,8 +256,9 @@
     var accMap = {}; acumulado.forEach(function(r){ accMap[r.chave]=r; });
     // paleta compartilhada (rosca do gráfico ↔ card de tipos ↔ chips): mesma linguagem de cor
     var PAL_TIPO = ['#2B3A8C','#F5C518','#10B981','#8B5CF6','#F59E0B','#0891B2','#EC4899','#64748B'];
-    // quebra por TIPO de alvará no período ativo (feature nova)
-    var porTipo = window._gestaoAgregaTipos ? window._gestaoAgregaTipos(multi?selN:null, mesSel) : [];
+    // quebra por TIPO de alvará no período ativo (feature nova). Ignora tipos sem valor (R$ 0).
+    var porTipo = (window._gestaoAgregaTipos ? window._gestaoAgregaTipos(multi?selN:null, mesSel) : [])
+      .filter(function(t){ return t.valor > 0; });
 
     // agregados do mês e do mês anterior
     var totalMes = doMes.reduce(function(s,r){ return s+r.valor; }, 0);
@@ -461,7 +462,8 @@
       // ROSCA: composição do faturamento por tipo de alvará no período ativo
       var selT = (window._gestaoMesesSel||[]);
       var multiT = selT.length >= 2;
-      var tipos = window._gestaoAgregaTipos ? window._gestaoAgregaTipos(multiT?selT:null, mesSel) : [];
+      var tipos = (window._gestaoAgregaTipos ? window._gestaoAgregaTipos(multiT?selT:null, mesSel) : [])
+        .filter(function(t){ return t.valor > 0; }); // tipos sem valor (R$ 0) só poluem a legenda
       var PAL = ['#2B3A8C','#F5C518','#10B981','#8B5CF6','#F59E0B','#0891B2','#EC4899','#64748B'];
       return { type:'doughnut', money:true,
         labels: tipos.map(function(t){ return t.tipo; }),
@@ -539,13 +541,34 @@
     if (d.type === 'doughnut') {
       if (!d.data.length) { return; }
       var totR = d.totalRosca || 0;
-      // plugin: total no centro da rosca
+      // plugin: total no centro + % / valor SOBRE cada fatia (indicadores visíveis sem hover)
       var _centro = {
         id:'gestaoCentroRosca',
-        afterDraw: function(chart){
+        afterDatasetsDraw: function(chart){
           var cx = chart.ctx; var area = chart.chartArea;
           var mx = (area.left+area.right)/2, my = (area.top+area.bottom)/2;
+          // 1) rótulo em cada fatia (percentual dentro do anel, valor logo fora)
+          var meta = chart.getDatasetMeta(0); var ds = chart.data.datasets[0];
           cx.save(); cx.textAlign='center'; cx.textBaseline='middle';
+          meta.data.forEach(function(el,i){
+            var v = ds.data[i]; if (v==null || v===0) return;
+            var pc = totR>0 ? Math.round(v/totR*100) : 0;
+            if (pc < 4) return; // fatia minúscula: só na legenda/tooltip, senão sobrepõe
+            var ang = (el.startAngle + el.endAngle)/2;
+            var rMid = (el.innerRadius + el.outerRadius)/2;
+            var px = el.x + Math.cos(ang)*rMid, py = el.y + Math.sin(ang)*rMid;
+            // % dentro da fatia (texto branco com leve sombra pra ler em qualquer cor)
+            cx.font='800 12px -apple-system,"Segoe UI",sans-serif';
+            cx.fillStyle='rgba(0,0,0,.25)'; cx.fillText(pc+'%', px+0.6, py+0.6);
+            cx.fillStyle='#fff'; cx.fillText(pc+'%', px, py);
+            // valor R$ logo FORA da fatia
+            var rOut = el.outerRadius + 14;
+            var ox = el.x + Math.cos(ang)*rOut, oy = el.y + Math.sin(ang)*rOut;
+            cx.font='700 10px -apple-system,"Segoe UI",sans-serif'; cx.fillStyle='#475569';
+            cx.fillText('R$ '+Number(v).toFixed(0), ox, oy);
+          });
+          // 2) total no centro
+          cx.textAlign='center'; cx.textBaseline='middle';
           cx.fillStyle='#94a3b8'; cx.font='600 11px -apple-system,"Segoe UI",sans-serif';
           cx.fillText('Total', mx, my-12);
           cx.fillStyle='#1e293b'; cx.font='800 17px -apple-system,"Segoe UI",sans-serif';
@@ -559,6 +582,7 @@
         plugins:[_centro],
         options:{
           responsive:true, maintainAspectRatio:false, cutout:'62%',
+          layout:{ padding:{ top:16, bottom:16, left:16 } }, // espaço pro valor R$ fora das fatias
           plugins:{
             legend:{ display:true, position:'right', labels:{ font:{size:11}, boxWidth:12, usePointStyle:true, padding:10 } },
             tooltip:{ callbacks:{ label:function(c){ var v=c.parsed; var pc=totR>0?Math.round(v/totR*100):0; return ' '+c.label+': '+fmtBRL(v)+' ('+pc+'%)'; } } }
