@@ -129,6 +129,30 @@
     return Object.keys(por).map(function(k){ return por[k]; })
       .sort(function(a,b){ return (b.valor-a.valor)||(b.qtd-a.qtd)||(a.nome||'').localeCompare(b.nome||''); });
   };
+  // agrega por TIPO de alvará (quanto de cada tipo: Inpi, Bombeiro, Funcionamento...).
+  // mesesArr: array de 'YYYY-MM'. Se vazio/null usa o mês passado em mesUnico.
+  // Retorna [{tipo, qtd, valor}] ordenado por valor desc.
+  window._gestaoAgregaTipos = function(mesesArr, mesUnico){
+    var eds = (typeof state!=='undefined' && state.edicoes_alvaras) || {};
+    var idx = (function(){ var m={}; try{ var tab=(typeof _gamTabela==='function')?_gamTabela():[]; tab.forEach(function(r){ if(r&&r.atividade) m[_norm(r.atividade)]=(+r.valor||0); }); }catch(e){} return m; })();
+    var meses = (mesesArr && mesesArr.length) ? mesesArr : (mesUnico ? [mesUnico] : null);
+    var por = {};
+    Object.keys(eds).forEach(function(aid){
+      var e = eds[aid];
+      if(!e || !e._editado_por || !e._editado_em) return;
+      if(typeof _gamConta==='function' && !_gamConta(e.status)) return;
+      var cm = (e._editado_em||'').slice(0,7);
+      if(meses && meses.indexOf(cm) < 0) return;
+      var u = (typeof _gamUser==='function') ? _gamUser(e._editado_por) : null; if(!u) return;
+      if(typeof _gamEhGestor==='function' && _gamEhGestor(u.cargo)) return;
+      var t = (e.tipo && String(e.tipo).trim()) || 'Sem tipo';
+      if(!por[t]) por[t] = {tipo:t, qtd:0, valor:0};
+      por[t].qtd++;
+      por[t].valor += window._gamValorDoTipo(e.tipo, idx);
+    });
+    return Object.keys(por).map(function(k){ return por[k]; })
+      .sort(function(a,b){ return (b.valor-a.valor)||(b.qtd-a.qtd); });
+  };
   window._gestaoPeriodoModo = window._gestaoPeriodoModo || 'mes'; // 'mes' | 'datas'
   window._gestaoDe = window._gestaoDe || '';           // 'YYYY-MM-DD'
   window._gestaoAte = window._gestaoAte || '';
@@ -230,6 +254,10 @@
     var antMap = {}; doAnt.forEach(function(r){ antMap[r.chave]=r; });
     var acumulado = window._gestaoAgrega(null);
     var accMap = {}; acumulado.forEach(function(r){ accMap[r.chave]=r; });
+    // paleta compartilhada (rosca do gráfico ↔ card de tipos ↔ chips): mesma linguagem de cor
+    var PAL_TIPO = ['#2B3A8C','#F5C518','#10B981','#8B5CF6','#F59E0B','#0891B2','#EC4899','#64748B'];
+    // quebra por TIPO de alvará no período ativo (feature nova)
+    var porTipo = window._gestaoAgregaTipos ? window._gestaoAgregaTipos(multi?selN:null, mesSel) : [];
 
     // agregados do mês e do mês anterior
     var totalMes = doMes.reduce(function(s,r){ return s+r.valor; }, 0);
@@ -265,6 +293,18 @@
                  : (sub ? '<div class="text-[11px] mt-1.5 text-slate-400">'+sub+'</div>' : ''))
         + '</div>';
     }
+    // card HERÓI "A pagar": número em amber + barra de progresso da folha (X% pago)
+    function kpiPagar(aPagar, pago, total, pct){
+      return '<div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-amber-400">'
+        + '<div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">A pagar</div>'
+        + '<div class="text-2xl font-bold text-amber-600 mt-1 leading-none">'+_fmt(aPagar)+'</div>'
+        + '<div class="mt-2 flex items-center gap-2">'
+        +   '<div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:'+pct+'%"></div></div>'
+        +   '<span class="text-[10px] font-bold text-emerald-600 shrink-0">'+pct+'% pago</span>'
+        + '</div>'
+        + '<div class="text-[10px] text-slate-400 mt-1">de '+_fmt(total)+' no total</div>'
+        + '</div>';
+    }
 
     return `
     <div class="p-6 max-w-6xl mx-auto space-y-5">
@@ -288,20 +328,19 @@
         ${multi ? '<button onclick="window._gestaoMesesSel=[];render()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100">✕ limpar seleção</button>' : '<span class="text-[11px] text-slate-400 ml-1">clique em 2+ meses pra consolidar o período</span>'}
       </div>
 
-      <!-- KPIs (com comparação vs mês anterior — só no modo 1 mês) -->
-      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      <!-- KPIs (5 cards; "A pagar" é o herói — com barra de progresso da folha) -->
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         ${kpi(multi?'Total do período':'Total produzido', _fmt(totalMes), multi?null:_delta(totalMes, totalAnt, true), multi?_esc(periodoLabel):null)}
-        ${kpi('A pagar', _fmt(totalAPagar), null, 'de '+_fmt(totalMes)+' · '+pctPago+'% pago', true)}
+        ${kpiPagar(totalAPagar, totalPago, totalMes, pctPago)}
         ${kpi('Já pago', _fmt(totalPago), null, pctPago+'% da folha')}
         ${kpi('Alvarás', String(qtdMes), multi?null:_delta(qtdMes, qtdAnt, true), multi?'no período':null)}
-        ${kpi('Ticket médio', _fmt(ticket), multi?null:_delta(ticket, ticketAnt, true), multi?'por alvará':null)}
         ${kpi('Média/pessoa', _fmt(mediaPessoa), multi?null:_delta(mediaPessoa, mediaAnt, true), multi?'no período':null)}
       </div>
 
       ${doMes.length===0 ? `<div class="bg-white rounded-xl shadow-sm p-12 text-center"><div class="text-4xl mb-2">🗓️</div><div class="font-bold text-slate-700">Nenhuma produtividade em ${_esc(periodoLabel)}</div><div class="text-sm text-slate-500 mt-1">Escolha outro período acima.</div></div>` : `
 
-      <!-- Destaque + Gráfico de evolução -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- Fila executiva: Destaque + Quebra por TIPO (lado a lado) -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl shadow-sm p-5 flex flex-col justify-center text-white relative overflow-hidden" style="background:linear-gradient(135deg,#2B3A8C,#141A42)">
           <div class="text-xs font-semibold uppercase tracking-wide" style="color:#F5C518">🏆 Destaque ${multi?'do período':'de '+_esc(mLbl(mesSel))}</div>
           <div class="flex items-center gap-3 mt-3">
@@ -314,18 +353,42 @@
           </div>
           ${(typeof window.zuzu==='function') ? '<div class="absolute -bottom-2 -right-2 opacity-90 pointer-events-none">'+window.zuzu({pose:'trofeu',anim:'sway',size:70,alt:'Zuzu'})+'</div>' : ''}
         </div>
-        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm p-4">
-          <div class="flex items-center justify-between mb-3 gap-2">
-            <h3 class="text-base font-bold text-slate-800">📊 Evolução</h3>
-            <div class="flex gap-1">
-              ${[{v:'valor_mes',t:'Últimos 6 meses'},{v:'valor_colab',t:'Por colaborador'}].map(function(o){
-                var on=(window._gestaoChartView||'valor_mes')===o.v;
-                return '<button onclick="window._gestaoChartView=\''+o.v+'\';render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold '+(on?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+o.t+'</button>';
-              }).join('')}
-            </div>
+        ${(function(){
+          if (!porTipo.length) return '<div class="bg-white rounded-2xl shadow-sm p-5 flex items-center justify-center text-sm text-slate-400">Sem tipos no período</div>';
+          var totT = porTipo.reduce(function(s,t){ return s+t.valor; }, 0) || 1;
+          var top5 = porTipo.slice(0,5);
+          var resto = porTipo.slice(5);
+          if (resto.length){ var rv=resto.reduce(function(s,t){return s+t.valor;},0), rq=resto.reduce(function(s,t){return s+t.qtd;},0); top5.push({tipo:'Outros ('+resto.length+')', valor:rv, qtd:rq, _outros:true}); }
+          var barra = top5.map(function(t,i){ var w=Math.round(t.valor/totT*100); return '<div title="'+_esc(t.tipo)+': '+_fmt(t.valor)+'" style="width:'+w+'%;background:'+PAL_TIPO[i%PAL_TIPO.length]+'"></div>'; }).join('');
+          var linhas = top5.map(function(t,i){ var pc=Math.round(t.valor/totT*100);
+            return '<div class="flex items-center gap-2 text-[13px] py-1">'
+              + '<span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:'+PAL_TIPO[i%PAL_TIPO.length]+'"></span>'
+              + '<span class="font-medium text-slate-700 truncate flex-1">'+_esc(t.tipo)+'</span>'
+              + '<span class="text-slate-400 tabular-nums w-8 text-right">'+t.qtd+'</span>'
+              + '<span class="font-bold text-slate-800 tabular-nums w-20 text-right">'+_fmt(t.valor)+'</span>'
+              + '<span class="text-slate-400 tabular-nums w-9 text-right">'+pc+'%</span>'
+              + '</div>';
+          }).join('');
+          return '<div class="bg-white rounded-2xl shadow-sm p-5">'
+            + '<div class="flex items-center justify-between mb-3"><h3 class="text-base font-bold text-slate-800">🏷️ Por tipo de alvará</h3><span class="text-[11px] text-slate-400">'+porTipo.length+' tipos</span></div>'
+            + '<div class="flex h-3 rounded-full overflow-hidden mb-3 bg-slate-100">'+barra+'</div>'
+            + linhas
+            + '</div>';
+        })()}
+      </div>
+
+      <!-- Gráfico único (largura total) com seletor de visão -->
+      <div class="bg-white rounded-2xl shadow-sm p-4">
+        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h3 class="text-base font-bold text-slate-800">📊 Visão gráfica</h3>
+          <div class="flex gap-1 flex-wrap">
+            ${[{v:'valor_mes',t:'Evolução'},{v:'valor_colab',t:'Por colaborador'},{v:'por_tipo',t:'Por tipo'},{v:'comparar_meses',t:'Comparar meses'}].map(function(o){
+              var on=(window._gestaoChartView||'valor_mes')===o.v;
+              return '<button onclick="window._gestaoChartView=\''+o.v+'\';render()" class="px-3 py-1.5 rounded-lg text-xs font-semibold '+(on?'bg-blue-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+o.t+'</button>';
+            }).join('')}
           </div>
-          <div style="position:relative;height:250px"><canvas id="gestao-chart"></canvas></div>
         </div>
+        <div style="position:relative;height:280px"><canvas id="gestao-chart"></canvas></div>
       </div>
 
       <!-- Tabela — a folha -->
@@ -333,7 +396,7 @@
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-              <tr><th class="text-left px-4 py-3 font-semibold">Colaborador</th><th class="text-center px-3 py-3 font-semibold">Alvarás</th><th class="text-right px-3 py-3 font-semibold">${multi?'Valor do período':'Valor do mês'}</th><th class="text-center px-3 py-3 font-semibold">${multi?'—':'vs '+_esc(nomeMesAnt)}</th><th class="text-left px-3 py-3 font-semibold">% do total</th><th class="text-center px-4 py-3 font-semibold">Pagamento</th></tr>
+              <tr><th class="text-left px-4 py-3 font-semibold">Colaborador</th><th class="text-center px-3 py-3 font-semibold">Alvarás</th><th class="text-right px-3 py-3 font-semibold">${multi?'Valor do período':'Valor do mês'}</th><th class="text-center px-3 py-3 font-semibold">${multi?'—':'vs '+_esc(nomeMesAnt)}</th><th class="text-right px-3 py-3 font-semibold">A pagar</th><th class="text-center px-4 py-3 font-semibold">Pagamento</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-50">
               ${doMes.map(function(r){
@@ -341,14 +404,19 @@
                 var detMes = multi ? selN[selN.length-1] : mesSel; // no multi, detalhe abre o mês mais recente
                 var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_esc(detMes)+"','"+_esc(r.nome||'').replace(/'/g,"\\'")+"')" : "";
                 var dr = multi ? null : _delta(r.valor, (antMap[r.chave]||{}).valor, true);
-                var pct = totalMes>0 ? Math.round(r.valor/totalMes*100) : 0;
                 // pago: single = toggle do mês; multi = quantos dos meses já pagos
-                var pagoCell;
+                var pagoCell, aPagarCell;
                 if (multi) {
                   var pagosN = selN.filter(function(m){ return window._gestaoPago(r.chave, m); }).length;
+                  // valor a pagar no período = soma dos meses ainda não pagos dessa pessoa
+                  var devido = selN.filter(function(m){ return !window._gestaoPago(r.chave, m); }).reduce(function(s,m){
+                    var rm = window._gestaoAgrega(m).filter(function(x){ return x.chave===r.chave; })[0]; return s + (rm?rm.valor:0);
+                  }, 0);
+                  aPagarCell = devido>0 ? '<span class="font-bold text-rose-600 tabular-nums">'+_fmt(devido)+'</span>' : '<span class="text-emerald-600 font-semibold">✓ quitado</span>';
                   pagoCell = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold '+(pagosN===selN.length?'bg-emerald-100 text-emerald-700':(pagosN>0?'bg-amber-100 text-amber-700':'bg-rose-50 text-rose-600'))+'" title="pago em '+pagosN+' de '+selN.length+' meses">'+pagosN+'/'+selN.length+'</span>';
                 } else {
                   var pago = window._gestaoPago(r.chave, mesSel);
+                  aPagarCell = pago ? '<span class="text-emerald-600 font-semibold">✓ quitado</span>' : '<span class="font-bold text-rose-600 tabular-nums">'+_fmt(r.valor)+'</span>';
                   pagoCell = '<button onclick="event.stopPropagation();window._gestaoMarcarPago(\''+ck+'\',\''+_esc(mesSel)+'\','+(pago?'false':'true')+')" class="px-3 py-1.5 rounded-lg text-xs font-bold '+(pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100')+'">'+(pago?'✓ Pago':'A pagar')+'</button>';
                 }
                 return `<tr class="hover:bg-blue-50 cursor-pointer" onclick="${vd}" title="Clique para ver os alvarás">
@@ -356,12 +424,12 @@
                   <td class="text-center px-3 py-3 text-slate-600">${r.qtd}</td>
                   <td class="text-right px-3 py-3 font-bold text-slate-800">${_fmt(r.valor)}</td>
                   <td class="text-center px-3 py-3 text-xs font-semibold ${dr?dr.cls:'text-slate-300'}">${dr?(dr.arr+' '+dr.txt):'—'}</td>
-                  <td class="px-3 py-3"><div class="flex items-center gap-2"><div class="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden min-w-[40px]"><div class="h-full bg-blue-500" style="width:${pct}%"></div></div><span class="text-[11px] text-slate-500 w-8 text-right">${pct}%</span></div></td>
+                  <td class="text-right px-3 py-3">${aPagarCell}</td>
                   <td class="text-center px-4 py-3">${pagoCell}</td>
                 </tr>`;
               }).join('')}
             </tbody>
-            <tfoot class="bg-slate-50 font-bold"><tr><td class="px-4 py-3 text-slate-700">Total</td><td class="text-center px-3 py-3 text-slate-600">${qtdMes}</td><td class="text-right px-3 py-3 text-slate-800">${_fmt(totalMes)}</td><td></td><td class="px-3 py-3 text-[11px] text-slate-400">100%</td><td></td></tr></tfoot>
+            <tfoot class="bg-slate-50 font-bold"><tr><td class="px-4 py-3 text-slate-700">Total</td><td class="text-center px-3 py-3 text-slate-600">${qtdMes}</td><td class="text-right px-3 py-3 text-slate-800">${_fmt(totalMes)}</td><td class="text-center px-3 py-3 text-[10px] text-emerald-600">${_fmt(totalPago)} pago</td><td class="text-right px-3 py-3 text-rose-600">${_fmt(totalAPagar)}</td><td></td></tr></tfoot>
           </table>
         </div>
       </div>
@@ -377,17 +445,30 @@
     var mesSel = window._gestaoMes || ((typeof _gamMesAtual==='function')?_gamMesAtual():'');
     var COR = '#2B3A8C', COR2 = '#F5C518', COR3 = '#10b981';
     if (view === 'valor_colab' || view === 'alv_colab') {
-      // respeita o período ativo (1 mês OU vários meses consolidados)
+      // respeita o período ativo (1 mês OU vários meses consolidados). Barras HORIZONTAIS (nomes cabem melhor).
       var selMulti = (window._gestaoMesesSel||[]);
       var multiC = selMulti.length >= 2;
       var r = multiC ? window._gestaoAgregaMeses(selMulti) : window._gestaoAgrega(mesSel);
       var rotulo = multiC ? (selMulti.length+' meses') : mesSel;
-      return { type:'bar',
+      return { type:'bar', horizontal:true,
         labels: r.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
         data: r.map(function(x){ return view==='valor_colab' ? x.valor : x.qtd; }),
         label: (view==='valor_colab' ? 'Valor (R$) — ' : 'Alvarás — ') + rotulo,
         cor: COR, money: view==='valor_colab',
-        meta: r.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes: porDatas?null:mesSel}; }) };
+        meta: r.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes: multiC?null:mesSel}; }) };
+    }
+    if (view === 'por_tipo') {
+      // ROSCA: composição do faturamento por tipo de alvará no período ativo
+      var selT = (window._gestaoMesesSel||[]);
+      var multiT = selT.length >= 2;
+      var tipos = window._gestaoAgregaTipos ? window._gestaoAgregaTipos(multiT?selT:null, mesSel) : [];
+      var PAL = ['#2B3A8C','#F5C518','#10B981','#8B5CF6','#F59E0B','#0891B2','#EC4899','#64748B'];
+      return { type:'doughnut', money:true,
+        labels: tipos.map(function(t){ return t.tipo; }),
+        data: tipos.map(function(t){ return t.valor; }),
+        cores: tipos.map(function(t,i){ return PAL[i%PAL.length]; }),
+        totalRosca: tipos.reduce(function(s,t){ return s+t.valor; }, 0),
+        metaTipos: tipos };
     }
     if (view === 'acumulado_colab') {
       var a = window._gestaoAgrega(null);
@@ -436,21 +517,55 @@
     var money = d.money;
     var fmtBRL = function(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); };
     var fmtLabel = function(v){ return money ? ('R$ '+(Number(v)||0).toFixed(0)) : String(v); };
-    // plugin: valores SEMPRE visíveis (acima da barra / do ponto)
+    // plugin: valores SEMPRE visíveis (acima da barra vertical / à direita da horizontal)
+    var _horiz = !!d.horizontal;
     var _valLabels = {
       id:'gestaoValLabels',
       afterDatasetsDraw: function(chart){
         var cx = chart.ctx; var ds = chart.data.datasets[0];
         var meta = chart.getDatasetMeta(0); if (meta.hidden) return;
-        cx.save(); cx.font = '700 11px -apple-system,"Segoe UI",sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+        cx.save(); cx.font = '700 11px -apple-system,"Segoe UI",sans-serif';
         cx.fillStyle = '#1e293b';
         meta.data.forEach(function(el,i){
           var v = ds.data[i]; if (v==null) return;
-          cx.fillText(fmtLabel(v), el.x, el.y - 6);
+          if (_horiz){ cx.textAlign='left'; cx.textBaseline='middle'; cx.fillText(fmtLabel(v), el.x + 6, el.y); }
+          else { cx.textAlign='center'; cx.textBaseline='bottom'; cx.fillText(fmtLabel(v), el.x, el.y - 6); }
         });
         cx.restore();
       }
     };
+    // ---- modo ROSCA (por tipo de alvará) ----
+    if (d.type === 'doughnut') {
+      if (!d.data.length) { return; }
+      var totR = d.totalRosca || 0;
+      // plugin: total no centro da rosca
+      var _centro = {
+        id:'gestaoCentroRosca',
+        afterDraw: function(chart){
+          var cx = chart.ctx; var area = chart.chartArea;
+          var mx = (area.left+area.right)/2, my = (area.top+area.bottom)/2;
+          cx.save(); cx.textAlign='center'; cx.textBaseline='middle';
+          cx.fillStyle='#94a3b8'; cx.font='600 11px -apple-system,"Segoe UI",sans-serif';
+          cx.fillText('Total', mx, my-12);
+          cx.fillStyle='#1e293b'; cx.font='800 17px -apple-system,"Segoe UI",sans-serif';
+          cx.fillText(fmtBRL(totR), mx, my+6);
+          cx.restore();
+        }
+      };
+      window._gestaoChart = new Chart(ctx, {
+        type:'doughnut',
+        data:{ labels:d.labels, datasets:[{ data:d.data, backgroundColor:d.cores, borderColor:'#fff', borderWidth:2, hoverOffset:6 }] },
+        plugins:[_centro],
+        options:{
+          responsive:true, maintainAspectRatio:false, cutout:'62%',
+          plugins:{
+            legend:{ display:true, position:'right', labels:{ font:{size:11}, boxWidth:12, usePointStyle:true, padding:10 } },
+            tooltip:{ callbacks:{ label:function(c){ var v=c.parsed; var pc=totR>0?Math.round(v/totR*100):0; return ' '+c.label+': '+fmtBRL(v)+' ('+pc+'%)'; } } }
+          }
+        }
+      });
+      return;
+    }
     // ---- modo MULTI-MÊS (barras agrupadas: colaborador × mês) ----
     if (d.multi) {
       window._gestaoChart = new Chart(ctx, {
@@ -479,29 +594,33 @@
         hoverBackgroundColor: d.type==='bar' ? '#3b4dbf' : undefined
       }]},
       plugins: [_valLabels],
-      options: {
-        responsive:true, maintainAspectRatio:false,
-        layout:{ padding:{ top: 22 } }, // espaço pro valor acima da barra
-        onClick: function(evt, els){
-          if (!els || !els.length) return;
-          var idx = els[0].index;
-          var m = d.meta && d.meta[idx];
-          if (!m) return;
-          if (m.kind === 'colab' && typeof window._gestaoVerDetalhe === 'function') {
-            window._gestaoVerDetalhe(m.chave, m.mes, m.nome);
-          } else if (m.kind === 'mes') {
-            window._gestaoMes = m.mes; window._gestaoChartView = 'valor_colab'; render();
-          }
-        },
-        onHover: function(e, els){ if(e.native&&e.native.target) e.native.target.style.cursor = els.length ? 'pointer':'default'; },
-        plugins:{ legend:{display:false},
-          tooltip:{ callbacks:{
-            label:function(c){ var v=c.parsed.y!=null?c.parsed.y:c.parsed; return money?fmtBRL(v):(v+' alvará(s)'); },
-            afterLabel:function(){ return d.meta&&d.meta[0]&&d.meta[0].kind==='colab' ? '🔍 clique pra ver os alvarás' : '🔍 clique pra ver o mês'; }
-          } } },
-        scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){ return money?('R$ '+v):v; }, font:{size:11} }, grid:{color:'#eef1f7'} },
-                 x:{ ticks:{font:{size:11}}, grid:{display:false} } }
-      }
+      options: (function(){
+        var valAxis = { beginAtZero:true, ticks:{ callback:function(v){ return money?('R$ '+v):v; }, font:{size:11} }, grid:{color:'#eef1f7'} };
+        var catAxis = { ticks:{font:{size:11}}, grid:{display:false} };
+        return {
+          responsive:true, maintainAspectRatio:false,
+          indexAxis: _horiz ? 'y' : 'x',
+          layout:{ padding: _horiz ? { right: 54 } : { top: 22 } }, // espaço pro valor (direita se horizontal, topo se vertical)
+          onClick: function(evt, els){
+            if (!els || !els.length) return;
+            var idx = els[0].index;
+            var m = d.meta && d.meta[idx];
+            if (!m) return;
+            if (m.kind === 'colab' && typeof window._gestaoVerDetalhe === 'function') {
+              window._gestaoVerDetalhe(m.chave, m.mes, m.nome);
+            } else if (m.kind === 'mes') {
+              window._gestaoMes = m.mes; window._gestaoChartView = 'valor_colab'; render();
+            }
+          },
+          onHover: function(e, els){ if(e.native&&e.native.target) e.native.target.style.cursor = els.length ? 'pointer':'default'; },
+          plugins:{ legend:{display:false},
+            tooltip:{ callbacks:{
+              label:function(c){ var v=(c.parsed.x!=null&&_horiz)?c.parsed.x:(c.parsed.y!=null?c.parsed.y:c.parsed); return money?fmtBRL(v):(v+' alvará(s)'); },
+              afterLabel:function(){ return d.meta&&d.meta[0]&&d.meta[0].kind==='colab' ? '🔍 clique pra ver os alvarás' : '🔍 clique pra ver o mês'; }
+            } } },
+          scales: _horiz ? { x: valAxis, y: catAxis } : { y: valAxis, x: catAxis }
+        };
+      })()
     });
   };
 
