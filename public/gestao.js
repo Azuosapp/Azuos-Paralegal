@@ -225,14 +225,16 @@
         labels: r.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
         data: r.map(function(x){ return view==='valor_colab' ? x.valor : x.qtd; }),
         label: view==='valor_colab' ? 'Valor (R$) — '+mesSel : 'Alvarás — '+mesSel,
-        cor: COR, money: view==='valor_colab' };
+        cor: COR, money: view==='valor_colab',
+        meta: r.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes:mesSel}; }) };
     }
     if (view === 'acumulado_colab') {
       var a = window._gestaoAgrega(null);
       return { type:'bar',
         labels: a.map(function(x){ return (x.nome||'').split(' ')[0] || x.nome; }),
         data: a.map(function(x){ return x.valor; }),
-        label: 'Acumulado total (R$)', cor: COR2, money: true };
+        label: 'Acumulado total (R$)', cor: COR2, money: true,
+        meta: a.map(function(x){ return {kind:'colab', chave:x.chave, nome:x.nome, mes:null}; }) };
     }
     // por mês (evolução): valor_mes / alv_mes
     var meses = (typeof _gamMeses==='function') ? _gamMeses().slice().sort() : [];
@@ -243,7 +245,8 @@
     });
     return { type:'line', labels: meses, data: dataM,
       label: view==='valor_mes' ? 'Valor total (R$)/mês' : 'Alvarás/mês',
-      cor: view==='valor_mes' ? COR3 : COR, money: view==='valor_mes' };
+      cor: view==='valor_mes' ? COR3 : COR, money: view==='valor_mes',
+      meta: meses.map(function(m){ return {kind:'mes', mes:m}; }) };
   }
 
   window._gestaoChart = window._gestaoChart || null;
@@ -254,18 +257,52 @@
     var d = _gestaoChartData();
     var money = d.money;
     var fmtBRL = function(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); };
+    var fmtLabel = function(v){ return money ? ('R$ '+(Number(v)||0).toFixed(0)) : String(v); };
+    // plugin: valores SEMPRE visíveis (acima da barra / do ponto)
+    var _valLabels = {
+      id:'gestaoValLabels',
+      afterDatasetsDraw: function(chart){
+        var cx = chart.ctx; var ds = chart.data.datasets[0];
+        var meta = chart.getDatasetMeta(0); if (meta.hidden) return;
+        cx.save(); cx.font = '700 11px -apple-system,"Segoe UI",sans-serif'; cx.textAlign='center'; cx.textBaseline='bottom';
+        cx.fillStyle = '#1e293b';
+        meta.data.forEach(function(el,i){
+          var v = ds.data[i]; if (v==null) return;
+          cx.fillText(fmtLabel(v), el.x, el.y - 6);
+        });
+        cx.restore();
+      }
+    };
     window._gestaoChart = new Chart(ctx, {
       type: d.type,
       data: { labels: d.labels, datasets: [{
         label: d.label, data: d.data,
         backgroundColor: d.type==='line' ? 'rgba(43,58,140,.08)' : d.cor,
         borderColor: d.cor, borderWidth: d.type==='line'?2:0, borderRadius: d.type==='bar'?6:0,
-        fill: d.type==='line', tension:.3, pointBackgroundColor: d.cor, pointRadius: d.type==='line'?4:0
+        fill: d.type==='line', tension:.3, pointBackgroundColor: d.cor, pointRadius: d.type==='line'?4:0,
+        hoverBackgroundColor: d.type==='bar' ? '#3b4dbf' : undefined
       }]},
+      plugins: [_valLabels],
       options: {
         responsive:true, maintainAspectRatio:false,
+        layout:{ padding:{ top: 22 } }, // espaço pro valor acima da barra
+        onClick: function(evt, els){
+          if (!els || !els.length) return;
+          var idx = els[0].index;
+          var m = d.meta && d.meta[idx];
+          if (!m) return;
+          if (m.kind === 'colab' && typeof window._gestaoVerDetalhe === 'function') {
+            window._gestaoVerDetalhe(m.chave, m.mes, m.nome);
+          } else if (m.kind === 'mes') {
+            window._gestaoMes = m.mes; window._gestaoChartView = 'valor_colab'; render();
+          }
+        },
+        onHover: function(e, els){ if(e.native&&e.native.target) e.native.target.style.cursor = els.length ? 'pointer':'default'; },
         plugins:{ legend:{display:false},
-          tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y!=null?c.parsed.y:c.parsed; return money?fmtBRL(v):(v+' alvará(s)'); } } } },
+          tooltip:{ callbacks:{
+            label:function(c){ var v=c.parsed.y!=null?c.parsed.y:c.parsed; return money?fmtBRL(v):(v+' alvará(s)'); },
+            afterLabel:function(){ return d.meta&&d.meta[0]&&d.meta[0].kind==='colab' ? '🔍 clique pra ver os alvarás' : '🔍 clique pra ver o mês'; }
+          } } },
         scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){ return money?('R$ '+v):v; }, font:{size:11} }, grid:{color:'#eef1f7'} },
                  x:{ ticks:{font:{size:11}}, grid:{display:false} } }
       }
