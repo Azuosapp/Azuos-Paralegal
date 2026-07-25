@@ -4837,12 +4837,22 @@ function renderEmExecucao() {
   const empresasAtivo = state.empresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
   let emExec = empresasAtivo.filter(e => cienciaPorKey[empresaKey(e)]).map(e => {
     const cienciasDela = cienciaPorKey[empresaKey(e)];
-    // Pega ciência específica do usuário (paralegal) ou mostra todas (admin)
-    const cienciaUsr = cienciasDela.find(c => _ehMeuNome(c.ciencia_por)) || cienciasDela[0];
+    // DEDUP por pessoa (o array acumula 1 entrada por EVENTO — a mesma pessoa
+    // pode aparecer várias vezes por syncs/migrações antigas). Mantém a ciência
+    // mais recente de cada pessoa e ordena por data desc. Evita a poluição de
+    // chips repetidos na coluna "Ciência por".
+    const _porPessoa = {};
+    cienciasDela.forEach(c => {
+      const k = c.ciencia_por;
+      if (!_porPessoa[k] || (c.ciencia_em||'') > (_porPessoa[k].ciencia_em||'')) _porPessoa[k] = c;
+    });
+    const cienciasUnicas = Object.values(_porPessoa).sort((a,b) => (b.ciencia_em||'').localeCompare(a.ciencia_em||''));
+    // Pega ciência específica do usuário (paralegal) ou a mais recente (admin)
+    const cienciaUsr = cienciasUnicas.find(c => _ehMeuNome(c.ciencia_por)) || cienciasUnicas[0];
     return {
       ...e,
-      ciencias: cienciasDela, // todas
-      ciencia: cienciaUsr // a do usuário atual (ou primeira)
+      ciencias: cienciasUnicas, // já deduplicado por pessoa + ordenado desc
+      ciencia: cienciaUsr // a do usuário atual (ou a mais recente)
     };
   });
 
@@ -4917,7 +4927,15 @@ function renderEmExecucao() {
                   <td class="px-3 py-2 font-medium text-blue-700 hover:underline max-w-[280px] truncate" title="${esc(e.nome)}">${esc(e.nome)}</td>
                   <td class="px-3 py-2 text-xs text-slate-500 font-mono">${esc(e.cnpj||'-')}</td>
                   <td class="px-3 py-2 text-xs text-slate-600">${esc(e.responsavel||'-')}</td>
-                  <td class="px-3 py-2 text-xs">${ehAdmin && e.ciencias.length > 1 ? e.ciencias.map(c => `<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-semibold mr-1 mb-0.5 inline-block">${esc(c.ciencia_por)}</span>`).join('') : `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-semibold">${esc(e.ciencia.ciencia_por)}</span>`}</td>
+                  <td class="px-3 py-2 text-xs whitespace-nowrap">${(() => {
+                    const us = e.ciencias; // já deduplicado por pessoa + ordenado desc
+                    if (!us || !us.length) return '<span class="text-slate-400">-</span>';
+                    const nome = String(us[0].ciencia_por||'').split('@')[0];
+                    const resto = us.slice(1);
+                    const chip = `<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium max-w-[160px] align-middle"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span><span class="truncate" title="${esc(us[0].ciencia_por)}">${esc(nome)}</span></span>`;
+                    const mais = resto.length ? `<span class="ml-1 px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-semibold cursor-help align-middle" title="Também deram ciência:\n${esc(resto.map(c=>c.ciencia_por).join('\n'))}">+${resto.length}</span>` : '';
+                    return chip + mais;
+                  })()}</td>
                   <td class="px-3 py-2 text-xs text-slate-600">${esc(dataFmt)}</td>
                   <td class="px-3 py-2 text-center font-bold text-blue-600">${alvs.length}</td>
                   <td class="px-3 py-2 text-right text-xs whitespace-nowrap" onclick="event.stopPropagation()">
