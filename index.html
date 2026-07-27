@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.50 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.51 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3997,6 +3997,26 @@ function _gerarSenhaTemp(){
   for(var i=0;i<8;i++) s+=abc[Math.floor(Math.random()*abc.length)];
   return 'Azuos-'+s;
 }
+// Garante que exista um cadastro de usuario com o NOME correto (a tela principal
+// mostra state.sessao.nome; sem cadastro casando por e-mail, cai no e-mail).
+function _ensureUsuarioProfile(nome, email){
+  try{
+    email=(email||'').trim().toLowerCase(); nome=(nome||'').trim();
+    if(!email) return;
+    if(!Array.isArray(state.usuarios)) state.usuarios = state.usuarios ? Object.values(state.usuarios) : [];
+    var ex=state.usuarios.find(function(u){ return u && (u.email||'').toLowerCase()===email; });
+    if(ex){
+      if(nome){ ex.nome=nome; }          // corrige nome se ja existe
+      if(!ex.cargo) ex.cargo='Paralegal';
+      ex.ativo=true;
+    } else {
+      state.usuarios.push({ id:'u_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+        nome: nome || email.split('@')[0], email: email, cargo:'Paralegal', ativo:true });
+    }
+    try{ if(typeof saveState==='function') saveState(); }catch(e){}
+    try{ if(typeof _fsWriteDebounced==='function') _fsWriteDebounced(); }catch(e){}
+  }catch(e){ console.warn('[acessos] ensureUsuario:', e && e.message); }
+}
 async function _acessoExecutar(tipo, nome, email){
   if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode gerenciar acessos.'); return; }
   if(!window.fbDB || !window.fbAuth){ alert('Sem conexão com o servidor. Tente novamente.'); return; }
@@ -4013,7 +4033,9 @@ async function _acessoExecutar(tipo, nome, email){
       var sec=_secApp();
       try{ await sec.auth().setPersistence(firebase.auth.Auth.Persistence.NONE); }catch(e){}
       try{
-        await sec.auth().createUserWithEmailAndPassword(email, senha);
+        var cred = await sec.auth().createUserWithEmailAndPassword(email, senha);
+        // grava o NOME de exibicao na conta (senao a tela principal mostra o e-mail)
+        try{ if(nome && cred && cred.user) await cred.user.updateProfile({ displayName: nome }); }catch(e){}
         try{ await sec.auth().signOut(); }catch(e){}
         resultado='conta criada'; senhaOut=senha;
       }catch(err){
@@ -4032,6 +4054,9 @@ async function _acessoExecutar(tipo, nome, email){
       : c==='auth/invalid-email' ? 'e-mail inválido'
       : String((err&&err.message)||err);
   }
+
+  // garante o cadastro do usuario (nome + cargo) para a tela principal mostrar o NOME
+  if(status==='feito') { try{ _ensureUsuarioProfile(nome, email); }catch(e){} }
 
   var id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
   var rec={ tipo:tipo, nome:nome, email:email, cargo:'Paralegal', status:status, resultado:resultado,
