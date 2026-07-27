@@ -68,10 +68,8 @@ function _fsCollectFromState() {
   if (state.sessao && state.sessao.cargo === 'Administrador' && typeof state.trava_planilha !== 'undefined') {
     out.trava_planilha = !!state.trava_planilha;
   }
-  // [v6.0.46] pedidos de acesso (criar/resetar senha): so o admin grava.
-  if (state.sessao && state.sessao.cargo === 'Administrador' && Array.isArray(state.admin_acessos)) {
-    out.admin_acessos = state.admin_acessos;
-  }
+  // [v6.0.47] pedidos de acesso saem do doc 'shared' (disputado) e vao para a colecao
+  // propria 'azuos_acessos'. Nao coletamos mais admin_acessos aqui.
   return out;
 }
 
@@ -139,7 +137,7 @@ function _fsApplyToState(remote) {
   }
   // Campos simples: substitui se diferente
   // v6.0.8: merge por id — nao substitui arrays em bloco (evita perder itens criados em paralelo)
-  ['empresas_manuais','historico','manutencao','admin_acessos'].forEach(k => {
+  ['empresas_manuais','historico','manutencao'].forEach(k => {
     if (remote[k] !== undefined) {
       var _m = _uniPorId(state[k], remote[k]);
       if (k === 'historico') _m.sort(function(a,b){ var da=(a&&a.data)||'', db=(b&&b.data)||''; return db<da?-1:(db>da?1:0); });

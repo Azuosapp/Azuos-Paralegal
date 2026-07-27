@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.46 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.47 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3963,33 +3963,44 @@ function renderUsuarios(){
       </div>
     </div>`;
 }
-function attachUsuarios(){}
+function attachUsuarios(){ try{ _acessosSubscribe(); }catch(e){} }
 
-// [v6.0.46] Painel de Acesso — pedidos processados pelo motor (GitHub Actions + admin SDK).
-function _acessoLista(){ return (state.admin_acessos||[]).slice().sort(function(a,b){ return (b.solicitado_em||'').localeCompare(a.solicitado_em||''); }); }
+// [v6.0.47] Painel de Acesso — pedidos vao para a COLECAO PROPRIA 'azuos_acessos'
+// (fora do doc 'shared', que e disputado e apagava o pedido antes do motor ler).
+// O motor (GitHub Actions + admin SDK) le/atualiza essa colecao; o app ouve em
+// tempo real via onSnapshot.
+var _COL_ACESSOS = 'azuos_acessos';
+window._acessosCache = window._acessosCache || [];
+function _acessosSubscribe(){
+  try{
+    if(!(window.fbDB && state.sessao && state.sessao.cargo==='Administrador')) return;
+    if(window._acessosUnsub) return; // ja inscrito
+    window._acessosUnsub = window.fbDB.collection(_COL_ACESSOS).onSnapshot(function(qs){
+      var arr=[]; qs.forEach(function(d){ arr.push(Object.assign({id:d.id}, d.data())); });
+      window._acessosCache = arr;
+      try{ if(state.page==='usuarios' && typeof render==='function') render(); }catch(e){}
+    }, function(err){ console.warn('[acessos] onSnapshot:', err && err.message); });
+  }catch(e){}
+}
+function _acessoLista(){ return (window._acessosCache||[]).filter(function(p){ return p && !p.arquivado; }).sort(function(a,b){ return (b.solicitado_em||'').localeCompare(a.solicitado_em||''); }); }
 function _acessoPush(tipo, nome, email){
   if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode gerenciar acessos.'); return false; }
+  if(!window.fbDB){ alert('Sem conexão com o servidor. Tente novamente.'); return false; }
   email=(email||'').trim().toLowerCase();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ alert('Informe um e-mail válido.'); return false; }
-  state.admin_acessos = state.admin_acessos || [];
-  // evita 2 pedidos pendentes para o mesmo e-mail
-  var jaTem = state.admin_acessos.find(function(x){ return x && (x.email||'')===email && x.status!=='feito' && x.status!=='erro'; });
+  var jaTem=(window._acessosCache||[]).find(function(x){ return x && (x.email||'')===email && x.status!=='feito' && x.status!=='erro' && !x.arquivado; });
   if(jaTem){ alert('Já existe um pedido em andamento para '+email+'. Aguarde processar.'); return false; }
-  state.admin_acessos.unshift({
-    id: 'acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-    tipo: tipo, nome: (nome||'').trim(), email: email, cargo:'Paralegal',
-    status:'pendente', solicitado_por: (state.sessao&&state.sessao.email)||'', solicitado_em: new Date().toISOString()
-  });
-  try{ saveState(); }catch(e){}
-  try{ render(); }catch(e){}
-  if(typeof toast==='function') toast('📨 Pedido enviado. Processa em segundos a poucos minutos — a senha aparece aqui.', 'blue');
+  var id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  var req={ tipo:tipo, nome:(nome||'').trim(), email:email, cargo:'Paralegal', status:'pendente', solicitado_por:(state.sessao&&state.sessao.email)||'', solicitado_em:new Date().toISOString() };
+  window.fbDB.collection(_COL_ACESSOS).doc(id).set(req)
+    .then(function(){ if(typeof toast==='function') toast('📨 Pedido enviado. Processa em segundos a poucos minutos — a senha aparece aqui.', 'blue'); })
+    .catch(function(e){ alert('Falha ao enviar o pedido: '+((e&&e.message)||e)); });
   return true;
 }
 function acessoCriar(){
   var nome=((document.getElementById('acesso-nome')||{}).value)||'';
   var email=((document.getElementById('acesso-email')||{}).value)||'';
   if(!email.trim()){ alert('Informe o e-mail pessoal da pessoa.'); return; }
-  // 'criar' vira reset automaticamente no motor se a conta ja existir
   if(_acessoPush('criar', nome, email)){ var n=document.getElementById('acesso-nome'), e=document.getElementById('acesso-email'); if(n)n.value=''; if(e)e.value=''; }
 }
 function acessoReset(email, nome){
@@ -3997,13 +4008,12 @@ function acessoReset(email, nome){
   if(confirm('Redefinir a senha de '+(nome||email)+'?\n\nUma senha temporária nova será gerada e aparecerá aqui para você repassar.')) _acessoPush('reset', nome, email);
 }
 function acessoCopiar(id){
-  var p=(state.admin_acessos||[]).find(function(x){return x && x.id===id;});
+  var p=(window._acessosCache||[]).find(function(x){return x && x.id===id;});
   if(p && p.senha_temp && navigator.clipboard){ navigator.clipboard.writeText(p.senha_temp).then(function(){ if(typeof toast==='function') toast('Senha copiada!','emerald'); }); }
 }
 function acessoArquivar(id){
-  state.admin_acessos=(state.admin_acessos||[]).filter(function(x){return x && x.id!==id;});
-  try{ saveState(); }catch(e){}
-  try{ render(); }catch(e){}
+  if(!window.fbDB) return;
+  window.fbDB.collection(_COL_ACESSOS).doc(id).set({arquivado:true},{merge:true}).catch(function(e){ console.warn('[acessos] arquivar:', e && e.message); });
 }
 
 /* ===== v6.3.0 — Reenquadramento de foto (arrastar + zoom antes de salvar) ===== */

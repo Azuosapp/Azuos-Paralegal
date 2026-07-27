@@ -25,7 +25,7 @@ initializeApp({ credential: cert(sa) });
 const db = getFirestore();
 const auth = getAuth();
 
-const ref = db.collection('azuos').doc('shared');
+const COL = db.collection('azuos_acessos'); // colecao propria (fora do doc 'shared')
 
 // senha temporaria legivel e forte o suficiente (>= 6): prefixo + aleatorio
 function senhaTemp() {
@@ -75,41 +75,25 @@ async function processarUm(p) {
   }
 }
 
-// snapshot inicial (fora da transacao) para saber o que processar
-const snap0 = await ref.get();
-const data0 = snap0.exists ? (snap0.data() || {}) : {};
-const lista0 = Array.isArray(data0.admin_acessos) ? data0.admin_acessos : [];
-const pendentes = lista0.filter(p => p && p.status !== 'feito' && p.status !== 'erro' && !p._processado_em);
+// le a colecao inteira e filtra os pendentes (colecao pequena)
+const qs = await COL.get();
+const pendentes = [];
+qs.forEach(doc => {
+  const p = { id: doc.id, ...doc.data() };
+  if (p.status !== 'feito' && p.status !== 'erro' && !p._processado_em && !p.arquivado) pendentes.push(p);
+});
 
 if (!pendentes.length) { console.log('Nenhum pedido de acesso pendente.'); process.exit(0); }
 console.log(`Pedidos pendentes: ${pendentes.length}`);
 
-// processa cada um (fora da transacao — chamadas ao Auth), guardando resultados por id
-const resultados = {};
+// processa e grava o resultado em cada doc (por documento — sem disputa)
 for (const p of pendentes) {
   const r = await processarUm(p);
-  resultados[p.id] = r;
+  const agora = new Date().toISOString();
+  const patch = r.ok
+    ? { status: 'feito', senha_temp: r.senha_temp, uid: r.uid, resultado: r.acao, _processado_em: agora }
+    : { status: 'erro', resultado: r.erro, _processado_em: agora };
+  await COL.doc(p.id).set(patch, { merge: true });
   console.log(`- ${p.id} (${p.tipo} ${p.email}): ${r.ok ? 'OK — ' + r.acao : 'ERRO — ' + r.erro}`);
 }
-
-// grava os resultados de volta em transacao (nao sobrescreve pedidos novos)
-await db.runTransaction(async (tx) => {
-  const snap = await tx.get(ref);
-  const data = snap.data() || {};
-  const lista = Array.isArray(data.admin_acessos) ? data.admin_acessos.slice() : [];
-  let mudou = false;
-  for (const id of Object.keys(resultados)) {
-    const i = lista.findIndex(x => x && x.id === id);
-    if (i < 0) continue;
-    const r = resultados[id];
-    const agora = new Date().toISOString();
-    if (r.ok) {
-      lista[i] = { ...lista[i], status: 'feito', senha_temp: r.senha_temp, uid: r.uid, resultado: r.acao, _processado_em: agora };
-    } else {
-      lista[i] = { ...lista[i], status: 'erro', resultado: r.erro, _processado_em: agora };
-    }
-    mudou = true;
-  }
-  if (mudou) tx.update(ref, { admin_acessos: lista });
-});
 console.log('Resultados gravados.');
