@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.1 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2028,6 +2028,16 @@ function _mergeUsuariosPreservando(remoteList){
     });
   }catch(e){ console.warn('[mergeUsuariosPreservando]', e&&e.message); }
 }
+// [v6.1.1] Interruptor do modo "app dono dos alvaras" (Drive so empresas).
+// Desligado por padrao. Liga visitando com ?alvcloud=1 (fica salvo neste navegador).
+// Para desligar: ?alvcloud=0.
+function _alvCloudLigado(){
+  try{
+    if(/[?&]alvcloud=1/.test(location.search)) localStorage.setItem('azuos_alvcloud','1');
+    if(/[?&]alvcloud=0/.test(location.search)) localStorage.removeItem('azuos_alvcloud');
+    return localStorage.getItem('azuos_alvcloud')==='1';
+  }catch(e){ return false; }
+}
 async function handleSyncDriveAuto() {
   try {
     console.log('[Auto-sync] iniciando...');
@@ -2061,8 +2071,22 @@ async function handleSyncDriveAuto() {
     const todasEmpresas = dados.empresas || [];
     state.empresas = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
     const idsAtivo = new Set(state.empresas.map(e => e.id));
-    // Filtra alvarás para apenas os de empresas ATIVO + remove CERTIFICADO DIGITAL
-    state.alvaras = (dados.alvaras || []).filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
+    // [v6.1.1] Alvarás: no modo "app dono", vêm da NUVEM (Drive só empresas).
+    let _alvBaseCloud = null;
+    if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudLoad === 'function') {
+      try { _alvBaseCloud = await window._alvarasCloudLoad(); } catch(e) { _alvBaseCloud = null; }
+    }
+    if (_alvBaseCloud && _alvBaseCloud.length) {
+      state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
+      console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
+    } else {
+      // Filtra alvarás para apenas os de empresas ATIVO + remove CERTIFICADO DIGITAL
+      state.alvaras = (dados.alvaras || []).filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
+      // 1ª vez com o modo ligado e nuvem vazia: migra a base atual para a nuvem.
+      if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudSave === 'function') {
+        try { window._alvarasCloudSave(state.alvaras); } catch(e){}
+      }
+    }
     // Restaura dados do usuário (revisado, conversas, anexos, obs)
     let restaurados = 0;
     state.alvaras.forEach(a => {
@@ -2167,8 +2191,22 @@ async function handleSyncDrive() {
     const todasEmpresas = dados.empresas || [];
     state.empresas = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
     const idsAtivo = new Set(state.empresas.map(e => e.id));
-    // Filtra alvarás para apenas os de empresas ATIVO + remove CERTIFICADO DIGITAL
-    state.alvaras = (dados.alvaras || []).filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
+    // [v6.1.1] Alvarás: no modo "app dono", vêm da NUVEM (Drive só empresas).
+    let _alvBaseCloud = null;
+    if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudLoad === 'function') {
+      try { _alvBaseCloud = await window._alvarasCloudLoad(); } catch(e) { _alvBaseCloud = null; }
+    }
+    if (_alvBaseCloud && _alvBaseCloud.length) {
+      state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
+      console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
+    } else {
+      // Filtra alvarás para apenas os de empresas ATIVO + remove CERTIFICADO DIGITAL
+      state.alvaras = (dados.alvaras || []).filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
+      // 1ª vez com o modo ligado e nuvem vazia: migra a base atual para a nuvem.
+      if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudSave === 'function') {
+        try { window._alvarasCloudSave(state.alvaras); } catch(e){}
+      }
+    }
     // Restaura dados do usuário (revisado, conversas, anexos, obs)
     let restaurados = 0;
     state.alvaras.forEach(a => {
