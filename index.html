@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.37 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.38 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1517,6 +1517,7 @@ function renderEmpresas(){
           <p class="text-sm text-slate-500">${lista.length} de ${state.empresas.length} empresas</p>
         </div>
         <div class="flex gap-2">
+          ${(state.sessao && state.sessao.cargo==='Administrador') ? `<button id="trava-planilha" title="Congela/libera a atualizacao automatica pela planilha" class="px-4 py-2 rounded-lg font-medium text-sm ${state.trava_planilha?'bg-amber-500 text-white hover:bg-amber-600':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${state.trava_planilha?'🔒 Planilha travada':'🔓 Planilha liberada'}</button>` : ''}
           <button id="sync-drive" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm">🔄 Sincronizar do Drive</button>
           <label for="csv-file" class="cursor-pointer px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm">📥 Importar CSV</label>
           <input id="csv-file" type="file" accept=".csv,.tsv,.txt" class="hidden">
@@ -1787,6 +1788,8 @@ function attachEmpresas(){
   document.getElementById('nova-empresa').onclick = () => openModalEmpresa(null);
   document.getElementById('csv-file').onchange = handleCsvImport;
   document.getElementById('sync-drive').onclick = handleSyncDrive;
+  var _tp = document.getElementById('trava-planilha');
+  if (_tp) _tp.onclick = toggleTravaPlanilha;
   document.querySelectorAll('.empresa-card').forEach(c => {
     c.onclick = () => {
       const id = parseInt(c.dataset.eid);
@@ -1820,6 +1823,16 @@ const DRIVE_CONFIG = {
 };
 
 // Versão automática silenciosa - chamada no boot quando dados estão zerados
+// [v6.0.38] Liga/desliga a trava de atualizacao automatica pela planilha (so admin).
+// Propaga para todos via Firestore (campo admin-gated). Travada = so sync manual.
+function toggleTravaPlanilha(){
+  if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar esta trava.'); return; }
+  state.trava_planilha = !state.trava_planilha;
+  saveState();
+  try{ if (firebase && firebase.firestore) firebase.firestore().collection('azuos').doc('shared').update({ trava_planilha: !!state.trava_planilha }); }catch(e){}
+  if (typeof toast==='function') toast(state.trava_planilha ? '🔒 Planilha travada — atualização automática desligada' : '🔓 Planilha liberada — atualização automática religada', state.trava_planilha?'amber':'emerald');
+  try{ if (typeof render==='function') render(); }catch(e){}
+}
 async function handleSyncDriveAuto() {
   try {
     console.log('[Auto-sync] iniciando...');
@@ -3883,6 +3896,11 @@ setTimeout(() => {
 // Marca state.sync_url_versao para forçar 1 sync após cada deploy novo.
 async function rodarSyncSilencioso(motivo) {
   if (!state.sessao) return;
+  // [v6.0.38] Trava de planilha (admin): quando ligada, o sistema NAO puxa mais a
+  // planilha automaticamente (boot/10min/reativar aba). Congela os dados; so o
+  // botao manual "Sincronizar do Drive" pode atualizar. Protege contra a planilha
+  // sobrescrever/reordenar o que a equipe ja ajustou.
+  if (state.trava_planilha) { console.log('[Sync] planilha TRAVADA pelo admin — auto-sync pulado (' + motivo + ')'); return; }
   if (window._syncEmCurso) { console.log('[Sync] já em curso, pulando'); return; }
   window._syncEmCurso = true;
   try {

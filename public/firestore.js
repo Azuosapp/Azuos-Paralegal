@@ -64,6 +64,10 @@ function _fsCollectFromState() {
   if (state.sessao && state.sessao.cargo === 'Administrador' && state.trava_edicao) {
     out.trava_edicao = state.trava_edicao;
   }
+  // [v6.0.38] trava de atualizacao pela planilha: so o admin grava; todos leem
+  if (state.sessao && state.sessao.cargo === 'Administrador' && typeof state.trava_planilha !== 'undefined') {
+    out.trava_planilha = !!state.trava_planilha;
+  }
   return out;
 }
 
@@ -124,6 +128,10 @@ function _fsApplyToState(remote) {
     var _lt = state.trava_edicao || null; var _rt = remote.trava_edicao;
     var _tlt = (_lt && _lt.atualizado_em) || ''; var _trt = _rt.atualizado_em || '';
     if (!_lt || _trt > _tlt) { state.trava_edicao = _rt; changed = true; }
+  }
+  // [v6.0.38] trava de atualizacao pela planilha: todos adotam o valor do admin
+  if (remote && typeof remote.trava_planilha !== 'undefined') {
+    if (state.trava_planilha !== !!remote.trava_planilha) { state.trava_planilha = !!remote.trava_planilha; changed = true; }
   }
   // Campos simples: substitui se diferente
   // v6.0.8: merge por id — nao substitui arrays em bloco (evita perder itens criados em paralelo)
