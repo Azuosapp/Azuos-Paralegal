@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.45 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.46 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3911,12 +3911,41 @@ function renderUsuarios(){
   if (!(state.sessao && state.sessao.cargo === 'Administrador')) {
     return `<div class="p-10 text-center"><div class="text-5xl mb-3">🔒</div><div class="text-lg font-bold text-slate-800">Acesso restrito</div><div class="text-sm text-slate-500 mt-1">A gestão de usuários é exclusiva do administrador.</div></div>`;
   }
+  const _accs = (typeof _acessoLista==='function') ? _acessoLista() : [];
+  const _accStatusBadge = (s)=> s==='feito' ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">FEITO</span>'
+      : s==='erro' ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">ERRO</span>'
+      : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">PROCESSANDO…</span>';
   return `
     <div class="p-6">
       <div class="flex items-center justify-between mb-6">
         <div><h1 class="text-2xl font-bold text-slate-800">Usuários</h1><p class="text-sm text-slate-500">${state.usuarios.length} cadastrados</p></div>
         <button onclick="openModalUsuario(null)" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Novo usuário</button>
       </div>
+
+      <!-- [v6.0.46] Painel de Acesso (criar / redefinir senha) -->
+      <div class="bg-white rounded-xl shadow-sm p-5 mb-6 border border-slate-200">
+        <div class="flex items-center gap-2 mb-1"><span class="text-xl">🔑</span><h2 class="text-lg font-bold text-slate-800">Painel de Acesso</h2></div>
+        <p class="text-xs text-slate-500 mb-4">Crie o acesso de alguém (e-mail pessoal + senha temporária gerada automaticamente) ou redefina a senha. O pedido é processado em <b>segundos a poucos minutos</b>; a senha aparece aqui para você copiar e repassar. <b>Nunca cria administradores.</b></p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
+          <input id="acesso-nome" placeholder="Nome (ex.: Leyla)" class="px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+          <input id="acesso-email" placeholder="e-mail pessoal (ex.: leyla@gmail.com)" class="px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
+          <button onclick="acessoCriar()" class="px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm">Criar / redefinir acesso</button>
+        </div>
+        ${_accs.length ? `<div class="space-y-2">${_accs.map(p=>`
+          <div class="flex items-center gap-2 flex-wrap bg-slate-50 rounded-lg px-3 py-2 text-sm">
+            ${_accStatusBadge(p.status)}
+            <span class="font-medium text-slate-700">${esc(p.nome||'')}</span>
+            <span class="text-slate-500 text-xs">${esc(p.email||'')}</span>
+            ${p.status==='feito' && p.senha_temp ? `<span class="ml-auto flex items-center gap-2">
+              <code class="bg-white border border-slate-200 rounded px-2 py-0.5 text-xs font-mono select-all">${esc(p.senha_temp)}</code>
+              <button onclick="acessoCopiar('${p.id}')" class="text-xs text-blue-600 hover:bg-blue-50 rounded px-2 py-1">📋 Copiar</button>
+            </span>` : ''}
+            ${p.status==='erro' ? `<span class="ml-auto text-xs text-red-600">${esc(p.resultado||'falha')}</span>` : ''}
+            <button onclick="acessoArquivar('${p.id}')" title="Remover da lista" class="text-slate-400 hover:text-red-500 text-xs px-1">✕</button>
+          </div>`).join('')}</div>
+          <p class="text-[11px] text-slate-400 mt-2">Dica: quando aparecer FEITO, copie a senha, repasse à pessoa e ela entra com o e-mail + essa senha. Depois ela pode trocar em "Esqueci minha senha". Remova o item da lista (✕) depois de repassar.</p>` : '<p class="text-xs text-slate-400">Nenhum pedido ainda.</p>'}
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         ${state.usuarios.map(u => `
           <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col">
@@ -3927,6 +3956,7 @@ function renderUsuarios(){
             <div class="flex-1"><h3 class="font-semibold text-slate-800">${esc(u.nome)}</h3><p class="text-xs text-slate-500 mb-1">${esc(u.cargo)}</p><p class="text-xs text-slate-500 truncate">${esc(u.email)}</p></div>
             <div class="flex gap-1 mt-3 pt-3 border-t border-slate-100">
               <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50">Editar</button>
+              <button onclick="acessoReset('${esc((u.email||'').replace(/'/g,''))}','${esc((u.nome||'').replace(/'/g,''))}')" class="flex-1 text-xs py-1.5 rounded text-amber-600 hover:bg-amber-50" title="Gera uma senha temporária nova">🔑 Senha</button>
               <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50">Excluir</button>
             </div>
           </div>`).join('')}
@@ -3934,6 +3964,47 @@ function renderUsuarios(){
     </div>`;
 }
 function attachUsuarios(){}
+
+// [v6.0.46] Painel de Acesso — pedidos processados pelo motor (GitHub Actions + admin SDK).
+function _acessoLista(){ return (state.admin_acessos||[]).slice().sort(function(a,b){ return (b.solicitado_em||'').localeCompare(a.solicitado_em||''); }); }
+function _acessoPush(tipo, nome, email){
+  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode gerenciar acessos.'); return false; }
+  email=(email||'').trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ alert('Informe um e-mail válido.'); return false; }
+  state.admin_acessos = state.admin_acessos || [];
+  // evita 2 pedidos pendentes para o mesmo e-mail
+  var jaTem = state.admin_acessos.find(function(x){ return x && (x.email||'')===email && x.status!=='feito' && x.status!=='erro'; });
+  if(jaTem){ alert('Já existe um pedido em andamento para '+email+'. Aguarde processar.'); return false; }
+  state.admin_acessos.unshift({
+    id: 'acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    tipo: tipo, nome: (nome||'').trim(), email: email, cargo:'Paralegal',
+    status:'pendente', solicitado_por: (state.sessao&&state.sessao.email)||'', solicitado_em: new Date().toISOString()
+  });
+  try{ saveState(); }catch(e){}
+  try{ render(); }catch(e){}
+  if(typeof toast==='function') toast('📨 Pedido enviado. Processa em segundos a poucos minutos — a senha aparece aqui.', 'blue');
+  return true;
+}
+function acessoCriar(){
+  var nome=((document.getElementById('acesso-nome')||{}).value)||'';
+  var email=((document.getElementById('acesso-email')||{}).value)||'';
+  if(!email.trim()){ alert('Informe o e-mail pessoal da pessoa.'); return; }
+  // 'criar' vira reset automaticamente no motor se a conta ja existir
+  if(_acessoPush('criar', nome, email)){ var n=document.getElementById('acesso-nome'), e=document.getElementById('acesso-email'); if(n)n.value=''; if(e)e.value=''; }
+}
+function acessoReset(email, nome){
+  if(!email){ alert('Este usuário não tem e-mail. Edite o usuário e informe o e-mail pessoal primeiro.'); return; }
+  if(confirm('Redefinir a senha de '+(nome||email)+'?\n\nUma senha temporária nova será gerada e aparecerá aqui para você repassar.')) _acessoPush('reset', nome, email);
+}
+function acessoCopiar(id){
+  var p=(state.admin_acessos||[]).find(function(x){return x && x.id===id;});
+  if(p && p.senha_temp && navigator.clipboard){ navigator.clipboard.writeText(p.senha_temp).then(function(){ if(typeof toast==='function') toast('Senha copiada!','emerald'); }); }
+}
+function acessoArquivar(id){
+  state.admin_acessos=(state.admin_acessos||[]).filter(function(x){return x && x.id!==id;});
+  try{ saveState(); }catch(e){}
+  try{ render(); }catch(e){}
+}
 
 /* ===== v6.3.0 — Reenquadramento de foto (arrastar + zoom antes de salvar) ===== */
 var _crop = null;

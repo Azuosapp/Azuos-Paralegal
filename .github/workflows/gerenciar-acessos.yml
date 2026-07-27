@@ -1,0 +1,41 @@
+name: Gerenciar acessos (criar/redefinir senha)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # A cada 5 minutos (minimo do GitHub). Pode atrasar alguns minutos.
+    - cron: '*/5 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gerenciar-acessos
+  cancel-in-progress: false
+
+jobs:
+  processar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar credencial do Firebase (segredo)
+        env:
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+        run: |
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"
+          if [ -z "$V" ]; then echo "ERRO: segredo do Firebase vazio."; exit 1; fi
+          printf '%s' "$V" > service-account.json
+          node -e "JSON.parse(require('fs').readFileSync('service-account.json','utf8'))" \
+            || { echo 'ERRO: segredo do Firebase nao e JSON valido.'; exit 1; }
+
+      - name: Instalar firebase-admin
+        run: npm install firebase-admin@13 --no-audit --no-fund --loglevel=error
+
+      - name: Processar pedidos de acesso
+        run: node scripts/ci/processar-acessos.mjs
