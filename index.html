@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.40 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.41 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -194,7 +194,16 @@ function _prepararAnexosLazy(){
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const s = JSON.parse(raw);
+      // [v6.0.41] SEGURANCA MULTIUSUARIO: a sessao (quem esta logado) NUNCA vem do
+      // cache do navegador — ela e definida SOMENTE pelo Firebase Auth
+      // (onAuthStateChanged). Antes, o boot exibia a sessao salva do ULTIMO usuario
+      // daquele navegador, fazendo a pessoa "cair" na conta de outra ate o Firebase
+      // corrigir. Zeramos sempre; o app mostra login ate o Firebase confirmar quem e.
+      s.sessao = null;
+      return s;
+    }
   } catch(e) {}
   return {
     empresas: SEED.empresas,
@@ -954,7 +963,9 @@ window.addEventListener('DOMContentLoaded', () => {
   window.fbAuth.onAuthStateChanged(async (fbUser) => {
     if (fbUser) {
       const sessao = mapearFirebaseUserParaSessao(fbUser);
-      if (!state.sessao || state.sessao.email !== sessao.email) {
+      // [v6.0.41] sempre reflete o usuario REAL do Firebase (compara e-mail E uid),
+      // para nunca ficar preso numa sessao antiga de outra pessoa.
+      if (!state.sessao || state.sessao.email !== sessao.email || state.sessao._firebase_uid !== sessao._firebase_uid) {
         setState({ sessao, page: 'empresas' });
         // Inicia sincronização Firestore com dados centralizados
         setTimeout(() => { try { bootFirestoreSync(); } catch(e) { console.error('FS boot:', e); } }, 400);

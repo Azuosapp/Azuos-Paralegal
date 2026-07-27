@@ -12,6 +12,10 @@ function _estadoParaLocal() {
     return item;
   }
   var s = Object.assign({}, state);
+  // [v6.0.41] SEGURANCA: nunca persistir a sessao (quem esta logado) no navegador.
+  // A identidade vem SO do Firebase Auth. Persistir a sessao fazia o proximo a abrir
+  // o app cair na conta de quem usou antes.
+  s.sessao = null;
   if (Array.isArray(state.alvaras)) s.alvaras = state.alvaras.map(limpar);
   if (state.edicoes_alvaras) { var e = {}; Object.keys(state.edicoes_alvaras).forEach(function(k){ e[k] = limpar(state.edicoes_alvaras[k]); }); s.edicoes_alvaras = e; }
   return s;
