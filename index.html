@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.44 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.45 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -5732,6 +5732,19 @@ function abrirBaselineDialog() {
       var nome;
       if (_of) { nome = _of.nome; }
       else { nome = user.displayName || email.split('@')[0].replace(/[._-]/g,' '); nome = nome.split(' ').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' '); }
+      // [v6.0.44] EVITA "2 Leylas": se ja existe um usuario com o MESMO nome (ex.: a
+      // pessoa migrou de leyla@azuoscontabil para o e-mail pessoal), MIGRA o e-mail do
+      // registro existente em vez de criar um segundo. Consolida em UM unico usuario.
+      var _normNm = (typeof _normId==='function') ? _normId : function(s){return String(s||'').trim().toLowerCase();};
+      var mesmoNome = state.usuarios.find(function(u){ return u && u.nome && _normNm(u.nome)===_normNm(nome); });
+      if (mesmoNome) {
+        mesmoNome.email = email;
+        if (!mesmoNome.cargo) mesmoNome.cargo = (_of?_of.cargo:'Paralegal');
+        console.log('[v6.0.44] usuario consolidado (mesmo nome, e-mail atualizado):', nome, '->', email);
+        try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
+        try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
+        return;
+      }
       state.usuarios.push({
         id: idEstavel, nome: nome, email: email, cargo: (_of?_of.cargo:'Paralegal'),
         foto: '', criadoEm: new Date().toISOString(), autoCriado: true
