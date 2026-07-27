@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.1 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.2 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2028,15 +2028,15 @@ function _mergeUsuariosPreservando(remoteList){
     });
   }catch(e){ console.warn('[mergeUsuariosPreservando]', e&&e.message); }
 }
-// [v6.1.1] Interruptor do modo "app dono dos alvaras" (Drive so empresas).
-// Desligado por padrao. Liga visitando com ?alvcloud=1 (fica salvo neste navegador).
-// Para desligar: ?alvcloud=0.
+// [v6.1.2] Modo "app dono dos alvaras" (Drive so empresas) — LIGADO por padrao
+// para todos (validado). Saida de emergencia: ?alvcloud=0 desliga (fica salvo
+// neste navegador); ?alvcloud=1 religa.
 function _alvCloudLigado(){
   try{
-    if(/[?&]alvcloud=1/.test(location.search)) localStorage.setItem('azuos_alvcloud','1');
-    if(/[?&]alvcloud=0/.test(location.search)) localStorage.removeItem('azuos_alvcloud');
-    return localStorage.getItem('azuos_alvcloud')==='1';
-  }catch(e){ return false; }
+    if(/[?&]alvcloud=0/.test(location.search)) localStorage.setItem('azuos_alvcloud','off');
+    if(/[?&]alvcloud=1/.test(location.search)) localStorage.removeItem('azuos_alvcloud');
+    return localStorage.getItem('azuos_alvcloud')!=='off';
+  }catch(e){ return true; }
 }
 async function handleSyncDriveAuto() {
   try {
