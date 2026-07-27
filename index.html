@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.2 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.3 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1129,12 +1129,27 @@ function attachLayout(){
 
 /* ===== v6.2.1 — Premiacao / Gamificacao por produtividade (alvaras concluidos) ===== */
 var _gamMes = null; // 'YYYY-MM' selecionado; null = mes atual
+var _gamDataIni = null, _gamDataFim = null; // [v6.1.3] filtro por intervalo de datas (YYYY-MM-DD)
 var _GAM_STATUS_PADRAO = ['Concluído','Pago','Formalizado','Formalizado com o cliente','Em vigor (vencimento)'];
 var _GAM_STATUS_CANDIDATOS = ['Concluído','Pago','Formalizado','Formalizado com o cliente','Em vigor (vencimento)','Isento','Arquivado pelo cliente','Arquivado com pendências','Encaminhado'];
 function _gamFmt(v){ return 'R$ ' + (Number(v)||0).toFixed(2).replace('.',','); }
 function _gamMesAtual(){ return new Date().toISOString().slice(0,7); }
 function _gamMesLabel(m){ var M=['Janeiro','Fevereiro','Marco','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']; var p=(m||'').split('-'); if(p.length<2) return m; return M[(parseInt(p[1],10)||1)-1]+' / '+p[0]; }
 function _gamValor(){ var g=state.gamificacao||{}; var v=parseFloat(g.valorPorAlvara); return isNaN(v)?0:v; }
+// [v6.1.3] valor REAL por tipo de alvara: usa a tabela por atividade (casa ignorando
+// acento/maiusculas/pontuacao). Se o tipo nao estiver na tabela, cai no valor unico.
+function _gamNorm(s){ try{ return (s||'').toString().normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,''); }catch(e){ return (s||'').toString().toUpperCase(); } }
+function _gamValorDoAlvara(aid, e){
+  var tipo='';
+  try{ var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); }); if(alv) tipo=alv.tipo||''; }catch(_){}
+  if(!tipo && e) tipo=e.tipo||'';
+  var nt=_gamNorm(tipo);
+  if(nt){
+    var tab=(typeof _gamTabela==='function')?_gamTabela():[];
+    for(var i=0;i<tab.length;i++){ var na=_gamNorm(tab[i]&&tab[i].atividade); if(na && (nt===na || nt.indexOf(na)>=0 || na.indexOf(nt)>=0)){ var v=+((tab[i]||{}).valor)||0; if(v>0) return v; } }
+  }
+  return _gamValor();
+}
 function _gamStatusSet(){ var g=state.gamificacao||{}; return (Array.isArray(g.statusConcluido)&&g.statusConcluido.length)?g.statusConcluido:_GAM_STATUS_PADRAO; }
 function _gamConta(s){ return _gamStatusSet().indexOf(s||'')>=0; }
 function _gamEhGestor(cargo){ var c=(cargo||'').toString().toLowerCase(); return c.indexOf('admin')>=0 || c.indexOf('gestor')>=0 || c.indexOf('consulta')>=0; }
@@ -1157,15 +1172,18 @@ function _gamAgrega(mes){
     if(!e||!e._editado_por||!e._editado_em) return;
     if(!_gamConta(e.status)) return;
     var _cm=(e._editado_em||'').slice(0,7);
-    if(mes && _cm!==mes) return;
+    if(!(_gamDataIni||_gamDataFim) && mes && _cm!==mes) return; // mes so vale quando NAO ha intervalo de datas
     var u=_gamUser(e._editado_por); if(!u) return;
     if(_gamEhGestor(u.cargo)) return; // gestor/admin nao entra no ranking (nao e operacional)
+    var _dia=(e._editado_em||'').slice(0,10);
+    if(_gamDataIni && _dia < _gamDataIni) return; // filtro por intervalo de datas (sobrepoe o mes)
+    if(_gamDataFim && _dia > _gamDataFim) return;
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
-    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,chave:k};
+    if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,valorAcc:0,chave:k};
     por[k].qtd++;
+    por[k].valorAcc += _gamValorDoAlvara(aid, e); // valor REAL por tipo (fallback: valor unico)
   });
-  var val=_gamValor();
-  var arr=Object.keys(por).map(function(k){ var o=por[k]; o.valor=o.qtd*val; return o; });
+  var arr=Object.keys(por).map(function(k){ var o=por[k]; o.valor=o.valorAcc||0; return o; });
   arr.sort(function(a,b){ return (b.qtd-a.qtd) || (a.nome||'').localeCompare(b.nome||''); });
   return arr;
 }
@@ -1173,6 +1191,8 @@ function _gamCor(nome){ var cores=['#2563eb','#059669','#7c3aed','#db2777','#d97
 function _gamIniciais(nome){ return (nome||'?').split(' ').filter(Boolean).map(function(x){return x[0];}).slice(0,2).join('').toUpperCase(); }
 function _gamSouEu(row){ var me=state.sessao||{}; var e=(me.email||'').toLowerCase(), n=(me.nome||'').toLowerCase(); return !!((row.email&&row.email.toLowerCase()===e)||(row.nome&&row.nome.toLowerCase()===n)); }
 function _gamSetMes(m){ _gamMes=m||null; render(); }
+function _gamSetData(){ var a=document.getElementById('gam-data-ini'),b=document.getElementById('gam-data-fim'); _gamDataIni=(a&&a.value)||null; _gamDataFim=(b&&b.value)||null; render(); }
+function _gamLimparData(){ _gamDataIni=null; _gamDataFim=null; render(); }
 function _gamSalvar(){
   if (estruturaBloqueada()) return;
   if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar.'); return; }
@@ -1443,6 +1463,8 @@ function renderPremiacao(){
   var ehAdmin = state.sessao && state.sessao.cargo==='Administrador';
   var meses=_gamMeses();
   var mesSel=_gamMes||_gamMesAtual();
+  var _temPeriodo=!!(_gamDataIni||_gamDataFim);
+  var _lblPeriodo=_temPeriodo?((_gamDataIni||'início')+' a '+(_gamDataFim||'hoje')):_gamMesLabel(mesSel);
   var rank=_gamAgrega(mesSel);
   var val=_gamValor();
   var totalQtd=rank.reduce(function(a,r){return a+r.qtd;},0);
@@ -1458,14 +1480,23 @@ function renderPremiacao(){
         <div class="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h1 class="text-2xl font-extrabold flex items-center gap-2">🏆 Premiacao por Produtividade</h1>
-            <p class="text-amber-50 text-sm mt-1">Ganhe por cada alvara concluido — ranking de <strong>${_gamMesLabel(mesSel)}</strong>.</p>
+            <p class="text-amber-50 text-sm mt-1">Ganhe por cada alvara concluido — ranking de <strong>${_lblPeriodo}</strong>.</p>
           </div>
           <div class="text-right flex flex-col items-end gap-2">
             <div>
               <label class="block text-[11px] uppercase tracking-wide text-amber-100 mb-1">Mes</label>
-              <select onchange="_gamSetMes(this.value)" class="rounded-lg text-slate-800 text-sm font-semibold px-3 py-2 border-0 shadow">
+              <select onchange="_gamSetMes(this.value)" ${(_gamDataIni||_gamDataFim)?'disabled title="Limpe o período para usar o mês"':''} class="rounded-lg text-slate-800 text-sm font-semibold px-3 py-2 border-0 shadow ${(_gamDataIni||_gamDataFim)?'opacity-50':''}">
                 ${meses.map(function(m){ return '<option value="'+m+'"'+(m===mesSel?' selected':'')+'>'+_gamMesLabel(m)+'</option>'; }).join('')}
               </select>
+            </div>
+            <div>
+              <label class="block text-[11px] uppercase tracking-wide text-amber-100 mb-1">Ou por período</label>
+              <div class="flex items-center gap-1">
+                <input type="date" id="gam-data-ini" value="${_gamDataIni||''}" onchange="_gamSetData()" class="rounded-lg text-slate-800 text-xs px-2 py-1.5 border-0 shadow">
+                <span class="text-amber-50 text-xs">até</span>
+                <input type="date" id="gam-data-fim" value="${_gamDataFim||''}" onchange="_gamSetData()" class="rounded-lg text-slate-800 text-xs px-2 py-1.5 border-0 shadow">
+                ${(_gamDataIni||_gamDataFim)?`<button onclick="_gamLimparData()" title="Limpar período" class="px-2 py-1.5 bg-white/25 hover:bg-white/40 text-white rounded-lg text-xs font-bold">✕</button>`:''}
+              </div>
             </div>
             <button onclick="_gamAbrirCorrida()" class="px-4 py-2 bg-white text-amber-700 rounded-lg text-sm font-extrabold shadow-lg hover:bg-amber-50 flex items-center gap-1.5">🏁 Ver Corrida (TV)</button>
           </div>
@@ -1476,7 +1507,7 @@ function renderPremiacao(){
             <div class="text-xl font-extrabold">${_gamFmt(val)}</div>
           </div>
           <div class="bg-white/15 rounded-xl px-4 py-3">
-            <div class="text-[11px] uppercase tracking-wide text-amber-50">Concluidos no mes</div>
+            <div class="text-[11px] uppercase tracking-wide text-amber-50">${_temPeriodo?'Concluidos no periodo':'Concluidos no mes'}</div>
             <div class="text-xl font-extrabold">${totalQtd}</div>
           </div>
           ${ehAdmin ? `<div class="bg-white/15 rounded-xl px-4 py-3">
@@ -1490,7 +1521,7 @@ function renderPremiacao(){
       </div>
     </header>
     ${ehAdmin ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800 flex items-center justify-between flex-wrap gap-2"><span>⚙️ Os valores e regras ficam em um menu separado.</span><button onclick="setState({page:'valores'})" class="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-semibold text-xs hover:bg-amber-700">Abrir 💰 Valores</button></div>` : ''}
-    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_gamMesLabel(mesSel)} ainda.</div>` : `
+    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_lblPeriodo} ainda.</div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
         <div onclick="_gamAbrirDetalhe('${r.chave}','${mesSel}','${(r.nome||'').replace(/'/g,'')}')" class="text-center cursor-pointer">
