@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.55 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.56 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1084,7 +1084,7 @@ function renderLayout(content){
       <main class="flex-1 min-w-0 overflow-x-hidden pb-12 bg-slate-50">${content}</main>
     </div>
     <div class="fixed bottom-3 left-3 z-40 px-2 py-1 bg-emerald-600 text-white rounded text-[10px] opacity-90 pointer-events-none" id="ver-tag">v7.12 - baseline rapido</div>
-    <div class="fixed bottom-3 right-3 z-40 flex gap-2 items-center">
+    <div id="cfg-actions-bar" class="fixed bottom-3 right-3 z-40 flex gap-2 items-center">
       <input type="file" id="cfg-import" accept=".json" class="hidden" onchange="importarConfig(this)">
       <button onclick="exportarConfig()" class="px-3 py-1.5 bg-emerald-700 text-white rounded-lg text-xs shadow opacity-70 hover:opacity-100" title="Baixar suas configurações (revisões, anexos, conversas, vistas)">💾 Exportar config</button>
       <button onclick="document.getElementById('cfg-import').click()" class="px-3 py-1.5 bg-blue-700 text-white rounded-lg text-xs shadow opacity-70 hover:opacity-100" title="Carregar configurações de um JSON exportado">📂 Importar config</button>
@@ -7042,8 +7042,14 @@ function abrirBaselineDialog() {
       background: rgba(0,0,0,0.15);
       backdrop-filter: blur(8px);
     }
-    #btn-resetar-cache, #btn-trocar-senha, #logout-btn {
+    #logout-btn {
       display: flex !important;
+    }
+    /* [v6.0.56] Removidos da UI a pedido: Resetar cache, Alterar senha (agora dentro
+       de 'Meu perfil'), Tema escuro/claro, Vencimentos e a barra de Exportar/Importar
+       config + Reset demo. Escondidos por CSS pois sao reinseridos por rotinas antigas. */
+    #btn-resetar-cache, #btn-trocar-senha, #btn-modo-escuro, #ux609-box, #cfg-actions-bar {
+      display: none !important;
     }
   `;
   var style = document.createElement('style');
