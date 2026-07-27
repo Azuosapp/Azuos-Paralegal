@@ -1,0 +1,11 @@
+{
+  "name": "azuos-functions",
+  "description": "Cloud Functions do AZUOS Paralegal (criacao/reset de acesso instantaneo)",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "private": true,
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^6.0.0"
+  }
+}

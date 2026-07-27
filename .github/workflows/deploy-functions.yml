@@ -1,0 +1,44 @@
+name: Deploy Functions (acesso instantaneo)
+
+on:
+  workflow_dispatch:
+  # Deploy automatico so sera ligado depois do Blaze ativo (evita falha antes disso).
+  # push:
+  #   branches: [main]
+  #   paths: ['functions/**', 'firebase.json', '.github/workflows/deploy-functions.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar credencial do Firebase (segredo)
+        env:
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+        run: |
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"
+          if [ -z "$V" ]; then echo "ERRO: segredo do Firebase vazio."; exit 1; fi
+          printf '%s' "$V" > "$HOME/sa.json"
+          node -e "JSON.parse(require('fs').readFileSync(process.env.HOME + '/sa.json','utf8'))" \
+            || { echo 'ERRO: segredo do Firebase nao e JSON valido.'; exit 1; }
+
+      - name: Instalar dependencias das functions
+        run: npm --prefix functions install --no-audit --no-fund --loglevel=error
+
+      - name: Deploy das functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
+        run: npx --yes firebase-tools@13 deploy --only functions --project azuos-paralegal --non-interactive --force
