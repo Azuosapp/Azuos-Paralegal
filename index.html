@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.54 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.55 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1043,7 +1043,7 @@ function renderLayout(content){
     {key:'historico', label:'Histórico', icon:'🕒'},
     {key:'manutencao', label:'Manutenção', icon:'🛠️', badge: badgeManut},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
-    ...(ehAdmin ? [{key:'usuarios', label:'Usuários', icon:'👥'}] : []),
+    {key:'usuarios', label: ehAdmin ? 'Usuários' : 'Meu perfil', icon:'👥'},
   ];
   const initialsUser = (state.sessao.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
   const _fotoSes = (()=>{try{const e=state.sessao&&state.sessao.email;if(!e||!state.usuarios)return null;const us=Object.values(state.usuarios);const u=us.find(x=>x&&(x.email||'').toLowerCase()===(e||'').toLowerCase());return (u&&u.foto)||null;}catch(_){return null}})();
@@ -3941,9 +3941,24 @@ function _normalizarUsuarios(){
   }catch(e){ console.warn('[normalizarUsuarios]', e && e.message); return false; }
 }
 function renderUsuarios(){
-  // v7 — gestão de usuários é exclusiva do administrador (antes qualquer um editava)
+  // [v6.0.55] Não-admin: acessa SOMENTE o próprio perfil (edita dados, foto e senha).
   if (!(state.sessao && state.sessao.cargo === 'Administrador')) {
-    return `<div class="p-10 text-center"><div class="text-5xl mb-3">🔒</div><div class="text-lg font-bold text-slate-800">Acesso restrito</div><div class="text-sm text-slate-500 mt-1">A gestão de usuários é exclusiva do administrador.</div></div>`;
+    var _me = (state.sessao && state.sessao.email || '').toLowerCase();
+    var _u = (state.usuarios||[]).find(function(x){ return x && (x.email||'').toLowerCase()===_me; })
+      || { nome:(state.sessao&&state.sessao.nome)||'', email:(state.sessao&&state.sessao.email)||'', cargo:(state.sessao&&state.sessao.cargo)||'Paralegal', foto:(state.fotos_usuarios&&state.fotos_usuarios[_me])||'' };
+    var _ini = ((_u.nome||'').split(' ').map(function(s){return s[0];}).slice(0,2).join('')||'?').toUpperCase();
+    return `
+      <div class="p-6 md:p-10 max-w-md mx-auto">
+        <h1 class="text-2xl font-bold text-slate-800 mb-1">Meu perfil</h1>
+        <p class="text-sm text-slate-500 mb-6">Atualize sua foto, seus dados e sua senha. Você só tem acesso ao seu próprio cadastro.</p>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 text-center">
+          <div class="w-24 h-24 mx-auto rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center font-bold text-3xl mb-3">${_u.foto?`<img src="${_u.foto}" class="w-full h-full object-cover">`:esc(_ini)}</div>
+          <div class="text-lg font-semibold text-slate-800">${esc(_u.nome||'')}</div>
+          <div class="text-xs text-blue-600 uppercase tracking-wider mb-1">${esc(_u.cargo||'')}</div>
+          <div class="text-xs text-slate-500 mb-5">${esc(_u.email||'')}</div>
+          <button onclick="abrirModalSenha()" class="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">✏️ Editar meus dados, foto e senha</button>
+        </div>
+      </div>`;
   }
   try{ _normalizarUsuarios(); }catch(e){}
   const _accs = (typeof _acessoLista==='function') ? _acessoLista() : [];
@@ -5840,12 +5855,13 @@ function abrirBaselineDialog() {
           <h2 style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#0f172a;">⚙️ Minha conta</h2>
           <p style="margin:0 0 18px 0;color:#64748b;font-size:14px;">Atualize sua foto, sua senha e seu e-mail.</p>
 
-          <div><label style="${_L}">Foto</label>
+          <div><label style="${_L}">Meus dados (nome e foto)</label>
+            <input id="mc-nome" type="text" value="${esc(_s.nome||'')}" placeholder="Seu nome" style="${_I}margin-bottom:10px;"/>
             <div style="display:flex;align-items:center;gap:12px;">
               <div id="mc-foto-preview" style="width:56px;height:56px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#60a5fa,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">${_foto?('<img src="'+_foto+'" style="width:100%;height:100%;object-fit:cover">'):esc(_ini)}</div>
               <input type="file" id="mc-foto-file" accept="image/*" style="display:none">
-              <button id="mc-foto-escolher" style="padding:8px 12px;border:0;border-radius:9px;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;">📷 Escolher</button>
-              <button id="mc-foto-salvar" style="padding:8px 12px;border:0;border-radius:9px;background:#059669;color:#fff;font-weight:700;font-size:12px;cursor:pointer;">Salvar foto</button>
+              <button id="mc-foto-escolher" style="padding:8px 12px;border:0;border-radius:9px;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;">📷 Trocar foto</button>
+              <button id="mc-foto-salvar" style="padding:8px 12px;border:0;border-radius:9px;background:#059669;color:#fff;font-weight:700;font-size:12px;cursor:pointer;">Salvar dados</button>
             </div>
             <div id="mc-foto-msg" style="font-size:12px;min-height:14px;margin-top:6px;"></div>
           </div>
@@ -5884,14 +5900,19 @@ function abrirBaselineDialog() {
     document.getElementById('mc-foto-escolher').onclick = function(){ document.getElementById('mc-foto-file').click(); };
     document.getElementById('mc-foto-salvar').onclick = function(){
       var fm=document.getElementById('mc-foto-msg');
-      if(window._fotoTmp===null || window._fotoTmp===undefined){ fm.style.color='#dc2626'; fm.textContent='Escolha uma foto primeiro.'; return; }
-      var foto=window._fotoTmp; var reg=_reg();
-      if(reg){ reg.foto=foto; }
-      else if(_emailAtual){ (state.usuarios=state.usuarios||[]).push({id:'u_'+Date.now(),nome:(_s.nome||_emailAtual),email:_emailAtual,cargo:(_s.cargo||'Paralegal'),ativo:true,foto:foto}); }
-      try{ state.fotos_usuarios=state.fotos_usuarios||{}; if(_emailAtual) state.fotos_usuarios[_emailAtual]=foto; }catch(e){}
+      var nome=((document.getElementById('mc-nome')||{}).value||'').trim();
+      var foto=(window._fotoTmp!==null && window._fotoTmp!==undefined) ? window._fotoTmp : null;
+      if(!nome && foto===null){ fm.style.color='#dc2626'; fm.textContent='Informe o nome ou escolha uma foto.'; return; }
+      if(!nome){ fm.style.color='#dc2626'; fm.textContent='O nome não pode ficar vazio.'; return; }
+      var reg=_reg();
+      if(reg){ reg.nome=nome; if(foto!==null) reg.foto=foto; }
+      else if(_emailAtual){ (state.usuarios=state.usuarios||[]).push({id:'u_'+Date.now(),nome:nome,email:_emailAtual,cargo:(_s.cargo||'Paralegal'),ativo:true,foto:foto||''}); }
+      try{ if(_emailAtual && foto!==null){ state.fotos_usuarios=state.fotos_usuarios||{}; state.fotos_usuarios[_emailAtual]=foto; } }catch(e){}
+      try{ if(state.sessao) state.sessao.nome=nome; }catch(e){}
+      try{ if(window.fbAuth&&window.fbAuth.currentUser) window.fbAuth.currentUser.updateProfile({displayName:nome}).catch(function(){}); }catch(e){}
       try{ saveState(); }catch(e){}
       try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){}
-      fm.style.color='#16a34a'; fm.textContent='✅ Foto salva!';
+      fm.style.color='#16a34a'; fm.textContent='✅ Dados salvos!';
       try{ render(); }catch(e){}
     };
 
