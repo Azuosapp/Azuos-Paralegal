@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.51 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.52 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3954,6 +3954,11 @@ function renderUsuarios(){
               <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${u.ativo?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${u.ativo?'Ativo':'Inativo'}</span>
             </div>
             <div class="flex-1"><h3 class="font-semibold text-slate-800">${esc(u.nome)}</h3><p class="text-xs text-slate-500 mb-1">${esc(u.cargo)}</p><p class="text-xs text-slate-500 truncate">${esc(u.email)}</p></div>
+            ${(state.sessao && state.sessao.cargo==='Administrador') ? `
+            <label class="flex items-center gap-2 mt-3 text-xs font-medium ${u.cargo==='Administrador'?'text-amber-700':'text-slate-600'} cursor-pointer select-none" title="Marcar dá a esta pessoa acesso TOTAL de administrador">
+              <input type="checkbox" ${u.cargo==='Administrador'?'checked':''} onchange="toggleUsuarioAdmin('${u.id}', this.checked)" class="w-4 h-4 accent-amber-600">
+              <span>🛡️ Administrador</span>
+            </label>` : ''}
             <div class="flex gap-1 mt-3 pt-3 border-t border-slate-100">
               <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50">Editar</button>
               <button onclick="acessoReset('${esc((u.email||'').replace(/'/g,''))}','${esc((u.nome||'').replace(/'/g,''))}')" class="flex-1 text-xs py-1.5 rounded text-amber-600 hover:bg-amber-50" title="Gera uma senha temporária nova">🔑 Senha</button>
@@ -3964,6 +3969,29 @@ function renderUsuarios(){
     </div>`;
 }
 function attachUsuarios(){ try{ _acessosSubscribe(); }catch(e){} }
+
+// [v6.0.52] Caixa no card: promover/rebaixar administrador.
+function toggleUsuarioAdmin(id, virarAdmin){
+  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas administradores podem alterar isto.'); try{render();}catch(e){} return; }
+  var u=(state.usuarios||[]).find(function(x){ return x && x.id===id; });
+  if(!u){ try{render();}catch(e){} return; }
+  if(virarAdmin){
+    if(!confirm('Tornar '+(u.nome||u.email)+' ADMINISTRADOR?\n\nEssa pessoa passa a ter acesso TOTAL ao sistema (gerenciar usuários, configurações, tudo).')){ try{render();}catch(e){} return; }
+    u.cargo='Administrador';
+  } else {
+    // trava: nao deixar remover o ULTIMO administrador
+    var totalAdmins=(state.usuarios||[]).filter(function(x){ return x && x.cargo==='Administrador'; }).length;
+    if(u.cargo==='Administrador' && totalAdmins<=1){ alert('Não é possível remover: precisa existir pelo menos um administrador.'); try{render();}catch(e){} return; }
+    if(!confirm('Remover o acesso de administrador de '+(u.nome||u.email)+'?\n\nEla volta a ser Paralegal.')){ try{render();}catch(e){} return; }
+    u.cargo='Paralegal';
+  }
+  try{ if(typeof saveState==='function') saveState(); }catch(e){}
+  try{ if(typeof _fsWriteDebounced==='function') _fsWriteDebounced(); }catch(e){}
+  // se mudei o proprio cargo, reflete na sessao atual
+  try{ if(state.sessao && (state.sessao.email||'').toLowerCase()===(u.email||'').toLowerCase()){ state.sessao.cargo=u.cargo; } }catch(e){}
+  try{ render(); }catch(e){}
+  if(typeof toast==='function') toast(virarAdmin ? ('🛡️ '+(u.nome||u.email)+' agora é administrador') : ('↩️ '+(u.nome||u.email)+' voltou a ser Paralegal'), virarAdmin?'amber':'blue');
+}
 
 // [v6.0.47] Painel de Acesso — pedidos vao para a COLECAO PROPRIA 'azuos_acessos'
 // (fora do doc 'shared', que e disputado e apagava o pedido antes do motor ler).
