@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.43 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.44 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -561,7 +561,10 @@ function _azuosOficialPorEmail(email){
     'ketrin@azuoscontabil.com.br':{nome:'Ketrin',cargo:'Paralegal'},
     'leyla@azuoscontabil.com.br':{nome:'Leyla',cargo:'Paralegal'},
     'luanna@azuoscontabil.com.br':{nome:'Luanna',cargo:'Paralegal'},
-    'diogenes@azuoscontabil.com.br':{nome:'Diogenes',cargo:'Paralegal'}
+    'diogenes@azuoscontabil.com.br':{nome:'Diogenes',cargo:'Paralegal'},
+    // [v6.0.44] e-mails PESSOAIS mapeados para o nome oficial (contas novas criadas
+    // com o e-mail pessoal, para quem nao acessa a caixa @azuoscontabil):
+    'leylaazuos@gmail.com':{nome:'Leyla',cargo:'Paralegal'}
   };
   return M[(email||'').toLowerCase().trim()]||null;
 }
@@ -945,11 +948,13 @@ async function _migrarEmailPessoal(novo, showMsg){
     try{ if(typeof _salvarUsuariosFirestore==='function') _salvarUsuariosFirestore(); }catch(e){}
   }
   try{
+    // [v6.0.44] NAO enviamos verificacao: updateEmail ja troca o login na hora.
+    // Isso evita a confusao de "chegou e-mail no endereco antigo" (o Firebase manda
+    // so um aviso automatico para o e-mail antigo, que pode ser ignorado).
     await user.updateEmail(novo);
-    try{ await user.sendEmailVerification(); }catch(e){}
     aplicarLocal();
-    showMsg('✅ Pronto! Seu login agora é '+novo+'. Entrando...','ok');
-    setTimeout(function(){ try{ setState({page:'empresas'}); }catch(e){ render(); } }, 900);
+    showMsg('✅ Pronto! Seu login agora é '+novo+'. NÃO precisa clicar em nenhum e-mail. Entrando...','ok');
+    setTimeout(function(){ try{ setState({page:'empresas'}); }catch(e){ render(); } }, 1200);
     return true;
   }catch(err){
     var code = (err && err.code) || '';
@@ -961,10 +966,9 @@ async function _migrarEmailPessoal(novo, showMsg){
         var cred = firebase.auth.EmailAuthProvider.credential(emailAntigo, senha);
         await user.reauthenticateWithCredential(cred);
         await user.updateEmail(novo);
-        try{ await user.sendEmailVerification(); }catch(e){}
         aplicarLocal();
-        showMsg('✅ Pronto! Seu login agora é '+novo+'. Entrando...','ok');
-        setTimeout(function(){ try{ setState({page:'empresas'}); }catch(e){ render(); } }, 900);
+        showMsg('✅ Pronto! Seu login agora é '+novo+'. NÃO precisa clicar em nenhum e-mail. Entrando...','ok');
+        setTimeout(function(){ try{ setState({page:'empresas'}); }catch(e){ render(); } }, 1200);
         return true;
       }catch(e2){ showMsg('Não consegui confirmar. Verifique a senha atual. ('+((e2&&e2.code)||(e2&&e2.message)||'')+')','err'); return false; }
     }
