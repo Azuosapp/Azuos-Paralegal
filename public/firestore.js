@@ -257,6 +257,62 @@ function _anexoCloudFetch(chave){
   }catch(e){ return Promise.resolve(null); }
 }
 
+/* ============================================================
+   [v6.1.0] ALVARAS na nuvem (app vira dono; Drive passa a trazer so empresas).
+   Como o conjunto passa de 1MB, guardamos em CHUNKS: azuos/alvaras_meta + alvaras_N.
+   Guardamos SEM o base64 dos anexos (so metadados; o base64 vive em anx_/IndexedDB).
+   ============================================================ */
+var _ALV_PREFIX = 'alvaras_';
+var _ALV_CH = 800000; // ~0.8MB por chunk (margem do limite de 1MB)
+function _alvarasLean(lista){
+  return (lista||[]).map(function(a){
+    if(!a) return a;
+    var c = Object.assign({}, a);
+    if(Array.isArray(c.anexos)){
+      c.anexos = c.anexos.map(function(x){
+        var m = Object.assign({}, x);
+        if(m.dados && String(m.dados).indexOf('data:')===0){ m.dados=''; m._local=true; }
+        return m;
+      });
+    }
+    return c;
+  });
+}
+function _alvarasCloudSave(lista){
+  try{
+    if(!window.fbDB) return Promise.resolve(false);
+    var lean = _alvarasLean(lista || (state.alvaras||[]));
+    var json = JSON.stringify(lean);
+    var chunks=[]; for(var i=0;i<json.length;i+=_ALV_CH){ chunks.push(json.slice(i,i+_ALV_CH)); }
+    var db=window.fbDB, C=db.collection('azuos');
+    var ps=[ C.doc(_ALV_PREFIX+'meta').set({ n:chunks.length, count:lean.length, ts:Date.now(), by:(state.sessao&&state.sessao.email)||'sistema', ver:1 }) ];
+    for(var j=0;j<chunks.length;j++){ ps.push(C.doc(_ALV_PREFIX+j).set({ d:chunks[j] })); }
+    // apaga chunks sobrando de uma versao anterior maior (ate 40 a mais)
+    for(var z=chunks.length; z<chunks.length+40; z++){ ps.push(C.doc(_ALV_PREFIX+z).delete().catch(function(){})); }
+    return Promise.all(ps).then(function(){ console.log('[alvaras] salvos na nuvem:', lean.length, 'em', chunks.length, 'chunks'); return true; })
+      .catch(function(e){ console.warn('[alvaras save]', (e&&e.message)||e); return false; });
+  }catch(e){ console.warn('[alvaras save]', e&&e.message); return Promise.resolve(false); }
+}
+function _alvarasCloudLoad(){
+  try{
+    if(!window.fbDB) return Promise.resolve(null);
+    var C=window.fbDB.collection('azuos');
+    return C.doc(_ALV_PREFIX+'meta').get().then(function(meta){
+      if(!meta || !meta.exists) return null;
+      var n=(meta.data()||{}).n||0; if(!n) return null;
+      var ps=[]; for(var j=0;j<n;j++){ ps.push(C.doc(_ALV_PREFIX+j).get()); }
+      return Promise.all(ps).then(function(docs){
+        var full=''; for(var k=0;k<docs.length;k++){ full += ((docs[k]&&docs[k].data())||{}).d||''; }
+        if(!full) return null;
+        try{ var arr=JSON.parse(full); console.log('[alvaras] carregados da nuvem:', arr.length); return arr; }
+        catch(e){ console.warn('[alvaras load parse]', e&&e.message); return null; }
+      });
+    }).catch(function(e){ console.warn('[alvaras load]', (e&&e.message)||e); return null; });
+  }catch(e){ return Promise.resolve(null); }
+}
+window._alvarasCloudSave = _alvarasCloudSave;
+window._alvarasCloudLoad = _alvarasCloudLoad;
+
 var _anexoBackfillTs = 0;
 function _anexoBackfillCloud(){
   // v6.19.0 — roda periodicamente (throttle 4s), nao mais uma unica vez.
