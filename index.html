@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.57 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.58 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2013,6 +2013,21 @@ function toggleTravaPlanilha(){
   if (typeof toast==='function') toast(state.trava_planilha ? '🔒 Planilha travada — atualização automática desligada' : '🔓 Planilha liberada — atualização automática religada', state.trava_planilha?'amber':'emerald');
   try{ if (typeof render==='function') render(); }catch(e){}
 }
+// [v6.0.58] A sincronizacao NAO pode sobrescrever a lista de usuarios (isso revertia
+// inativacoes feitas pelo admin, ex.: Camila/Ketrin). Agora só ADICIONA da planilha
+// quem falta localmente; ativo/cargo/nome locais mandam. Respeita usuarios_removidos.
+function _mergeUsuariosPreservando(remoteList){
+  try{
+    if(!Array.isArray(state.usuarios)) state.usuarios=[];
+    var idx={}; state.usuarios.forEach(function(u){ if(u&&u.email) idx[(u.email||'').toLowerCase().trim()]=u; });
+    var removidos=Array.isArray(state.usuarios_removidos)?state.usuarios_removidos:[];
+    (remoteList||[]).forEach(function(ru){
+      if(!ru) return; var e=(ru.email||'').toLowerCase().trim(); if(!e) return;
+      if(removidos.indexOf(e)>=0) return;
+      if(!idx[e]){ state.usuarios.push(ru); idx[e]=ru; }
+    });
+  }catch(e){ console.warn('[mergeUsuariosPreservando]', e&&e.message); }
+}
 async function handleSyncDriveAuto() {
   try {
     console.log('[Auto-sync] iniciando...');
@@ -2069,7 +2084,7 @@ async function handleSyncDriveAuto() {
       console.log(`[Sync] ${comVenc}/${state.alvaras.length} alvarás têm vencimento | ${comProx} têm próxima atualização`);
       if (comVenc === 0) console.warn('[Sync] NENHUM alvará tem vencimento! Re-deploy da Apps Script ou colunas fora de posição.');
     }
-    state.usuarios = _preservaFotosOficiais(dados.usuarios || []);
+    _mergeUsuariosPreservando(_preservaFotosOficiais(dados.usuarios || []));
     if (dados.status_options && !dados.status_options.includes('Formalizado com o cliente')) {
       const idx = dados.status_options.indexOf('Em andamento');
       if (idx >= 0) dados.status_options.splice(idx, 0, 'Formalizado com o cliente');
@@ -2175,7 +2190,7 @@ async function handleSyncDrive() {
       console.log(`[Sync] ${comVenc}/${state.alvaras.length} alvarás têm vencimento | ${comProx} têm próxima atualização`);
       if (comVenc === 0) console.warn('[Sync] NENHUM alvará tem vencimento! Re-deploy da Apps Script ou colunas fora de posição.');
     }
-    state.usuarios = _preservaFotosOficiais(dados.usuarios || []);
+    _mergeUsuariosPreservando(_preservaFotosOficiais(dados.usuarios || []));
     // Mesclar status_options do servidor com customizações locais
     if (dados.status_options && !dados.status_options.includes('Formalizado com o cliente')) {
       const idx = dados.status_options.indexOf('Em andamento');
