@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.38 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.40 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -592,6 +592,12 @@ function render() {
   if (!app) return;
   try {
     if (!state.sessao) { app.innerHTML = renderLogin(); attachLogin(); return; }
+    // [v6.0.39] Primeiro acesso: forca definir e-mail pessoal (conta @azuoscontabil sem caixa)
+    if (typeof _precisaDefinirEmailPessoal==='function' && _precisaDefinirEmailPessoal(state.sessao)) {
+      app.innerHTML = _renderDefinirEmailPessoal();
+      try{ _attachDefinirEmailPessoal(); }catch(e){}
+      return;
+    }
     // Painel de Gestão = PÁGINA SEPARADA (tela cheia própria, sem a sidebar do app).
     if (state.page === 'gestao' && !state.empresaAtiva && typeof window.renderGestaoPagina === 'function') {
       app.innerHTML = window.renderGestaoPagina();
@@ -659,9 +665,9 @@ function renderLogin(){
 
         <form id="frm-login" class="space-y-4">
           <div>
-            <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">E-mail corporativo</label>
-            <input id="login-email" type="email" required autocomplete="username"
-              placeholder="seu.email@azuoscontabil.com.br"
+            <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">${ehCadastro ? 'E-mail corporativo' : 'E-mail ou nome'}</label>
+            <input id="login-email" type="${ehCadastro ? 'email' : 'text'}" required autocomplete="username"
+              placeholder="${ehCadastro ? 'seu.email@azuoscontabil.com.br' : 'seu e-mail ou seu nome (ex.: Camila)'}"
               class="w-full px-4 py-3 rounded-xl border-2 border-slate-200 focus:border-blue-500 focus:outline-none transition" />
           </div>
           <div>
@@ -731,7 +737,9 @@ function attachLogin(){
   form.onsubmit = async (e) => {
     e.preventDefault();
     hideAll();
-    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    const digitado = document.getElementById('login-email').value.trim();
+    // [v6.0.40] permite logar com NOME ou e-mail. No cadastro, exige e-mail.
+    const email = (_loginModo === 'cadastrar') ? digitado.toLowerCase() : _resolverEmailLogin(digitado);
     const senha = document.getElementById('login-senha').value;
     const btn = document.getElementById('btn-entrar');
 
@@ -773,12 +781,13 @@ function attachLogin(){
   if (linkEsqueci) {
     linkEsqueci.onclick = async () => {
       hideAll();
-      const email = document.getElementById('login-email').value.trim().toLowerCase();
-      if (!email) {
-        showError('Digite seu e-mail no campo acima antes de clicar em "Esqueci minha senha".');
+      const digitado = document.getElementById('login-email').value.trim();
+      if (!digitado) {
+        showError('Digite seu e-mail ou nome no campo acima antes de clicar em "Esqueci minha senha".');
         document.getElementById('login-email').focus();
         return;
       }
+      const email = _resolverEmailLogin(digitado); // [v6.0.40] aceita nome ou e-mail
       try {
         await window.fbAuth.sendPasswordResetEmail(email);
         showOk('📧 Enviamos um link de redefinição para ' + email + '. Confira sua caixa de entrada (e o spam).');
@@ -787,6 +796,32 @@ function attachLogin(){
       }
     };
   }
+}
+// [v6.0.40] Resolve o que a pessoa digitou (nome OU e-mail) para o e-mail da conta.
+// Firebase autentica por e-mail; entao se veio um nome, procuramos o e-mail
+// correspondente em state.usuarios (e no mapa oficial). Se nada casar, devolve o
+// que foi digitado (o Firebase dara "usuario nao encontrado" com mensagem clara).
+function _resolverEmailLogin(digitado){
+  try{
+    var t = (digitado||'').trim();
+    if(!t) return '';
+    if(t.indexOf('@') >= 0) return t.toLowerCase();       // ja e um e-mail
+    var alvo = _normId ? _normId(t) : t.toLowerCase();
+    // 1) casa pelo nome (completo ou primeiro nome) na lista de usuarios
+    var achou = (state.usuarios||[]).find(function(u){
+      if(!u || !u.email) return false;
+      var n = _normId ? _normId(u.nome) : (u.nome||'').toLowerCase();
+      if(!n) return false;
+      return n===alvo || n.split(/\s+/)[0]===alvo.split(/\s+/)[0];
+    });
+    if(achou) return (achou.email||'').toLowerCase();
+    // 2) fallback: mapa oficial (nome -> e-mail @azuoscontabil)
+    var M={ 'azuos admin':'contato@azuoscontabil.com.br','comercial':'comercial@azuoscontabil.com.br','thierry':'thierrymforte@gmail.com','camila':'camila@azuoscontabil.com.br','ketrin':'ketrin@azuoscontabil.com.br','leyla':'leyla@azuoscontabil.com.br','luanna':'luanna@azuoscontabil.com.br','diogenes':'diogenes@azuoscontabil.com.br' };
+    if(M[alvo]) return M[alvo];
+    var p1=alvo.split(/\s+/)[0];
+    if(M[p1]) return M[p1];
+    return t.toLowerCase();
+  }catch(e){ return (digitado||'').toLowerCase(); }
 }
 
 // === Integração Firebase Auth com state.sessao ===
@@ -806,6 +841,112 @@ function mapearFirebaseUserParaSessao(fbUser) {
     ativo: true,
     _firebase_uid: fbUser.uid
   };
+}
+
+// [v6.0.39] Primeiro acesso: quem entra com conta @azuoscontabil (caixa inexistente)
+// precisa definir um E-MAIL PESSOAL. O sistema troca o e-mail da conta (updateEmail)
+// para que a recuperacao de senha passe a chegar numa caixa REAL da pessoa. A
+// identidade (nome/cargo) e preservada no registro de state.usuarios.
+function _precisaDefinirEmailPessoal(sessao){
+  try{
+    if(!sessao || !sessao.email) return false;
+    if(sessao.cargo === 'Administrador') return false;               // admins gerenciam o sistema
+    return /@azuoscontabil\.com\.br$/i.test((sessao.email||'').trim());
+  }catch(e){ return false; }
+}
+function _renderDefinirEmailPessoal(){
+  var nome = (state.sessao && state.sessao.nome) || 'você';
+  var atual = (state.sessao && state.sessao.email) || '';
+  return `
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;padding:24px;font-family:Inter,system-ui,sans-serif;">
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:18px;max-width:460px;width:100%;padding:28px;box-shadow:0 25px 60px -15px rgba(0,0,0,.6);">
+      <div style="font-size:34px;margin-bottom:6px">📧</div>
+      <h1 style="color:#f1f5f9;font-size:20px;margin:0 0 6px">Olá, ${esc(nome)}! Defina seu e-mail pessoal</h1>
+      <p style="color:#94a3b8;font-size:13px;line-height:1.5;margin:0 0 18px">
+        Sua conta hoje usa <b style="color:#cbd5e1">${esc(atual)}</b>, que não recebe e-mails.
+        Para você conseguir <b style="color:#cbd5e1">recuperar sua senha</b> quando precisar, informe um
+        e-mail <b style="color:#cbd5e1">pessoal seu</b> (Gmail, Outlook, etc.). Ele passará a ser o seu login.
+      </p>
+      <label style="display:block;color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Seu e-mail pessoal</label>
+      <input id="dep-email" type="email" autocomplete="email" placeholder="voce@gmail.com" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:15px;margin-bottom:12px">
+      <label style="display:block;color:#94a3b8;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Confirme o e-mail</label>
+      <input id="dep-email2" type="email" autocomplete="email" placeholder="voce@gmail.com" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:15px;margin-bottom:12px">
+      <div id="dep-senha-wrap" style="display:none;margin-bottom:12px">
+        <label style="display:block;color:#fbbf24;font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Confirme sua senha atual (segurança)</label>
+        <input id="dep-senha" type="password" autocomplete="current-password" placeholder="sua senha atual" style="width:100%;box-sizing:border-box;padding:11px 13px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;font-size:15px">
+      </div>
+      <div id="dep-msg" style="display:none;font-size:13px;margin-bottom:12px;padding:10px 12px;border-radius:8px"></div>
+      <button id="dep-salvar" style="width:100%;padding:12px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;font-size:15px;cursor:pointer">Salvar e continuar</button>
+      <button id="dep-sair" style="width:100%;margin-top:8px;padding:10px;border:0;border-radius:10px;background:transparent;color:#64748b;font-size:13px;cursor:pointer">Sair</button>
+    </div>
+  </div>`;
+}
+function _attachDefinirEmailPessoal(){
+  var msg = document.getElementById('dep-msg');
+  function showMsg(txt, cor){ if(!msg) return; msg.style.display='block'; msg.textContent=txt; msg.style.background = cor==='err'?'#7f1d1d':(cor==='ok'?'#064e3b':'#1e3a8a'); msg.style.color='#fff'; }
+  var sair = document.getElementById('dep-sair'); if(sair) sair.onclick = async function(){ try{ if(window.fbAuth) await window.fbAuth.signOut(); }catch(e){} };
+  var salvar = document.getElementById('dep-salvar');
+  if(salvar) salvar.onclick = async function(){
+    var e1 = (document.getElementById('dep-email').value||'').trim().toLowerCase();
+    var e2 = (document.getElementById('dep-email2').value||'').trim().toLowerCase();
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e1)){ showMsg('Digite um e-mail válido.','err'); return; }
+    if(e1 !== e2){ showMsg('Os e-mails não conferem.','err'); return; }
+    if(/@azuoscontabil\.com\.br$/i.test(e1)){ showMsg('Use um e-mail PESSOAL (Gmail, Outlook, etc.), não o @azuoscontabil.','err'); return; }
+    if(e1 === ((state.sessao.email||'').toLowerCase())){ showMsg('Esse já é o e-mail atual. Informe seu e-mail pessoal.','err'); return; }
+    salvar.disabled=true; salvar.textContent='⏳ Salvando...';
+    var ok = await _migrarEmailPessoal(e1, showMsg);
+    if(!ok){ salvar.disabled=false; salvar.textContent='Salvar e continuar'; }
+  };
+}
+async function _migrarEmailPessoal(novo, showMsg){
+  var user = window.fbAuth && window.fbAuth.currentUser;
+  if(!user){ showMsg('Sessão expirada. Entre novamente.','err'); return false; }
+  var nomeAtual=state.sessao.nome, cargoAtual=state.sessao.cargo, emailAntigo=(state.sessao.email||'').toLowerCase();
+  function aplicarLocal(){
+    state.usuarios = state.usuarios || [];
+    var reg = state.usuarios.find(function(u){ return u && (u.email||'').toLowerCase()===emailAntigo; });
+    if(reg){ reg.email=novo; if(!reg.nome) reg.nome=nomeAtual; if(!reg.cargo) reg.cargo=cargoAtual; }
+    else { state.usuarios.push({ id:'u_'+Date.now(), nome:nomeAtual, email:novo, cargo:cargoAtual, ativo:true }); }
+    state.sessao.email = novo;
+    try{ saveState(); }catch(e){}
+    try{ if(typeof _salvarUsuariosFirestore==='function') _salvarUsuariosFirestore(); }catch(e){}
+  }
+  try{
+    await user.updateEmail(novo);
+    try{ await user.sendEmailVerification(); }catch(e){}
+    aplicarLocal();
+    showMsg('✅ Pronto! Seu login agora é '+novo+'. Entrando...','ok');
+    setTimeout(function(){ try{ setState({page:'empresas'}); }catch(e){ render(); } }, 900);
+    return true;
+  }catch(err){
+    var code = (err && err.code) || '';
+    if(code.indexOf('requires-recent-login')>=0){
+      var wrap=document.getElementById('dep-senha-wrap'); if(wrap) wrap.style.display='block';
+      var senha=((document.getElementById('dep-senha')||{}).value)||'';
+      if(!senha){ showMsg('Por segurança, confirme sua senha atual no campo que apareceu e clique em Salvar de novo.','info'); return false; }
+      try{
+        var cred = firebase.auth.EmailAuthProvider.credential(emailAntigo, senha);
+        await user.reauthenticateWithCredential(cred);
+        await user.updateEmail(novo);
+        try{ await user.sendEmailVerification(); }catch(e){}
+        aplicarLocal();
+        showMsg('✅ Pronto! Seu login agora é '+novo+'. Entrando...','ok');
+        setTimeout(function(){ try{ setState({page:'empresas'}); }catch(e){ render(); } }, 900);
+        return true;
+      }catch(e2){ showMsg('Não consegui confirmar. Verifique a senha atual. ('+((e2&&e2.code)||(e2&&e2.message)||'')+')','err'); return false; }
+    }
+    if(code.indexOf('email-already-in-use')>=0){ showMsg('Esse e-mail já está em uso por outra conta.','err'); return false; }
+    if(code.indexOf('invalid-email')>=0){ showMsg('E-mail inválido.','err'); return false; }
+    if(code.indexOf('operation-not-allowed')>=0 || code.indexOf('requires-verification')>=0 || code.indexOf('verify')>=0){
+      if(typeof user.verifyBeforeUpdateEmail==='function'){
+        try{ await user.verifyBeforeUpdateEmail(novo); showMsg('📧 Enviamos um link de confirmação para '+novo+'. Abra o e-mail, confirme, e depois entre com esse endereço.','ok'); return true; }
+        catch(e3){ showMsg('Falha ao enviar a confirmação: '+((e3&&e3.message)||''),'err'); return false; }
+      }
+      showMsg('Seu projeto exige verificação de e-mail. Avise o administrador.','err'); return false;
+    }
+    showMsg('Falha: '+((err&&err.message)||code),'err');
+    return false;
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -5076,6 +5217,8 @@ function empraKey(e) { return empresaKey(e); }
 // ============ Popup Resumo do Dia no primeiro login (v7.4) ============
 function mostrarPopupResumoDia() {
   if (!state.sessao) return;
+  // [v6.0.39] nao sobrepor a tela obrigatoria de definir e-mail pessoal
+  if (typeof _precisaDefinirEmailPessoal==='function' && _precisaDefinirEmailPessoal(state.sessao)) return;
   const hojeStr = new Date().toISOString().slice(0,10); // YYYY-MM-DD
   state.resumo_visto_por_usuario = state.resumo_visto_por_usuario || {};
   const nomeUser = state.sessao.nome;
