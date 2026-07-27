@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.5 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.6 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1178,6 +1178,7 @@ function _gamAgrega(mes){
     var _dia=(e._editado_em||'').slice(0,10);
     if(_gamDataIni && _dia < _gamDataIni) return; // filtro por intervalo de datas (sobrepoe o mes)
     if(_gamDataFim && _dia > _gamDataFim) return;
+    if(!(_anexosDoAlvara(aid)||[]).length) return; // [v6.1.6] só conta concluídos COM ANEXO no app
     var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
     if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,valorAcc:0,chave:k};
     por[k].qtd++;
@@ -1308,10 +1309,13 @@ function _gamListaConcluidos(chave, mes){
     var e=eds[aid]; if(!e||!e._editado_por||!e._editado_em) return;
     if(!_gamConta(e.status)) return;
     var cm=(e._editado_em||'').slice(0,7);
-    if(mes && cm!==mes) return;
+    var _dia=(e._editado_em||'').slice(0,10);
+    if(_gamDataIni||_gamDataFim){ if(_gamDataIni && _dia<_gamDataIni) return; if(_gamDataFim && _dia>_gamDataFim) return; }
+    else if(mes && cm!==mes) return;
     var u=_gamUser(e._editado_por); if(_gamEhGestor(u&&u.cargo)) return;
     var k=((u&&(u.email||u.nome))||'').toLowerCase().trim();
     if(k!==chave) return;
+    if(!_anexosDoAlvara(aid).length) return; // [v6.1.6] só anexados (igual ao ranking)
     var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); });
     var anx=_anexosDoAlvara(aid);
     out.push({ aid:aid, empresa:(alv&&(alv.empresa||alv.empresa_nome))||'—', tipo:(alv&&alv.tipo)||'—', status:e.status, data:e._editado_em, mesConc:cm, temAnexo:anx.length>0, validado:_alvaraValidadoNoMes(aid, cm) });
@@ -1341,7 +1345,7 @@ function _gamAbrirDetalhe(chave, mes, nome){
   var corpo = lista.length
     ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Anexo</th><th class="text-right pr-2">Concluído</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table>'
     : '<div class="text-center text-slate-400 py-10">Nenhum alvará concluído neste mês.</div>';
-  var resumo = lista.length ? ('<strong>'+validados+'</strong> de <strong>'+lista.length+'</strong> validados (só validados contam no ranking)') : '';
+  var resumo = lista.length ? ('<strong>'+lista.length+'</strong> com anexo contam · <strong>'+validados+'</strong> já validados pela IA') : '';
   // guarda o contexto pra exportar/PDF
   window._gamDetCtx = { lista: lista, nome: nome, mes: mes, mesLabel: _gamMesLabel(mes), validados: validados };
   var acoesTopo = lista.length
@@ -1562,7 +1566,7 @@ function renderPremiacao(){
           </div>`; }).join('')}
       </div>
     </div>
-    <p class="text-xs text-slate-400 mt-3">Conta quem marcou o alvara como concluido no mes. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
+    <p class="text-xs text-slate-400 mt-3">Conta apenas alvarás <strong>concluídos E com anexo</strong> no app (sem anexo não soma). Use o botão 🤖 Validar no detalhe para conferir o anexo com a IA. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
     `}
   </div>`;
 }
