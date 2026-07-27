@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.42 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.43 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -738,11 +738,27 @@ function attachLogin(){
   const dominioValido = (email) => true; // v5.6 ? cadastro livre
 
   // Mensagens de erro Firebase legíveis
-  const traduzErroFirebase = (err) => {
+  const traduzErroFirebase = (err, digitado) => {
     const code = err.code || '';
+    // [v6.0.43] O Firebase responde 'invalid-credential' TANTO para senha errada
+    // QUANTO para e-mail inexistente (nao revela qual). Muita gente estava digitando
+    // um e-mail PESSOAL que ainda nao e a conta (a conta e @azuoscontabil). Por isso
+    // damos a dica de entrar com o NOME, que o sistema converte no e-mail certo.
+    const pareceEmailNaoCadastrado = (function(){
+      try{
+        var t=(digitado||'').trim().toLowerCase();
+        if(t.indexOf('@')<0) return false;                 // digitou nome, nao email
+        var conhecido = (state.usuarios||[]).some(function(u){ return u && (u.email||'').toLowerCase()===t; })
+          || /@azuoscontabil\.com\.br$/i.test(t) || t==='thierrymforte@gmail.com';
+        return !conhecido;                                  // email que nao casa com conta conhecida
+      }catch(e){ return false; }
+    })();
     if (code.includes('invalid-email')) return 'E-mail inválido.';
-    if (code.includes('user-not-found')) return 'E-mail não cadastrado. Use "Criar conta" para cadastrar.';
-    if (code.includes('wrong-password') || code.includes('invalid-credential') || code.includes('invalid-login-credentials')) return 'Senha incorreta. Clique em "Esqueci minha senha" se necessário.';
+    if (code.includes('user-not-found')) return 'Conta não encontrada. Tente entrar com seu NOME (ex.: Camila) e a senha de sempre.';
+    if (code.includes('wrong-password') || code.includes('invalid-credential') || code.includes('invalid-login-credentials')) {
+      if (pareceEmailNaoCadastrado) return 'Esse e-mail pode não estar cadastrado. Entre com seu NOME (ex.: Camila) e a senha de sempre — depois o sistema deixa você cadastrar seu e-mail pessoal.';
+      return 'E-mail/nome ou senha incorretos. Se não lembra a senha, clique em "Esqueci minha senha".';
+    }
     if (code.includes('email-already-in-use')) return 'Esse e-mail já tem cadastro. Vá em "Entrar" ou use "Esqueci minha senha".';
     if (code.includes('weak-password')) return 'Senha muito fraca. Use ao menos 6 caracteres.';
     if (code.includes('too-many-requests')) return 'Muitas tentativas. Aguarde alguns minutos.';
@@ -775,7 +791,7 @@ function attachLogin(){
         showOk('✨ Conta criada! Entrando no sistema...');
         // onAuthStateChanged faz o resto
       } catch (err) {
-        showError(traduzErroFirebase(err));
+        showError(traduzErroFirebase(err, digitado));
         btn.disabled = false;
         btn.textContent = '✨ Criar minha conta';
       }
@@ -786,7 +802,7 @@ function attachLogin(){
         await window.fbAuth.signInWithEmailAndPassword(email, senha);
         // onAuthStateChanged faz o resto
       } catch (err) {
-        showError(traduzErroFirebase(err));
+        showError(traduzErroFirebase(err, digitado));
         btn.disabled = false;
         btn.textContent = 'Entrar';
       }
