@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.6 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.7 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1179,7 +1179,7 @@ function _gamAgrega(mes){
     if(_gamDataIni && _dia < _gamDataIni) return; // filtro por intervalo de datas (sobrepoe o mes)
     if(_gamDataFim && _dia > _gamDataFim) return;
     if(!(_anexosDoAlvara(aid)||[]).length) return; // [v6.1.6] só conta concluídos COM ANEXO no app
-    var k=(u.email||u.nome||'').toLowerCase(); if(!k) return;
+    var k=(u.nome||u.email||'').toLowerCase().trim(); if(!k) return; // [v6.1.7] agrupa por NOME (junta 2 e-mails da mesma pessoa)
     if(!por[k]) por[k]={nome:u.nome,email:u.email,cargo:u.cargo,foto:u.foto||'',qtd:0,valorAcc:0,chave:k};
     por[k].qtd++;
     por[k].valorAcc += _gamValorDoAlvara(aid, e); // valor REAL por tipo (fallback: valor unico)
@@ -1313,7 +1313,7 @@ function _gamListaConcluidos(chave, mes){
     if(_gamDataIni||_gamDataFim){ if(_gamDataIni && _dia<_gamDataIni) return; if(_gamDataFim && _dia>_gamDataFim) return; }
     else if(mes && cm!==mes) return;
     var u=_gamUser(e._editado_por); if(_gamEhGestor(u&&u.cargo)) return;
-    var k=((u&&(u.email||u.nome))||'').toLowerCase().trim();
+    var k=((u&&(u.nome||u.email))||'').toLowerCase().trim(); // [v6.1.7] agrupa por NOME
     if(k!==chave) return;
     if(!_anexosDoAlvara(aid).length) return; // [v6.1.6] só anexados (igual ao ranking)
     var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); });
@@ -1584,7 +1584,16 @@ var _GAM_TABELA_PADRAO = [
   {atividade:'Constituição', valor:6},
   {atividade:'Alteração', valor:5},
   {atividade:'Baixa', valor:4},
-  {atividade:'Faturamento', valor:2}
+  {atividade:'Faturamento', valor:2},
+  // [v6.1.7] tipos de alvara que faltavam (defina o R$ de cada um em "Valores"):
+  {atividade:'Potencial', valor:0},
+  {atividade:'Conselho', valor:0},
+  {atividade:'Painel', valor:0},
+  {atividade:'Uso Passeio', valor:0},
+  {atividade:'CNES', valor:0},
+  {atividade:'Auto de Infração', valor:0},
+  {atividade:'Procon', valor:0},
+  {atividade:'IBAMA', valor:0}
 ];
 function _gamTabela(){ var g=state.gamificacao||{}; return (Array.isArray(g.tabela)&&g.tabela.length)?g.tabela:_GAM_TABELA_PADRAO; }
 function _gamTabelaWork(){ if(!Array.isArray(window._gamTabelaTmp)) window._gamTabelaTmp=_gamTabela().map(function(r){return {atividade:r.atividade,valor:(+r.valor||0)};}); return window._gamTabelaTmp; }
