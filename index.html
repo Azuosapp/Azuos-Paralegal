@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.52 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.53 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3906,11 +3906,46 @@ function renderHistorico(){
 function attachHistorico(){}
 
 // ============ Usuários ============
+// [v6.0.53] Normaliza a lista: 1 registro por e-mail (sem duplicados) e id ESTAVEL
+// derivado do e-mail. Evita o bug de "clico num usuario e abre outro" (ids colididos)
+// e duplicidade vinda das varias rotinas antigas.
+function _idDoEmailUsr(e){
+  var s=String(e||'').toLowerCase().trim(), h=0;
+  for(var i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h=h&0xFFFFFFFF; }
+  return 'u_'+Math.abs(h).toString(36);
+}
+function _normalizarUsuarios(){
+  try{
+    if(!Array.isArray(state.usuarios)) return false;
+    var vistos={}, out=[], mudou=false;
+    state.usuarios.forEach(function(u){
+      if(!u) return;
+      var e=(u.email||'').toLowerCase().trim();
+      var idEstavel = e ? _idDoEmailUsr(e) : (u.id||('u_'+Math.random().toString(36).slice(2,8)));
+      if(u.id!==idEstavel){ u.id=idEstavel; mudou=true; }
+      var chave = e || idEstavel;
+      if(vistos[chave]!==undefined){
+        // duplicado: mescla preservando foto/nome/cargo e ativo=false se qualquer um inativo
+        var ja=out[vistos[chave]];
+        if(!ja.foto && u.foto) ja.foto=u.foto;
+        if((!ja.nome || ja.nome===e) && u.nome) ja.nome=u.nome;
+        if(u.cargo==='Administrador') ja.cargo='Administrador';
+        if(u.ativo===false) ja.ativo=false;
+        mudou=true;
+      } else {
+        vistos[chave]=out.length; out.push(u);
+      }
+    });
+    if(mudou){ state.usuarios=out; try{ if(typeof saveState==='function') saveState(); }catch(e){} }
+    return mudou;
+  }catch(e){ console.warn('[normalizarUsuarios]', e && e.message); return false; }
+}
 function renderUsuarios(){
   // v7 — gestão de usuários é exclusiva do administrador (antes qualquer um editava)
   if (!(state.sessao && state.sessao.cargo === 'Administrador')) {
     return `<div class="p-10 text-center"><div class="text-5xl mb-3">🔒</div><div class="text-lg font-bold text-slate-800">Acesso restrito</div><div class="text-sm text-slate-500 mt-1">A gestão de usuários é exclusiva do administrador.</div></div>`;
   }
+  try{ _normalizarUsuarios(); }catch(e){}
   const _accs = (typeof _acessoLista==='function') ? _acessoLista() : [];
   const _accStatusBadge = (s)=> s==='feito' ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">FEITO</span>'
       : s==='erro' ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">ERRO</span>'
@@ -3987,6 +4022,7 @@ function toggleUsuarioAdmin(id, virarAdmin){
   }
   try{ if(typeof saveState==='function') saveState(); }catch(e){}
   try{ if(typeof _fsWriteDebounced==='function') _fsWriteDebounced(); }catch(e){}
+  try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){}
   // se mudei o proprio cargo, reflete na sessao atual
   try{ if(state.sessao && (state.sessao.email||'').toLowerCase()===(u.email||'').toLowerCase()){ state.sessao.cargo=u.cargo; } }catch(e){}
   try{ render(); }catch(e){}
@@ -4043,6 +4079,7 @@ function _ensureUsuarioProfile(nome, email){
     }
     try{ if(typeof saveState==='function') saveState(); }catch(e){}
     try{ if(typeof _fsWriteDebounced==='function') _fsWriteDebounced(); }catch(e){}
+    try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){}
   }catch(e){ console.warn('[acessos] ensureUsuario:', e && e.message); }
 }
 async function _acessoExecutar(tipo, nome, email){
@@ -4238,7 +4275,7 @@ function salvarUsuario(id){
     state.usuarios.push({id: uid(state.usuarios), ...data});
     log('Cadastrou usuário', nome);
   }
-  closeModal(); saveState(); render();
+  closeModal(); saveState(); try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){} render();
 }
 function excluirUsuario(id){
   if (estruturaBloqueada()) return;
@@ -4248,7 +4285,7 @@ function excluirUsuario(id){
     log('Excluiu usuário', u.nome);
     if (u.email) { state.usuarios_removidos = state.usuarios_removidos || []; var _em=(u.email||'').toLowerCase().trim(); if(state.usuarios_removidos.indexOf(_em)<0) state.usuarios_removidos.push(_em); }
     state.usuarios = state.usuarios.filter(x=>String(x.id)!==String(id));
-    saveState(); render();
+    saveState(); try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){} render();
   }
 }
 
@@ -6108,15 +6145,19 @@ function abrirBaselineDialog() {
   ].map(function(u){ return { id: idDoEmail(u.email), nome: u.nome, email: u.email, cargo: u.cargo, foto: '', ativo: true }; });
 
   function aplicarUsuarios(){
+    // [v6.0.53] NAO reseta mais a lista. So GARANTE que os oficiais existam
+    // (adiciona se faltar e nao foi removido de proposito). Preserva usuarios
+    // criados pelo admin e suas edicoes (ativo/cargo/nome).
     try {
       if (!state) return;
-      // Substituir state.usuarios pelos oficiais (sempre)
-      var atuais = (state.usuarios || []).map(function(u){ return u && u.email && u.email.toLowerCase(); }).filter(Boolean);
-      var oficiais = USUARIOS_OFICIAIS.map(function(u){ return u.email.toLowerCase(); });
-      // Verificar se eh diferente
-      var diferente = atuais.length !== oficiais.length || oficiais.some(function(e){ return atuais.indexOf(e) < 0; });
-      if (diferente) {
-        state.usuarios = _preservaFotosOficiais(USUARIOS_OFICIAIS);
+      if (!Array.isArray(state.usuarios)) state.usuarios = [];
+      var atuais = state.usuarios.map(function(u){ return u && u.email && u.email.toLowerCase(); }).filter(Boolean);
+      var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
+      var faltantes = USUARIOS_OFICIAIS.filter(function(o){
+        var e=o.email.toLowerCase(); return atuais.indexOf(e)<0 && removidos.indexOf(e)<0;
+      });
+      if (faltantes.length) {
+        faltantes.forEach(function(o){ state.usuarios.push(o); });
         try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
       }
     } catch(e) { console.warn('[v5.7.15 aplicar]', e); }
@@ -6247,14 +6288,16 @@ function abrirBaselineDialog() {
   ].map(function(u){return{id:idDoEmail(u.email),nome:u.nome,email:u.email,cargo:u.cargo,foto:'',ativo:true};});
 
   function aplicarUsuarios(){
+    // [v6.0.53] Additivo: garante oficiais faltantes; nunca reseta/remove os demais.
     try {
       if (!state || !Array.isArray(state.usuarios)) return;
       var atuais = state.usuarios.map(function(u){return u && u.email && u.email.toLowerCase();}).filter(Boolean);
-      var oficiais = USUARIOS_OFICIAIS.map(function(u){return u.email.toLowerCase();});
-      var falta = oficiais.some(function(e){return atuais.indexOf(e)<0;});
-      var sobra = atuais.some(function(e){return oficiais.indexOf(e)<0;});
-      if (falta || sobra) {
-        state.usuarios = _preservaFotosOficiais(USUARIOS_OFICIAIS);
+      var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
+      var faltantes = USUARIOS_OFICIAIS.filter(function(o){
+        var e=o.email.toLowerCase(); return atuais.indexOf(e)<0 && removidos.indexOf(e)<0;
+      });
+      if (faltantes.length) {
+        faltantes.forEach(function(o){ state.usuarios.push(o); });
         salvarUsuariosFirestore();
         try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
       }
@@ -6535,31 +6578,20 @@ function abrirBaselineDialog() {
   ].map(function(u){ return Object.assign(u, { foto: '', ativo: true }); });
 
   function aplicarUsuariosOficiais(){
+    // [v6.0.53] Additivo: garante oficiais faltantes; nunca reseta a lista nem
+    // troca ids (isso causava "clico num usuario e abre outro") e nunca empurra
+    // um reset para o Firestore.
     try {
       if (!state || !Array.isArray(state.usuarios)) return;
       var atuais = state.usuarios.map(function(u){return u && u.email && u.email.toLowerCase();}).filter(Boolean);
-      var oficiais = USUARIOS_OFICIAIS.map(function(u){return u.email.toLowerCase();});
-      var idsDiferentes = false;
-      // Comparar IDs também
-      state.usuarios.forEach(function(u){
-        var ofi = USUARIOS_OFICIAIS.find(function(o){ return o.email === u.email; });
-        if (ofi && u.id !== ofi.id) idsDiferentes = true;
+      var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
+      var faltantes = USUARIOS_OFICIAIS.filter(function(o){
+        var e=o.email.toLowerCase(); return atuais.indexOf(e)<0 && removidos.indexOf(e)<0;
       });
-      var falta = oficiais.some(function(e){return atuais.indexOf(e)<0;});
-      var sobra = atuais.some(function(e){return oficiais.indexOf(e)<0;});
-      if (falta || sobra || idsDiferentes) {
-        state.usuarios = _preservaFotosOficiais(USUARIOS_OFICIAIS);
+      if (faltantes.length) {
+        faltantes.forEach(function(o){ state.usuarios.push(o); });
         try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
-        // Salvar no Firestore
-        try {
-          if (firebase && firebase.firestore && state.sessao && state.sessao.email) {
-            firebase.firestore().collection('azuos').doc('shared').update({
-              usuarios: _preservaFotosOficiais(USUARIOS_OFICIAIS),
-              last_modified_by: state.sessao.email.toLowerCase().trim(),
-              last_modified_at: firebase.firestore.FieldValue.serverTimestamp(),
-            }).catch(function(e){ console.warn('[v5.7.20 fs]', e.message); });
-          }
-        } catch(e){}
+        try { if (typeof window._salvarUsuariosFirestore === 'function') window._salvarUsuariosFirestore(); } catch(e){}
       }
     } catch(e) { console.warn('[v5.7.20]', e); }
   }
@@ -8101,21 +8133,21 @@ window._autoSyncUsuarios = async function(){
     var falta = emailsFS.filter(function(e){return emailsLocal.indexOf(e)<0;});
     var sobra = emailsLocal.filter(function(e){return emailsFS.indexOf(e)<0;});
     var diff = falta.length>0 || sobra.length>0;
-    if(diff && emailsFS.length>=emailsLocal.length){
-      console.warn('[v5.7.56] divergencia — Firestore tem '+emailsFS.length+', local tem '+emailsLocal.length+'. Falta:'+falta.join(',')+' Sobra:'+sobra.join(','));
-      var usrsMerged = usrsFS.map(function(uFS){
-        var uLocal = mapLocal[uFS.email.toLowerCase().trim()];
-        if(uLocal && uLocal.foto && (!uFS.foto || uFS.foto.length<uLocal.foto.length)){
-          return Object.assign({}, uFS, {foto: uLocal.foto});
-        }
-        return uFS;
-      });
-      usrsMerged = usrsMerged.filter(function(u){ return !Array.isArray(state.usuarios_removidos) || state.usuarios_removidos.indexOf((u.email||'').toLowerCase().trim())<0; });
-      state.usuarios = JSON.parse(JSON.stringify(usrsMerged));
+    // [v6.0.53] ADITIVO: nunca sobrescreve a lista local (isso revertia
+    // inativacoes e apagava usuarios recem-criados). So ADICIONA quem existe no
+    // Firestore e falta localmente, respeitando usuarios_removidos.
+    var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
+    var adicionados = 0;
+    falta.forEach(function(e){
+      if(removidos.indexOf(e)>=0) return;
+      state.usuarios.push(JSON.parse(JSON.stringify(mapFS[e])));
+      adicionados++;
+    });
+    if(adicionados){
       try{ if(typeof saveState==='function') saveState(); }catch(e){}
       try{ if(typeof renderApp==='function') renderApp(); }catch(e){}
-      console.log('[v5.7.56] state.usuarios atualizado com '+state.usuarios.length+' usuarios do Firestore');
-      return {ok:true,corrigidos:state.usuarios.length,falta:falta,sobra:sobra};
+      console.log('[v5.7.56] '+adicionados+' usuario(s) do Firestore adicionados (sem sobrescrever).');
+      return {ok:true,adicionados:adicionados};
     }
     return {ok:true,nadaPraFazer:true,total:emailsLocal.length};
   }catch(e){console.error('[v5.7.56 erro]',e); return {ok:false,erro:e.message};}
