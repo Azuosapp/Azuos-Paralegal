@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.41 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.42 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -98,6 +98,14 @@ try {
   };
   firebase.initializeApp(firebaseConfig);
   window.fbAuth = firebase.auth();
+  // [v6.0.42] SEGURANCA (PCs compartilhados): persistencia de SESSAO — ao FECHAR o
+  // navegador a pessoa e deslogada e precisa entrar de novo. Assim a proxima pessoa
+  // no mesmo PC nao herda a sessao de quem usou antes. (Recarregar a MESMA aba mantem
+  // o login; so fechar o navegador/aba encerra.)
+  try {
+    window.fbAuth.setPersistence(firebase.auth.Auth.Persistence.SESSION)
+      .catch(function(e){ console.warn('[auth] setPersistence SESSION falhou:', e && e.message); });
+  } catch(e) { console.warn('[auth] setPersistence indisponivel', e); }
   window.fbDB = firebase.firestore();
   try { window.fbStorage = firebase.storage(); } catch(e) { console.warn("[storage] indisponivel", e); }
 </script>
