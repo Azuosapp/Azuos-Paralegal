@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.47 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.50 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3925,11 +3925,11 @@ function renderUsuarios(){
       <!-- [v6.0.46] Painel de Acesso (criar / redefinir senha) -->
       <div class="bg-white rounded-xl shadow-sm p-5 mb-6 border border-slate-200">
         <div class="flex items-center gap-2 mb-1"><span class="text-xl">🔑</span><h2 class="text-lg font-bold text-slate-800">Painel de Acesso</h2></div>
-        <p class="text-xs text-slate-500 mb-4">Crie o acesso de alguém (e-mail pessoal + senha temporária gerada automaticamente) ou redefina a senha. O pedido é processado em <b>segundos a poucos minutos</b>; a senha aparece aqui para você copiar e repassar. <b>Nunca cria administradores.</b></p>
+        <p class="text-xs text-slate-500 mb-4">Crie o acesso de alguém (e-mail pessoal + senha temporária gerada automaticamente) — a conta nasce <b>na hora</b> e a senha aparece aqui para você copiar e repassar. Para <b>redefinir</b> a senha de quem já tem conta, é enviado um link ao e-mail da pessoa. <b>Nunca cria administradores.</b></p>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-4">
           <input id="acesso-nome" placeholder="Nome (ex.: Leyla)" class="px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
           <input id="acesso-email" placeholder="e-mail pessoal (ex.: leyla@gmail.com)" class="px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500">
-          <button onclick="acessoCriar()" class="px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm">Criar / redefinir acesso</button>
+          <button id="acesso-btn" onclick="acessoCriar()" class="px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm disabled:opacity-60">Criar / redefinir acesso</button>
         </div>
         ${_accs.length ? `<div class="space-y-2">${_accs.map(p=>`
           <div class="flex items-center gap-2 flex-wrap bg-slate-50 rounded-lg px-3 py-2 text-sm">
@@ -3983,29 +3983,82 @@ function _acessosSubscribe(){
   }catch(e){}
 }
 function _acessoLista(){ return (window._acessosCache||[]).filter(function(p){ return p && !p.arquivado; }).sort(function(a,b){ return (b.solicitado_em||'').localeCompare(a.solicitado_em||''); }); }
-function _acessoPush(tipo, nome, email){
-  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode gerenciar acessos.'); return false; }
-  if(!window.fbDB){ alert('Sem conexão com o servidor. Tente novamente.'); return false; }
-  email=(email||'').trim().toLowerCase();
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ alert('Informe um e-mail válido.'); return false; }
-  var jaTem=(window._acessosCache||[]).find(function(x){ return x && (x.email||'')===email && x.status!=='feito' && x.status!=='erro' && !x.arquivado; });
-  if(jaTem){ alert('Já existe um pedido em andamento para '+email+'. Aguarde processar.'); return false; }
+
+// [v6.0.50] INSTANTANEO e SEM SERVIDOR: a conta e criada na hora, no proprio
+// navegador, usando uma instancia SECUNDARIA do Firebase (o admin continua logado).
+// - Criar: cria a conta e mostra a senha temporaria aqui (para repassar).
+// - Se a conta ja existir OU for "redefinir": envia link de redefinicao ao e-mail
+//   da pessoa (o navegador nao pode trocar a senha de outra conta diretamente).
+function _secApp(){
+  try{ return firebase.app('acessos'); }catch(e){ return firebase.initializeApp(firebaseConfig, 'acessos'); }
+}
+function _gerarSenhaTemp(){
+  var abc='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789', s='';
+  for(var i=0;i<8;i++) s+=abc[Math.floor(Math.random()*abc.length)];
+  return 'Azuos-'+s;
+}
+async function _acessoExecutar(tipo, nome, email){
+  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode gerenciar acessos.'); return; }
+  if(!window.fbDB || !window.fbAuth){ alert('Sem conexão com o servidor. Tente novamente.'); return; }
+  email=(email||'').trim().toLowerCase(); nome=(nome||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ alert('Informe um e-mail válido.'); return; }
+
+  var status='feito', resultado='', senhaOut=null;
+  try{
+    if(tipo==='reset'){
+      await window.fbAuth.sendPasswordResetEmail(email);
+      resultado='link de redefinição enviado para o e-mail da pessoa';
+    } else {
+      var senha=_gerarSenhaTemp();
+      var sec=_secApp();
+      try{ await sec.auth().setPersistence(firebase.auth.Auth.Persistence.NONE); }catch(e){}
+      try{
+        await sec.auth().createUserWithEmailAndPassword(email, senha);
+        try{ await sec.auth().signOut(); }catch(e){}
+        resultado='conta criada'; senhaOut=senha;
+      }catch(err){
+        if(err && err.code==='auth/email-already-in-use'){
+          await window.fbAuth.sendPasswordResetEmail(email);
+          resultado='já tinha conta — link de redefinição enviado para o e-mail da pessoa';
+        } else if(err && err.code==='auth/weak-password'){
+          throw new Error('Senha gerada fraca (raro). Tente de novo.');
+        } else { throw err; }
+      }
+    }
+  }catch(err){
+    status='erro';
+    var c=(err&&err.code)||'';
+    resultado = c==='auth/user-not-found' ? 'não existe conta com esse e-mail para redefinir'
+      : c==='auth/invalid-email' ? 'e-mail inválido'
+      : String((err&&err.message)||err);
+  }
+
   var id='acc_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
-  var req={ tipo:tipo, nome:(nome||'').trim(), email:email, cargo:'Paralegal', status:'pendente', solicitado_por:(state.sessao&&state.sessao.email)||'', solicitado_em:new Date().toISOString() };
-  window.fbDB.collection(_COL_ACESSOS).doc(id).set(req)
-    .then(function(){ if(typeof toast==='function') toast('📨 Pedido enviado. Processa em segundos a poucos minutos — a senha aparece aqui.', 'blue'); })
-    .catch(function(e){ alert('Falha ao enviar o pedido: '+((e&&e.message)||e)); });
-  return true;
+  var rec={ tipo:tipo, nome:nome, email:email, cargo:'Paralegal', status:status, resultado:resultado,
+    solicitado_por:(state.sessao&&state.sessao.email)||'', solicitado_em:new Date().toISOString(), _processado_em:new Date().toISOString() };
+  if(senhaOut) rec.senha_temp=senhaOut;
+  try{ await window.fbDB.collection(_COL_ACESSOS).doc(id).set(rec); }catch(e){}
+
+  if(typeof toast==='function'){
+    if(status==='feito' && senhaOut) toast('✅ Conta criada! A senha apareceu no painel — copie e repasse.', 'emerald');
+    else if(status==='feito') toast('✅ '+resultado, 'blue');
+    else toast('⚠️ '+resultado, 'red');
+  }
 }
 function acessoCriar(){
   var nome=((document.getElementById('acesso-nome')||{}).value)||'';
   var email=((document.getElementById('acesso-email')||{}).value)||'';
   if(!email.trim()){ alert('Informe o e-mail pessoal da pessoa.'); return; }
-  if(_acessoPush('criar', nome, email)){ var n=document.getElementById('acesso-nome'), e=document.getElementById('acesso-email'); if(n)n.value=''; if(e)e.value=''; }
+  var btn=document.getElementById('acesso-btn'); if(btn){ btn.disabled=true; btn.textContent='Criando...'; }
+  _acessoExecutar('criar', nome, email).finally(function(){
+    var n=document.getElementById('acesso-nome'), e=document.getElementById('acesso-email');
+    if(n)n.value=''; if(e)e.value='';
+    var b=document.getElementById('acesso-btn'); if(b){ b.disabled=false; b.textContent='Criar / redefinir acesso'; }
+  });
 }
 function acessoReset(email, nome){
   if(!email){ alert('Este usuário não tem e-mail. Edite o usuário e informe o e-mail pessoal primeiro.'); return; }
-  if(confirm('Redefinir a senha de '+(nome||email)+'?\n\nUma senha temporária nova será gerada e aparecerá aqui para você repassar.')) _acessoPush('reset', nome, email);
+  if(confirm('Redefinir a senha de '+(nome||email)+'?\n\nSerá enviado um link de redefinição para o e-mail da pessoa.')) _acessoExecutar('reset', nome, email);
 }
 function acessoCopiar(id){
   var p=(window._acessosCache||[]).find(function(x){return x && x.id===id;});

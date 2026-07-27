@@ -2,9 +2,10 @@ name: Gerenciar acessos (criar/redefinir senha)
 
 on:
   workflow_dispatch:
-  schedule:
-    # A cada 5 minutos (minimo do GitHub). Pode atrasar alguns minutos.
-    - cron: '*/5 * * * *'
+  # [v6.0.50] Agendamento DESLIGADO: a criacao/reset agora e instantanea no proprio
+  # app (instancia secundaria do Firebase). Este motor fica so como reserva manual.
+  # schedule:
+  #   - cron: '*/5 * * * *'
 
 permissions:
   contents: read
