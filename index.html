@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.0.53 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.0.54 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1043,7 +1043,7 @@ function renderLayout(content){
     {key:'historico', label:'Histórico', icon:'🕒'},
     {key:'manutencao', label:'Manutenção', icon:'🛠️', badge: badgeManut},
     ...(ehAdmin ? [{key:'checklists', label:'Checklists', icon:'📋', soAdmin:true}] : []),
-    {key:'usuarios', label:'Usuários', icon:'👥'},
+    ...(ehAdmin ? [{key:'usuarios', label:'Usuários', icon:'👥'}] : []),
   ];
   const initialsUser = (state.sessao.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase();
   const _fotoSes = (()=>{try{const e=state.sessao&&state.sessao.email;if(!e||!state.usuarios)return null;const us=Object.values(state.usuarios);const u=us.find(x=>x&&(x.email||'').toLowerCase()===(e||'').toLowerCase());return (u&&u.foto)||null;}catch(_){return null}})();
@@ -4223,6 +4223,7 @@ function _cropAplicar(){
   var url=cv.toDataURL('image/jpeg',0.82);
   window._fotoTmp=url;
   var prev=document.getElementById('fu-foto-preview'); if(prev) prev.innerHTML='<img src="'+url+'" class="w-full h-full object-cover">';
+  var prevMc=document.getElementById('mc-foto-preview'); if(prevMc) prevMc.innerHTML='<img src="'+url+'" class="w-full h-full object-cover">';
   _cropFechar();
 }
 
@@ -5824,30 +5825,112 @@ function abrirBaselineDialog() {
 (function trocarSenhaPatch(){
   function abrirModalSenha(){
     if (document.getElementById('modal-trocar-senha')) return;
+    var _s = state.sessao||{};
+    var _emailAtual = (_s.email||'').toLowerCase();
+    function _reg(){ return (state.usuarios||[]).find(function(u){ return u && (u.email||'').toLowerCase()===_emailAtual; }); }
+    var _r = _reg();
+    var _foto = (_r&&_r.foto) || (state.fotos_usuarios&&state.fotos_usuarios[_emailAtual]) || '';
+    var _ini = ((_s.nome||'').split(' ').map(function(x){return x[0];}).slice(0,2).join('')||'?').toUpperCase();
+    var _L='display:block;font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;';
+    var _I='width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;';
+    var _SEC='border-top:1px solid #e2e8f0;margin-top:20px;padding-top:18px;';
     var html = `
-      <div id="modal-trocar-senha" style="position:fixed;inset:0;background:rgba(15,23,42,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);">
-        <div style="background:white;border-radius:16px;padding:32px;max-width:420px;width:90%;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
-          <h2 style="margin:0 0 8px 0;font-size:22px;font-weight:700;color:#0f172a;">🔒 Alterar senha</h2>
-          <p style="margin:0 0 24px 0;color:#64748b;font-size:14px;">Digite sua senha atual e escolha uma nova.</p>
-          <div style="display:flex;flex-direction:column;gap:14px;">
-            <div><label style="display:block;font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">SENHA ATUAL</label>
-              <input id="ts-atual" type="password" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;"/></div>
-            <div><label style="display:block;font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">NOVA SENHA</label>
-              <input id="ts-nova" type="password" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;" placeholder="Minimo 6 caracteres"/></div>
-            <div><label style="display:block;font-size:12px;color:#475569;font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">CONFIRMAR NOVA SENHA</label>
-              <input id="ts-conf" type="password" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;box-sizing:border-box;"/></div>
-            <div id="ts-msg" style="font-size:13px;min-height:18px;"></div>
-            <div style="display:flex;gap:10px;margin-top:6px;">
-              <button id="ts-cancel" style="flex:1;padding:11px;border:1px solid #e2e8f0;background:white;color:#475569;border-radius:10px;font-weight:600;cursor:pointer;">Cancelar</button>
-              <button id="ts-ok" style="flex:1.5;padding:11px;border:none;background:linear-gradient(135deg,#3b82f6,#6366f1);color:white;border-radius:10px;font-weight:600;cursor:pointer;">Trocar senha</button>
+      <div id="modal-trocar-senha" style="position:fixed;inset:0;background:rgba(15,23,42,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);padding:16px;">
+        <div style="background:white;border-radius:16px;padding:28px;max-width:440px;width:100%;max-height:92vh;overflow:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);">
+          <h2 style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#0f172a;">⚙️ Minha conta</h2>
+          <p style="margin:0 0 18px 0;color:#64748b;font-size:14px;">Atualize sua foto, sua senha e seu e-mail.</p>
+
+          <div><label style="${_L}">Foto</label>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <div id="mc-foto-preview" style="width:56px;height:56px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#60a5fa,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">${_foto?('<img src="'+_foto+'" style="width:100%;height:100%;object-fit:cover">'):esc(_ini)}</div>
+              <input type="file" id="mc-foto-file" accept="image/*" style="display:none">
+              <button id="mc-foto-escolher" style="padding:8px 12px;border:0;border-radius:9px;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;">📷 Escolher</button>
+              <button id="mc-foto-salvar" style="padding:8px 12px;border:0;border-radius:9px;background:#059669;color:#fff;font-weight:700;font-size:12px;cursor:pointer;">Salvar foto</button>
             </div>
+            <div id="mc-foto-msg" style="font-size:12px;min-height:14px;margin-top:6px;"></div>
           </div>
+
+          <div style="${_SEC}">
+            <label style="${_L}">Senha atual</label>
+            <input id="ts-atual" type="password" style="${_I}"/>
+            <label style="${_L}margin-top:12px;">Nova senha</label>
+            <input id="ts-nova" type="password" placeholder="Minimo 6 caracteres" style="${_I}"/>
+            <label style="${_L}margin-top:12px;">Confirmar nova senha</label>
+            <input id="ts-conf" type="password" style="${_I}"/>
+            <div id="ts-msg" style="font-size:13px;min-height:18px;margin-top:8px;"></div>
+            <button id="ts-ok" style="width:100%;margin-top:8px;padding:11px;border:none;background:linear-gradient(135deg,#3b82f6,#6366f1);color:white;border-radius:10px;font-weight:600;cursor:pointer;">Trocar senha</button>
+          </div>
+
+          <div style="${_SEC}">
+            <label style="${_L}">E-mail (login)</label>
+            <div style="font-size:13px;color:#64748b;margin-bottom:8px;">Atual: <b style="color:#334155">${esc(_s.email||'')}</b></div>
+            <input id="mc-email-novo" type="email" placeholder="novo e-mail" style="${_I}"/>
+            <input id="mc-email-senha" type="password" placeholder="sua senha atual (confirmação)" style="${_I}margin-top:10px;"/>
+            <div id="mc-email-msg" style="font-size:13px;min-height:18px;margin-top:8px;"></div>
+            <button id="mc-email-btn" style="width:100%;margin-top:6px;padding:11px;border:none;background:#f59e0b;color:white;border-radius:10px;font-weight:600;cursor:pointer;">Alterar e-mail</button>
+          </div>
+
+          <button id="ts-cancel" style="width:100%;margin-top:18px;padding:11px;border:1px solid #e2e8f0;background:white;color:#475569;border-radius:10px;font-weight:600;cursor:pointer;">Fechar</button>
         </div>
       </div>`;
     var div = document.createElement('div'); div.innerHTML = html; document.body.appendChild(div.firstElementChild);
     function fechar(){ var m=document.getElementById('modal-trocar-senha'); if(m) m.remove(); }
     document.getElementById('ts-cancel').onclick = fechar;
     document.getElementById('modal-trocar-senha').addEventListener('click', function(e){ if(e.target.id==='modal-trocar-senha') fechar(); });
+
+    // ---- FOTO ----
+    window._fotoTmp = null;
+    document.getElementById('mc-foto-file').onchange = function(e){ var f=e.target.files&&e.target.files[0]; if(f) _fotoAbrirCropper(f); e.target.value=''; };
+    document.getElementById('mc-foto-escolher').onclick = function(){ document.getElementById('mc-foto-file').click(); };
+    document.getElementById('mc-foto-salvar').onclick = function(){
+      var fm=document.getElementById('mc-foto-msg');
+      if(window._fotoTmp===null || window._fotoTmp===undefined){ fm.style.color='#dc2626'; fm.textContent='Escolha uma foto primeiro.'; return; }
+      var foto=window._fotoTmp; var reg=_reg();
+      if(reg){ reg.foto=foto; }
+      else if(_emailAtual){ (state.usuarios=state.usuarios||[]).push({id:'u_'+Date.now(),nome:(_s.nome||_emailAtual),email:_emailAtual,cargo:(_s.cargo||'Paralegal'),ativo:true,foto:foto}); }
+      try{ state.fotos_usuarios=state.fotos_usuarios||{}; if(_emailAtual) state.fotos_usuarios[_emailAtual]=foto; }catch(e){}
+      try{ saveState(); }catch(e){}
+      try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){}
+      fm.style.color='#16a34a'; fm.textContent='✅ Foto salva!';
+      try{ render(); }catch(e){}
+    };
+
+    // ---- E-MAIL ----
+    document.getElementById('mc-email-btn').onclick = async function(){
+      var em=document.getElementById('mc-email-msg');
+      var novo=((document.getElementById('mc-email-novo').value)||'').trim().toLowerCase();
+      var senha=(document.getElementById('mc-email-senha').value)||'';
+      em.style.color='#dc2626';
+      if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(novo)){ em.textContent='Digite um e-mail válido.'; return; }
+      if(novo===_emailAtual){ em.textContent='Esse já é o seu e-mail atual.'; return; }
+      var user=firebase.auth().currentUser;
+      if(!user){ em.textContent='Você não está logado.'; return; }
+      function aplicar(){
+        var reg=_reg(); if(reg) reg.email=novo;
+        try{ if(state.fotos_usuarios && state.fotos_usuarios[_emailAtual]){ state.fotos_usuarios[novo]=state.fotos_usuarios[_emailAtual]; } }catch(e){}
+        state.sessao.email=novo;
+        try{ saveState(); }catch(e){}
+        try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){}
+      }
+      em.style.color='#64748b'; em.textContent='Alterando...';
+      try{
+        if(senha){ var cred0=firebase.auth.EmailAuthProvider.credential(user.email, senha); await user.reauthenticateWithCredential(cred0); }
+        await user.updateEmail(novo);
+        aplicar(); em.style.color='#16a34a'; em.textContent='✅ E-mail alterado! Seu login agora é '+novo;
+        setTimeout(function(){ fechar(); try{render();}catch(e){} }, 1600);
+      }catch(err){
+        var code=(err&&err.code)||'';
+        if(code.indexOf('requires-recent-login')>=0){ em.style.color='#dc2626'; em.textContent='Confirme sua senha atual no campo acima e clique de novo.'; }
+        else if(code.indexOf('email-already-in-use')>=0){ em.style.color='#dc2626'; em.textContent='Esse e-mail já está em uso por outra conta.'; }
+        else if(code.indexOf('wrong-password')>=0){ em.style.color='#dc2626'; em.textContent='Senha atual incorreta.'; }
+        else if(code.indexOf('operation-not-allowed')>=0 || code.indexOf('verify')>=0){
+          try{ if(user.verifyBeforeUpdateEmail){ await user.verifyBeforeUpdateEmail(novo); em.style.color='#16a34a'; em.textContent='📧 Enviamos um link de confirmação para '+novo+'. Confirme e entre com o novo e-mail.'; } }
+          catch(e3){ em.style.color='#dc2626'; em.textContent='Falha ao enviar confirmação.'; }
+        }
+        else { em.style.color='#dc2626'; em.textContent='Falha: '+((err&&err.message)||code); }
+      }
+    };
+
     document.getElementById('ts-ok').onclick = async function(){
       var msgEl = document.getElementById('ts-msg');
       var atual = document.getElementById('ts-atual').value;
