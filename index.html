@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.7 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.8 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1202,6 +1202,12 @@ function _gamSetData(){
   _gamDataIni=ia; _gamDataFim=ib; render();
 }
 function _gamLimparData(){ _gamDataIni=null; _gamDataFim=null; render(); }
+// [v6.1.8] da Premiacao -> abre a empresa (alvarás, anexos e histórico).
+function _gamIrEmpresa(id){
+  try{ closeModal(); }catch(e){}
+  try{ setState({page:'empresas', empresaAtiva: id}); }
+  catch(e){ try{ state.page='empresas'; state.empresaAtiva=id; render(); }catch(_){ } }
+}
 function _gamSalvar(){
   if (estruturaBloqueada()) return;
   if (!(state.sessao && state.sessao.cargo==='Administrador')) { alert('Apenas o administrador pode alterar.'); return; }
@@ -1318,7 +1324,7 @@ function _gamListaConcluidos(chave, mes){
     if(!_anexosDoAlvara(aid).length) return; // [v6.1.6] só anexados (igual ao ranking)
     var alv=(state.alvaras||[]).find(function(a){ return String(a.id)===String(aid); });
     var anx=_anexosDoAlvara(aid);
-    out.push({ aid:aid, empresa:(alv&&(alv.empresa||alv.empresa_nome))||'—', tipo:(alv&&alv.tipo)||'—', status:e.status, data:e._editado_em, mesConc:cm, temAnexo:anx.length>0, validado:_alvaraValidadoNoMes(aid, cm) });
+    out.push({ aid:aid, empresa_id:(alv&&alv.empresa_id)||null, empresa:(alv&&(alv.empresa||alv.empresa_nome))||'—', tipo:(alv&&alv.tipo)||'—', status:e.status, data:e._editado_em, mesConc:cm, temAnexo:anx.length>0, validado:_alvaraValidadoNoMes(aid, cm) });
   });
   out.sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
   return out;
@@ -1340,7 +1346,7 @@ function _gamAbrirDetalhe(chave, mes, nome){
       if(r.temAnexo) acoes+='<button onclick="_gamValidarAlvaraIA(\''+r.aid+'\',\''+r.mesConc+'\')" class="px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 mr-1">🤖 Validar</button>';
       if(ehAdmin) acoes+='<button onclick="_gamConfirmarAnexoManual(\''+r.aid+'\',\''+r.mesConc+'\')" class="px-2 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700" title="Confirmar manualmente (admin)">✔</button>';
     }
-    return '<tr class="border-b border-slate-50 '+(r.validado?'':'bg-amber-50/40')+'"><td class="py-2 pr-2 font-medium text-slate-700">'+esc(r.empresa)+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2">'+badge+'</td><td class="text-right text-slate-400 text-xs whitespace-nowrap pr-2">'+ds+'</td><td class="text-right whitespace-nowrap">'+acoes+'</td></tr>';
+    return '<tr class="border-b border-slate-50 '+(r.validado?'':'bg-amber-50/40')+'"><td class="py-2 pr-2">'+(r.empresa_id?('<button onclick="_gamIrEmpresa('+r.empresa_id+')" class="text-left font-medium text-blue-600 hover:underline" title="Abrir a empresa (alvarás, anexos e histórico)">'+esc(r.empresa)+'</button>'):('<span class="font-medium text-slate-700">'+esc(r.empresa)+'</span>'))+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2">'+badge+'</td><td class="text-right text-slate-400 text-xs whitespace-nowrap pr-2">'+ds+'</td><td class="text-right whitespace-nowrap">'+acoes+'</td></tr>';
   }).join('');
   var corpo = lista.length
     ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Anexo</th><th class="text-right pr-2">Concluído</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table>'
