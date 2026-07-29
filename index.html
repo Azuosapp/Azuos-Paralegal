@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.8 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.9 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -567,6 +567,26 @@ function _azuosOficialPorEmail(email){
     'leylaazuos@gmail.com':{nome:'Leyla',cargo:'Paralegal'}
   };
   return M[(email||'').toLowerCase().trim()]||null;
+}
+// [v6.1.9] Um usuario "oficial" pode ja estar na lista sob OUTRO e-mail: quem migrou
+// da caixa @azuoscontabil para o e-mail pessoal teve o cadastro CONSOLIDADO (v6.0.44,
+// que troca o e-mail do registro existente em vez de criar um segundo). O re-semeio
+// dos oficiais so olhava o E-MAIL, entao nao encontrava a pessoa e empurrava um
+// segundo cadastro de volta — a cada 3s, brigando para sempre com a consolidacao
+// ("2 Leylas"). Aqui consideramos existente tambem quando o NOME ja esta na lista.
+function _azuosOficialJaExiste(oficial, lista){
+  try{
+    if(!oficial) return false;
+    var us = Array.isArray(lista) ? lista : ((typeof state!=='undefined' && state && state.usuarios) || []);
+    var em = String(oficial.email||'').toLowerCase().trim();
+    var nm = _normId(oficial.nome);
+    for(var i=0;i<us.length;i++){
+      var u = us[i]; if(!u) continue;
+      if(em && String(u.email||'').toLowerCase().trim() === em) return true;
+      if(nm && _normId(u.nome) === nm) return true;
+    }
+    return false;
+  }catch(e){ return false; }
 }
 // [v6.0.37] Identidade unificada do usuario logado. Historicamente varios lugares
 // faziam `state.sessao.email || state.sessao.nome` e comparavam com campos que guardam
@@ -1757,7 +1777,8 @@ function renderEmpresas(){
         </div>
         <div class="flex gap-2">
           ${(state.sessao && state.sessao.cargo==='Administrador') ? `<button id="trava-planilha" title="Congela/libera a atualizacao automatica pela planilha" class="px-4 py-2 rounded-lg font-medium text-sm ${state.trava_planilha?'bg-amber-500 text-white hover:bg-amber-600':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${state.trava_planilha?'🔒 Planilha travada':'🔓 Planilha liberada'}</button>` : ''}
-          <button id="sync-drive" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm">🔄 Sincronizar do Drive</button>
+          <!-- [v6.1.9] Sem botao "Sincronizar do Drive": a entrada de empresas novas
+               e automatica e aditiva, entao nao ha nada para acionar na mao. -->
           <label for="csv-file" class="cursor-pointer px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm">📥 Importar CSV</label>
           <input id="csv-file" type="file" accept=".csv,.tsv,.txt" class="hidden">
           <button id="nova-empresa" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Nova empresa</button>
@@ -2026,7 +2047,8 @@ function attachEmpresas(){
   if (_fc) _fc.onchange = (e) => { _filtroCidade = e.target.value; renderPartial(); };
   document.getElementById('nova-empresa').onclick = () => openModalEmpresa(null);
   document.getElementById('csv-file').onchange = handleCsvImport;
-  document.getElementById('sync-drive').onclick = handleSyncDrive;
+  var _sd = document.getElementById('sync-drive'); // [v6.1.9] so admin: pode nao existir
+  if (_sd) _sd.onclick = handleSyncDrive;
   var _tp = document.getElementById('trava-planilha');
   if (_tp) _tp.onclick = toggleTravaPlanilha;
   document.querySelectorAll('.empresa-card').forEach(c => {
@@ -2083,6 +2105,10 @@ function _mergeUsuariosPreservando(remoteList){
     (remoteList||[]).forEach(function(ru){
       if(!ru) return; var e=(ru.email||'').toLowerCase().trim(); if(!e) return;
       if(removidos.indexOf(e)>=0) return;
+      // [v6.1.9] A planilha guarda o e-mail @azuoscontabil ORIGINAL. Quem migrou para
+      // o e-mail pessoal (ver v6.0.44) ja esta na lista sob outro endereco, entao
+      // olhar so o e-mail recriava um segundo cadastro da mesma pessoa a cada sync.
+      if(_azuosOficialJaExiste(ru, state.usuarios)) return;
       if(!idx[e]){ state.usuarios.push(ru); idx[e]=ru; }
     });
   }catch(e){ console.warn('[mergeUsuariosPreservando]', e&&e.message); }
@@ -2126,11 +2152,38 @@ async function handleSyncDriveAuto() {
         };
       }
     });
-    // Filtra para manter APENAS empresas com status ATIVO
+    // [v6.1.9] SINCRONIZACAO ADITIVA — a planilha so INTRODUZ empresas novas.
+    // Antes esta linha era `state.empresas = <planilha>`, ou seja, a planilha mandava
+    // em tudo. Por isso existia a "trava de planilha": era a unica defesa contra ela
+    // sobrescrever o que a equipe ajustou no app. So que a trava tambem congelava a
+    // entrada de empresas novas — empresas cadastradas na planilha depois disso nunca
+    // chegavam para a equipe (foi o que aconteceu com as empresas da Leyla).
+    // Agora: empresa que ja existe no app NAO e tocada (nome, CNPJ, cidade,
+    // responsavel e status locais mandam) e empresa nova entra com o cadastro dela.
+    // Como nada e sobrescrito, a sincronizacao ficou segura por construcao.
     const todasEmpresas = dados.empresas || [];
-    state.empresas = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
+    const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
+    if (!Array.isArray(state.empresas)) state.empresas = [];
+    const _soDigitos = (v) => String(v == null ? '' : v).replace(/\D/g, '');
+    const _idsLocais = new Set(state.empresas.map(e => String(e && e.id)));
+    const _nomesLocais = new Set(state.empresas.map(e => _normId(e && e.nome)).filter(Boolean));
+    const _cnpjsLocais = new Set(state.empresas.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+    const _novas = ativasRemoto.filter(e => {
+      if (_idsLocais.has(String(e.id))) return false;
+      const n = _normId(e && e.nome); if (n && _nomesLocais.has(n)) return false;
+      const c = _soDigitos(e && e.cnpj); if (c && _cnpjsLocais.has(c)) return false;
+      return true;
+    });
+    _novas.forEach(e => {
+      state.empresas.push(e);
+      _idsLocais.add(String(e.id));
+      const n = _normId(e && e.nome); if (n) _nomesLocais.add(n);
+      const c = _soDigitos(e && e.cnpj); if (c) _cnpjsLocais.add(c);
+    });
+    if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
     const idsAtivo = new Set(state.empresas.map(e => e.id));
-    // [v6.1.1] Alvarás: no modo "app dono", vêm da NUVEM (Drive só empresas).
+    // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
+    // A planilha traz exclusivamente o cadastro das empresas.
     let _alvBaseCloud = null;
     if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudLoad === 'function') {
       try { _alvBaseCloud = await window._alvarasCloudLoad(); } catch(e) { _alvBaseCloud = null; }
@@ -2139,9 +2192,10 @@ async function handleSyncDriveAuto() {
       state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
       console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
     } else {
-      // Filtra alvarás para apenas os de empresas ATIVO + remove CERTIFICADO DIGITAL
-      state.alvaras = (dados.alvaras || []).filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
-      // 1ª vez com o modo ligado e nuvem vazia: migra a base atual para a nuvem.
+      // Sem base na nuvem ainda: MANTEM os alvarás que o app ja tem (nao le
+      // dados.alvaras) e publica essa base na nuvem para virar a fonte oficial.
+      state.alvaras = Array.isArray(state.alvaras) ? state.alvaras : [];
+      console.log('[Sync] nuvem de alvarás vazia — mantendo a base local:', state.alvaras.length);
       if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudSave === 'function') {
         try { window._alvarasCloudSave(state.alvaras); } catch(e){}
       }
@@ -2246,11 +2300,38 @@ async function handleSyncDrive() {
         };
       }
     });
-    // Filtra para manter APENAS empresas com status ATIVO
+    // [v6.1.9] SINCRONIZACAO ADITIVA — a planilha so INTRODUZ empresas novas.
+    // Antes esta linha era `state.empresas = <planilha>`, ou seja, a planilha mandava
+    // em tudo. Por isso existia a "trava de planilha": era a unica defesa contra ela
+    // sobrescrever o que a equipe ajustou no app. So que a trava tambem congelava a
+    // entrada de empresas novas — empresas cadastradas na planilha depois disso nunca
+    // chegavam para a equipe (foi o que aconteceu com as empresas da Leyla).
+    // Agora: empresa que ja existe no app NAO e tocada (nome, CNPJ, cidade,
+    // responsavel e status locais mandam) e empresa nova entra com o cadastro dela.
+    // Como nada e sobrescrito, a sincronizacao ficou segura por construcao.
     const todasEmpresas = dados.empresas || [];
-    state.empresas = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
+    const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
+    if (!Array.isArray(state.empresas)) state.empresas = [];
+    const _soDigitos = (v) => String(v == null ? '' : v).replace(/\D/g, '');
+    const _idsLocais = new Set(state.empresas.map(e => String(e && e.id)));
+    const _nomesLocais = new Set(state.empresas.map(e => _normId(e && e.nome)).filter(Boolean));
+    const _cnpjsLocais = new Set(state.empresas.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+    const _novas = ativasRemoto.filter(e => {
+      if (_idsLocais.has(String(e.id))) return false;
+      const n = _normId(e && e.nome); if (n && _nomesLocais.has(n)) return false;
+      const c = _soDigitos(e && e.cnpj); if (c && _cnpjsLocais.has(c)) return false;
+      return true;
+    });
+    _novas.forEach(e => {
+      state.empresas.push(e);
+      _idsLocais.add(String(e.id));
+      const n = _normId(e && e.nome); if (n) _nomesLocais.add(n);
+      const c = _soDigitos(e && e.cnpj); if (c) _cnpjsLocais.add(c);
+    });
+    if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
     const idsAtivo = new Set(state.empresas.map(e => e.id));
-    // [v6.1.1] Alvarás: no modo "app dono", vêm da NUVEM (Drive só empresas).
+    // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
+    // A planilha traz exclusivamente o cadastro das empresas.
     let _alvBaseCloud = null;
     if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudLoad === 'function') {
       try { _alvBaseCloud = await window._alvarasCloudLoad(); } catch(e) { _alvBaseCloud = null; }
@@ -2259,9 +2340,10 @@ async function handleSyncDrive() {
       state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
       console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
     } else {
-      // Filtra alvarás para apenas os de empresas ATIVO + remove CERTIFICADO DIGITAL
-      state.alvaras = (dados.alvaras || []).filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
-      // 1ª vez com o modo ligado e nuvem vazia: migra a base atual para a nuvem.
+      // Sem base na nuvem ainda: MANTEM os alvarás que o app ja tem (nao le
+      // dados.alvaras) e publica essa base na nuvem para virar a fonte oficial.
+      state.alvaras = Array.isArray(state.alvaras) ? state.alvaras : [];
+      console.log('[Sync] nuvem de alvarás vazia — mantendo a base local:', state.alvaras.length);
       if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudSave === 'function') {
         try { window._alvarasCloudSave(state.alvaras); } catch(e){}
       }
@@ -4428,11 +4510,13 @@ setTimeout(() => {
 // Marca state.sync_url_versao para forçar 1 sync após cada deploy novo.
 async function rodarSyncSilencioso(motivo) {
   if (!state.sessao) return;
-  // [v6.0.38] Trava de planilha (admin): quando ligada, o sistema NAO puxa mais a
-  // planilha automaticamente (boot/10min/reativar aba). Congela os dados; so o
-  // botao manual "Sincronizar do Drive" pode atualizar. Protege contra a planilha
-  // sobrescrever/reordenar o que a equipe ja ajustou.
-  if (state.trava_planilha) { console.log('[Sync] planilha TRAVADA pelo admin — auto-sync pulado (' + motivo + ')'); return; }
+  // [v6.1.9] A trava de planilha (v6.0.38) NAO bloqueia mais o sync. Ela existia
+  // porque a sincronizacao SOBRESCREVIA tudo com o conteudo da planilha, e travar
+  // era a unica defesa dos ajustes da equipe. Desde v6.1.9 o sync e ADITIVO: so
+  // introduz empresas novas, nunca altera empresa existente e nunca toca em alvara.
+  // Nao ha mais nada de que se defender — e manter a trava significava, na pratica,
+  // impedir para sempre que empresas novas chegassem a quem e responsavel por elas.
+  // O flag continua no estado (nao apagamos dado de ninguem), mas ficou inerte.
   if (window._syncEmCurso) { console.log('[Sync] já em curso, pulando'); return; }
   window._syncEmCurso = true;
   try {
@@ -6367,10 +6451,12 @@ function abrirBaselineDialog() {
     try {
       if (!state) return;
       if (!Array.isArray(state.usuarios)) state.usuarios = [];
-      var atuais = state.usuarios.map(function(u){ return u && u.email && u.email.toLowerCase(); }).filter(Boolean);
       var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
       var faltantes = USUARIOS_OFICIAIS.filter(function(o){
-        var e=o.email.toLowerCase(); return atuais.indexOf(e)<0 && removidos.indexOf(e)<0;
+        // [v6.1.9] casa por e-mail OU nome (a pessoa pode ter migrado de e-mail)
+        var e=o.email.toLowerCase();
+        if (removidos.indexOf(e)>=0) return false;
+        return !_azuosOficialJaExiste(o, state.usuarios);
       });
       if (faltantes.length) {
         faltantes.forEach(function(o){ state.usuarios.push(o); });
@@ -6507,10 +6593,12 @@ function abrirBaselineDialog() {
     // [v6.0.53] Additivo: garante oficiais faltantes; nunca reseta/remove os demais.
     try {
       if (!state || !Array.isArray(state.usuarios)) return;
-      var atuais = state.usuarios.map(function(u){return u && u.email && u.email.toLowerCase();}).filter(Boolean);
       var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
       var faltantes = USUARIOS_OFICIAIS.filter(function(o){
-        var e=o.email.toLowerCase(); return atuais.indexOf(e)<0 && removidos.indexOf(e)<0;
+        // [v6.1.9] casa por e-mail OU nome (a pessoa pode ter migrado de e-mail)
+        var e=o.email.toLowerCase();
+        if (removidos.indexOf(e)>=0) return false;
+        return !_azuosOficialJaExiste(o, state.usuarios);
       });
       if (faltantes.length) {
         faltantes.forEach(function(o){ state.usuarios.push(o); });
@@ -6799,10 +6887,12 @@ function abrirBaselineDialog() {
     // um reset para o Firestore.
     try {
       if (!state || !Array.isArray(state.usuarios)) return;
-      var atuais = state.usuarios.map(function(u){return u && u.email && u.email.toLowerCase();}).filter(Boolean);
       var removidos = Array.isArray(state.usuarios_removidos) ? state.usuarios_removidos : [];
       var faltantes = USUARIOS_OFICIAIS.filter(function(o){
-        var e=o.email.toLowerCase(); return atuais.indexOf(e)<0 && removidos.indexOf(e)<0;
+        // [v6.1.9] casa por e-mail OU nome (a pessoa pode ter migrado de e-mail)
+        var e=o.email.toLowerCase();
+        if (removidos.indexOf(e)>=0) return false;
+        return !_azuosOficialJaExiste(o, state.usuarios);
       });
       if (faltantes.length) {
         faltantes.forEach(function(o){ state.usuarios.push(o); });
@@ -6817,6 +6907,97 @@ function abrirBaselineDialog() {
   console.log('[v5.7.20] IDs numericos aplicados');
 })();
 
+
+/* ===== v6.1.9 — Limpa cadastros duplicados da MESMA pessoa (migracao de e-mail) =====
+   O re-semeio dos oficiais (corrigido acima) chegou a empurrar um SEGUNDO cadastro
+   para quem migrou de e-mail — tipicamente um registro "casca": mesmo nome, e-mail
+   antigo @azuoscontabil, sem foto e sem ciencias. Isso divide a identidade da pessoa
+   e faz contagens por responsavel/ciencia nao baterem.
+   CONSERVADOR de proposito: so remove a duplicata quando ela NAO tem nada dentro
+   (sem foto e sem ciencias). Se as duas tiverem dados reais, nao mexe e avisa no
+   console — nesse caso quem decide e o administrador. Nunca apaga ciencias: elas
+   sao unidas na chave do registro que fica. */
+(function consolidarUsuariosDuplicados(){
+  function chavesCiencia(u){
+    return [u && u.email, u && u.id, u && u.nome].filter(Boolean).map(function(k){ return String(k); });
+  }
+  function temCiencias(u){
+    try{
+      var c = state.ciencias_por_usuario || {};
+      return chavesCiencia(u).some(function(k){ return Array.isArray(c[k]) && c[k].length > 0; });
+    }catch(e){ return false; }
+  }
+  function temFoto(u){ return !!(u && u.foto && String(u.foto).length > 30); }
+  function vazio(u){ return !temFoto(u) && !temCiencias(u); }
+
+  function rodar(){
+    try{
+      if (!state || !Array.isArray(state.usuarios) || state.usuarios.length < 2) return;
+      var sessaoEmail = String((state.sessao && state.sessao.email) || '').toLowerCase().trim();
+
+      var grupos = {};
+      state.usuarios.forEach(function(u){
+        if (!u || !u.nome) return;
+        var k = _normId(u.nome); if (!k) return;
+        (grupos[k] = grupos[k] || []).push(u);
+      });
+
+      var mudou = false;
+      Object.keys(grupos).forEach(function(k){
+        var g = grupos[k];
+        if (g.length < 2) return;
+
+        // Fica o registro com mais substancia: sessao atual > foto > ciencias > primeiro.
+        var principal = g.slice().sort(function(a, b){
+          var sa = (String(a.email||'').toLowerCase().trim() === sessaoEmail ? 8 : 0)
+                 + (temFoto(a) ? 4 : 0) + (temCiencias(a) ? 2 : 0) + (a.criadoEm ? 1 : 0);
+          var sb = (String(b.email||'').toLowerCase().trim() === sessaoEmail ? 8 : 0)
+                 + (temFoto(b) ? 4 : 0) + (temCiencias(b) ? 2 : 0) + (b.criadoEm ? 1 : 0);
+          return sb - sa;
+        })[0];
+
+        var descartar = g.filter(function(u){ return u !== principal && vazio(u); });
+        var conflitantes = g.filter(function(u){ return u !== principal && !vazio(u); });
+
+        if (conflitantes.length) {
+          console.warn('[v6.1.9] "' + principal.nome + '" tem mais de um cadastro COM dados. '
+            + 'Nao vou juntar sozinho — resolva em Usuarios. E-mails:',
+            g.map(function(u){ return u.email; }));
+        }
+        if (!descartar.length) return;
+
+        // Une as ciencias das cascas na chave que fica (aditivo: nada e apagado).
+        try{
+          var c = state.ciencias_por_usuario = state.ciencias_por_usuario || {};
+          var destino = String(principal.email || principal.id || principal.nome);
+          var uniao = Array.isArray(c[destino]) ? c[destino].slice() : [];
+          descartar.forEach(function(u){
+            chavesCiencia(u).forEach(function(kk){
+              if (Array.isArray(c[kk])) c[kk].forEach(function(x){ if (uniao.indexOf(x) < 0) uniao.push(x); });
+            });
+          });
+          if (uniao.length) c[destino] = uniao;
+        }catch(e){}
+
+        state.usuarios = state.usuarios.filter(function(u){ return descartar.indexOf(u) < 0; });
+        mudou = true;
+        console.log('[v6.1.9] cadastro duplicado removido de "' + principal.nome + '": '
+          + descartar.map(function(u){ return u.email; }).join(', ')
+          + ' (ficou ' + principal.email + ')');
+      });
+
+      if (mudou) {
+        try{ if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); }catch(e){}
+        try{ if (typeof window._salvarUsuariosFirestore === 'function') window._salvarUsuariosFirestore(); }catch(e){}
+        try{ if (typeof renderApp === 'function') renderApp(); }catch(e){}
+      }
+    }catch(e){ console.warn('[v6.1.9] consolidar:', e); }
+  }
+
+  // Depois do state carregar do Firestore e depois do re-semeio dos oficiais rodar.
+  setTimeout(rodar, 9000);
+  setTimeout(rodar, 20000);
+})();
 
 /* ===== v5.7.21 — Fix cienciasDoUsuarioAtual + esconder badge v7.12 ===== */
 (function fixContadorNovas(){
@@ -7160,7 +7341,11 @@ function abrirBaselineDialog() {
     /* [v6.0.56] Removidos da UI a pedido: Resetar cache, Alterar senha (agora dentro
        de 'Meu perfil'), Tema escuro/claro, Vencimentos e a barra de Exportar/Importar
        config + Reset demo. Escondidos por CSS pois sao reinseridos por rotinas antigas. */
-    #btn-resetar-cache, #btn-trocar-senha, #btn-modo-escuro, #ux609-box, #cfg-actions-bar, #sync-drive {
+    /* [v6.1.9] #sync-drive e #trava-planilha seguem escondidos de proposito: a entrada
+       de empresas novas virou automatica e aditiva, entao nao existe mais sync manual
+       nem trava para acionar. Mantidos na lista porque rotinas antigas os reinserem. */
+    #btn-resetar-cache, #btn-trocar-senha, #btn-modo-escuro, #ux609-box, #cfg-actions-bar,
+    #sync-drive, #trava-planilha {
       display: none !important;
     }
   `;
