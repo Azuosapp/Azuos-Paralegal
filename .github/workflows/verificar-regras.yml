@@ -234,6 +234,51 @@ jobs:
           }
           console.log('');
 
+          // ---- Procura rastro de uma pessoa em TODO o documento compartilhado ----
+          // Se a Yara usa o sistema, tem de haver marca dela em algum lugar:
+          // ciencia, historico, chamado de manutencao, edicao. Se nao houver
+          // NENHUMA, ela nunca usou — e ai o cadastro dela e so um nome na lista.
+          try {
+            const ALVOS = ['yara', 'gabryel'];
+            ALVOS.forEach(alvo => {
+              console.log('');
+              console.log('RASTRO DE "' + alvo.toUpperCase() + '" NO BANCO:');
+              let achou = 0;
+
+              const cs = dados.ciencias_por_usuario || {};
+              Object.keys(cs).forEach(k => {
+                if (String(k).toLowerCase().indexOf(alvo) >= 0) {
+                  console.log('   ciencias sob a chave "' + k + '": ' + (cs[k] || []).length);
+                  achou++;
+                }
+              });
+
+              const hist = dados.historico || [];
+              const h = hist.filter(x => JSON.stringify(x || {}).toLowerCase().indexOf(alvo) >= 0);
+              if (h.length) {
+                console.log('   historico: ' + h.length + ' evento(s). Mais recentes:');
+                h.slice(0, 3).forEach(x => console.log('      ' + (x.data || '') + ' | ' + (x.usuario || x.quem || '?') + ' | ' + (x.acao || x.evento || '')));
+                achou++;
+              }
+
+              const mnt = dados.manutencao || [];
+              const m = mnt.filter(x => String((x && (x.autor_email || x.autor_nome)) || '').toLowerCase().indexOf(alvo) >= 0);
+              if (m.length) { console.log('   chamados de manutencao abertos: ' + m.length); achou++; }
+
+              const eds = dados.edicoes_alvaras || {};
+              const ed = Object.keys(eds).filter(k => String((eds[k] || {})._editado_por || '').toLowerCase().indexOf(alvo) >= 0);
+              if (ed.length) { console.log('   alvaras editados: ' + ed.length); achou++; }
+
+              const us = (dados.usuarios || []).filter(u => JSON.stringify(u || {}).toLowerCase().indexOf(alvo) >= 0);
+              us.forEach(u => console.log('   cadastro: nome="' + (u.nome || '') + '" email="' + (u.email || '') + '" ativo=' + u.ativo));
+
+              if (!achou) console.log('   >>> NENHUM rastro de uso. So existe o cadastro (nome na lista).');
+            });
+          } catch (e) {
+            console.log('nao consegui procurar rastro:', (e && e.message) || e);
+          }
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
