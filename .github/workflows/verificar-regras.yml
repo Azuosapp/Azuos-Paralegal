@@ -104,7 +104,8 @@ jobs:
             .sort((a,b) => (a.email||'').localeCompare(b.email||''))
             .forEach(u => {
               const ult = u.metadata?.lastSignInTime ? new Date(u.metadata.lastSignInTime).toISOString().slice(0,10) : 'nunca';
-              console.log(`   ${(u.email||'(sem e-mail)').padEnd(38)} ultimo acesso: ${ult}${u.disabled ? '  [DESATIVADA]' : ''}`);
+              const nome = (u.displayName || '(sem nome)').padEnd(22);
+              console.log(`   ${(u.email||'(sem e-mail)').padEnd(38)} ${nome} ultimo acesso: ${ult}${u.disabled ? '  [DESATIVADA]' : ''}`);
             });
           console.log('');
 
