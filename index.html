@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.9 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.3.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4370,9 +4370,12 @@ function renderUsuarios(){
   try{ _normalizarUsuarios(); }catch(e){}
   return `
     <div class="p-6">
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <div><h1 class="text-2xl font-bold text-slate-800">Usuários</h1><p class="text-sm text-slate-500">${state.usuarios.length} cadastrados</p></div>
-        <button onclick="openModalUsuario(null)" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Novo usuário</button>
+        <div class="flex gap-2">
+          <button id="btn-verificar-acessos" onclick="verificarAcessosUsuarios()" title="Confere quem realmente tem conta de login" class="px-4 py-2 rounded-lg font-medium text-sm" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">🔍 Verificar acessos</button>
+          <button onclick="openModalUsuario(null)" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Novo usuário</button>
+        </div>
       </div>
 
       <!-- [v6.2.5] O "Painel de Acesso" saiu daqui: criar acesso, trocar e-mail e
@@ -4383,9 +4386,19 @@ function renderUsuarios(){
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         ${state.usuarios.map(u => `
           <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col">
-            <div class="flex items-start justify-between mb-3">
-              <div class="w-12 h-12 rounded-full overflow-hidden bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg">${u.foto?`<img src="${u.foto}" class="w-full h-full" style="object-fit:cover">`:esc((u.nome&&u.nome[0])||"?")}</div>
-              <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${u.ativo?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${u.ativo?'Ativo':'Inativo'}</span>
+            <div class="flex items-start justify-between mb-3 gap-1">
+              <div class="w-12 h-12 rounded-full overflow-hidden bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">${u.foto?`<img src="${u.foto}" class="w-full h-full" style="object-fit:cover">`:esc((u.nome&&u.nome[0])||"?")}</div>
+              <div class="flex flex-col items-end gap-1">
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${u.ativo?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${u.ativo?'Ativo':'Inativo'}</span>
+                ${(function(){
+                  // [v6.3.0] "Ativo" e a flag do CADASTRO. Este selo diz se existe
+                  // CONTA DE LOGIN — que e o que faz a pessoa conseguir entrar.
+                  var st = _acessoDe(u.email);
+                  if (st === true)  return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:#D1FAE5;color:#047857">✅ tem acesso</span>';
+                  if (st === false) return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:#FEE2E2;color:#B91C1C">⚠️ sem acesso</span>';
+                  return '';
+                })()}
+              </div>
             </div>
             <div class="flex-1">
               <h3 class="font-semibold" style="color:var(--azuos-text)">${esc(u.nome)}</h3>
@@ -4628,6 +4641,46 @@ function usuarioTrocarEmail(id){
       try{ setState({page:'usuarios'}); }catch(e){}
     }
   }, 400);
+}
+/* [v6.3.0] CADASTRO = CONTA DE ACESSO.
+   Ate aqui o sistema tinha DOIS registros desconectados: a lista de Usuarios
+   (que vem da planilha) e o login no Firebase Authentication. A pessoa aparecia
+   na tela como "Ativo", em verde, sem ter conta nenhuma — foi o caso da Yara e
+   do Gabryel, e ninguem tinha como perceber.
+   Agora a tela mostra a verdade e permite consertar num clique. */
+var _acessoStatus = {};   // email -> true (tem login) | false (nao tem) | null (nao deu para checar)
+function _acessoDe(email){
+  var e = String(email||'').toLowerCase().trim();
+  return e && Object.prototype.hasOwnProperty.call(_acessoStatus, e) ? _acessoStatus[e] : undefined;
+}
+async function verificarAcessosUsuarios(){
+  if(!window.fbAuth){ alert('Sem conexão com o servidor. Tente de novo em instantes.'); return; }
+  var btn = document.getElementById('btn-verificar-acessos');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Verificando...'; }
+  var lista = (state.usuarios||[]).filter(function(u){ return u && u.email; });
+  var indeterminado = 0;
+  for(var i=0;i<lista.length;i++){
+    var em = String(lista[i].email||'').toLowerCase().trim();
+    try{
+      var metodos = await window.fbAuth.fetchSignInMethodsForEmail(em);
+      // Projetos com "protecao contra enumeracao de e-mail" ligada devolvem lista
+      // vazia SEMPRE. Nesse caso nao da para distinguir "sem conta" de "protegido",
+      // entao marcamos indeterminado em vez de acusar falsamente que falta acesso.
+      _acessoStatus[em] = (metodos && metodos.length) ? true : null;
+      if(!(metodos && metodos.length)) indeterminado++;
+    }catch(err){
+      _acessoStatus[em] = null; indeterminado++;
+    }
+  }
+  // Se TODOS deram vazio, e sinal de protecao ligada — nao e que ninguem tem conta.
+  if(indeterminado === lista.length && lista.length){
+    if(typeof toast==='function') toast('Não consegui verificar: o projeto está com proteção contra enumeração de e-mail. Use "Testar Acesso Real" no GitHub.', 'amber');
+  } else {
+    Object.keys(_acessoStatus).forEach(function(k){ if(_acessoStatus[k]===null) _acessoStatus[k]=false; });
+    if(typeof toast==='function') toast('Verificação concluída.', 'emerald');
+  }
+  if(btn){ btn.disabled = false; btn.textContent = '🔍 Verificar acessos'; }
+  try{ render(); }catch(e){}
 }
 // [v6.2.9] Guarda contra perda de formulario. openModalUsuario registra os
 // valores originais; aqui comparamos com o que esta na tela agora.
@@ -4873,7 +4926,13 @@ function openModalUsuario(id) {
           </div>
         </div>
       </div>` : `
-      <p class="text-[11px]" style="color:var(--azuos-text-muted)">Salve o cadastro para liberar as ações de e-mail e senha.</p>`}
+      <div class="rounded-xl px-3 py-2.5" style="background:var(--azuos-bg);border:1px solid var(--azuos-border)">
+        <label class="flex items-start gap-2 text-[11px] cursor-pointer" style="color:var(--azuos-text)">
+          <input type="checkbox" id="fu-criar-acesso" checked class="mt-0.5 w-4 h-4" style="accent-color:var(--azuos-blue)">
+          <span><b>Criar a conta de acesso ao salvar</b><br>
+          <span style="color:var(--azuos-text-muted)">A pessoa recebe um e-mail para definir a senha e já consegue entrar. Sem isto, o cadastro fica só como nome na lista — foi o que aconteceu com Yara e Gabryel.</span></span>
+        </label>
+      </div>`}
     </div>
     <div class="px-5 py-4 border-t flex justify-end gap-2 shrink-0" style="border-color:var(--azuos-border);background:var(--azuos-surface)">
       <button onclick="closeModal()" class="px-4 py-2 rounded-lg font-semibold" style="background:var(--azuos-bg);color:var(--azuos-text)">Cancelar</button>
@@ -4906,6 +4965,15 @@ function salvarUsuario(id){
   };
   try{ if(data.email && Array.isArray(state.usuarios_removidos)){ var _e=(data.email||'').toLowerCase().trim(); state.usuarios_removidos = state.usuarios_removidos.filter(function(x){return x!==_e;}); } }catch(e){}
   try{ state.fotos_usuarios = state.fotos_usuarios || {}; if(data.foto && data.email) state.fotos_usuarios[(data.email||'').toLowerCase().trim()] = data.foto; }catch(e){}
+  // [v6.3.0] Ao CADASTRAR alguem novo, a conta de acesso nasce junto (se marcado).
+  // Sem isso, cadastro e login sao dois mundos: a pessoa aparece "Ativo" na lista
+  // e nao consegue entrar — foi o caso da Yara e do Gabryel.
+  var _criarAcesso = false;
+  try{
+    var _chk = document.getElementById('fu-criar-acesso');
+    _criarAcesso = !id && !!(_chk && _chk.checked) && !!data.email;
+  }catch(e){}
+
   if (id) {
     state.usuarios = state.usuarios.map(x => String(x.id)===String(id) ? {...x, ...data}:x);
     log('Editou usuário', nome);
@@ -4914,6 +4982,27 @@ function salvarUsuario(id){
     log('Cadastrou usuário', nome);
   }
   closeModal(); saveState(); try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){} render();
+
+  if (_criarAcesso) {
+    if(!(state.sessao && state.sessao.cargo==='Administrador')){
+      alert('Cadastro salvo. Só o administrador pode criar a conta de acesso — peça para ele abrir o cadastro e clicar em "Criar acesso".');
+      return;
+    }
+    _acessoExecutar('criar', nome, data.email).then(function(r){
+      if(r && r.senha){
+        prompt('Cadastro salvo e acesso criado para ' + data.email + '.\n\n'
+          + (r.emailEnviado
+              ? 'Já enviei o e-mail para a pessoa definir a senha dela.\nA senha abaixo é só plano B, caso o e-mail não chegue.'
+              : 'NÃO consegui enviar o e-mail — repasse a senha abaixo à pessoa.'), r.senha);
+      } else if(r && r.status==='feito'){
+        alert('✅ Cadastro salvo. ' + r.resultado);
+      }
+      try{ if(data.email) _acessoStatus[String(data.email).toLowerCase().trim()] = true; render(); }catch(e){}
+    }).catch(function(e){
+      alert('Cadastro salvo, mas não consegui criar a conta de acesso: ' + ((e&&e.message)||e)
+        + '\n\nAbra o cadastro e use "Criar acesso".');
+    });
+  }
 }
 function excluirUsuario(id){
   if (estruturaBloqueada()) return;
