@@ -82,12 +82,16 @@ jobs:
 
           const KEY = process.env.WEB_API_KEY;
           const PROJ = 'azuos-paralegal';
+          // Contas que REALMENTE existem, conferidas em 29/07/2026.
           const alvos = [
-            'yara@azuoscontabil.com.br',
-            'gabryel@azuoscontabil.com.br',
-            'azuos@azuoscontabil.com.br',
-            'leylaazuos@gmail.com',
-            'leyla@azuoscontabil.com.br',
+            'leylabraz1994@outlook.com',
+            'paralegal10@gmail.com',
+            'integracao.grupoazuos@gmail.com',
+            'grupob2bbrasil@icloud.com',
+            'luanna@azuoscontabil.com.br',
+            'diogenes@azuoscontabil.com.br',
+            'camila@azuoscontabil.com.br',
+            'ketrin@azuoscontabil.com.br',
           ];
 
           // Quem REALMENTE tem conta. Sem isto, "sem conta" pode significar tanto
