@@ -8,24 +8,19 @@ name: Deploy Firestore Rules
 # da Leyla) ficaram sem permissao de escrita no banco sem ninguem perceber.
 # Com isto, a lista de autorizados passa a ser publicada junto com o codigo.
 
-# ESTADO ATUAL: disparo MANUAL apenas.
-# A credencial de servico do repositorio publica o site, mas NAO tem permissao na
-# API de regras — a primeira execucao voltou com:
-#   firebaserules.googleapis.com/v1/projects/azuos-paralegal:test -> HTTP 403
-#   "The caller does not have permission"
-# Para ligar a publicacao automatica: no Google Cloud (IAM do projeto
-# azuos-paralegal), conceda a essa conta de servico o papel
-# "Firebase Rules Admin" (roles/firebaserules.admin) e volte a habilitar o
-# gatilho de push abaixo. Enquanto isso, o workflow fica manual para nao marcar
-# falha vermelha em todo push.
+# Publicacao AUTOMATICA, validada em 29/07/2026 com a conta github-deploy@
+# ("released rules firestore.rules to cloud.firestore").
+# Se um dia voltar 403 na firebaserules.googleapis.com, o problema costuma ser a
+# CONTA e nao o papel: o projeto tem duas contas de servico e so a github-deploy@
+# e Administrador do Firebase. O step de credencial imprime qual foi usada.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - '.github/workflows/deploy-firestore-rules.yml'
   workflow_dispatch:
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - 'firestore.rules'
-  #     - 'firebase.json'
-  #     - '.github/workflows/deploy-firestore-rules.yml'
 
 permissions:
   contents: read
