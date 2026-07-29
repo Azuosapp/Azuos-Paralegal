@@ -61,15 +61,22 @@ jobs:
               print(('  OK    ' if alvo in em else '  FALTA '), alvo)
           PY
 
-      - name: Instalar firebase-admin
-        run: npm init -y >/dev/null 2>&1 && npm i firebase-admin@12 --no-audit --no-fund --loglevel=error
+      - name: Instalar firebase-admin (em pasta isolada)
+        # Fora do repositorio de proposito: instalar na raiz mexeria no
+        # package.json do projeto, e rodar o script de /tmp com node_modules no
+        # workspace da ERR_MODULE_NOT_FOUND.
+        run: |
+          mkdir -p /tmp/sim
+          cd /tmp/sim
+          npm init -y >/dev/null 2>&1
+          npm i firebase-admin@12 --no-audit --no-fund --loglevel=error
 
       - name: 2) Simular a pessoa digitando e salvando
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
           WEB_API_KEY: AIzaSyAetNviUEud17HVdmUyfY_FaMVaK4WwWA8
         run: |
-          cat > /tmp/sim.mjs <<'JS'
+          cat > /tmp/sim/sim.mjs <<'JS'
           import admin from 'firebase-admin';
           admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: 'azuos-paralegal' });
 
@@ -142,4 +149,4 @@ jobs:
             ? 'RESULTADO: todos conseguem gravar.'
             : `RESULTADO: ${falhas} falha(s) de gravacao, ${semConta.length} sem conta.`);
           JS
-          node /tmp/sim.mjs
+          cd /tmp/sim && node sim.mjs
