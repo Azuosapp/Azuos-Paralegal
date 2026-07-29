@@ -2154,15 +2154,21 @@ async function handleSyncDriveAuto() {
         };
       }
     });
-    // [v6.1.9] SINCRONIZACAO ADITIVA — a planilha so INTRODUZ empresas novas.
-    // Antes esta linha era `state.empresas = <planilha>`, ou seja, a planilha mandava
-    // em tudo. Por isso existia a "trava de planilha": era a unica defesa contra ela
-    // sobrescrever o que a equipe ajustou no app. So que a trava tambem congelava a
-    // entrada de empresas novas — empresas cadastradas na planilha depois disso nunca
-    // chegavam para a equipe (foi o que aconteceu com as empresas da Leyla).
-    // Agora: empresa que ja existe no app NAO e tocada (nome, CNPJ, cidade,
-    // responsavel e status locais mandam) e empresa nova entra com o cadastro dela.
-    // Como nada e sobrescrito, a sincronizacao ficou segura por construcao.
+    // [v6.1.9] SINCRONIZACAO ADITIVA NOS DADOS, mas a planilha continua mandando no
+    // STATUS (ATIVO/INATIVO) — igual ao comportamento antigo.
+    //
+    // Antes era `state.empresas = <planilha>`: a planilha sobrescrevia TUDO. Por isso
+    // existia a "trava de planilha", a unica defesa contra ela passar por cima do que
+    // a equipe ajustou no app. So que travar tambem congelava a entrada de empresas
+    // novas, e empresas cadastradas depois disso nunca chegavam a quem e responsavel
+    // por elas (foi o que aconteceu com as empresas da Leyla).
+    //
+    // Agora a divisao e explicita:
+    //   - CADASTRO (nome, CNPJ, cidade, responsavel) de empresa que ja existe no app:
+    //     a planilha NAO toca. O ajuste da equipe manda.
+    //   - EMPRESA NOVA na planilha: entra com o cadastro dela.
+    //   - STATUS: a planilha manda. Quem saiu de ATIVO la sai daqui, como sempre foi.
+    //   - ALVARAS: nunca mais vem da planilha (o app e o dono desde v6.1.1).
     const todasEmpresas = dados.empresas || [];
     const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
     if (!Array.isArray(state.empresas)) state.empresas = [];
@@ -2183,6 +2189,26 @@ async function handleSyncDriveAuto() {
       const c = _soDigitos(e && e.cnpj); if (c) _cnpjsLocais.add(c);
     });
     if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
+    // Status vem da planilha: sai do app quem deixou de ser ATIVO la. Cadastros
+    // manuais do app nao estao na planilha e sao repostos logo abaixo por
+    // reinjetarEmpresasManuais(). A guarda `ativasRemoto.length` evita esvaziar a
+    // base inteira se a planilha responder vazia por falha de rede/permissao.
+    if (ativasRemoto.length) {
+      const _idsAtivoRemoto = new Set(ativasRemoto.map(e => String(e.id)));
+      const _nomesAtivoRemoto = new Set(ativasRemoto.map(e => _normId(e && e.nome)).filter(Boolean));
+      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+      const _antes = state.empresas.length;
+      state.empresas = state.empresas.filter(e => {
+        if (_idsAtivoRemoto.has(String(e && e.id))) return true;
+        const n = _normId(e && e.nome); if (n && _nomesAtivoRemoto.has(n)) return true;
+        const c = _soDigitos(e && e.cnpj); if (c && _cnpjsAtivoRemoto.has(c)) return true;
+        return false; // nao consta mais como ATIVO na planilha
+      });
+      const _saidas = _antes - state.empresas.length;
+      if (_saidas) console.log('[Sync] empresas que deixaram de ser ATIVO na planilha:', _saidas);
+    } else {
+      console.warn('[Sync] planilha nao devolveu nenhuma empresa ATIVO — status NAO aplicado (base preservada)');
+    }
     const idsAtivo = new Set(state.empresas.map(e => e.id));
     // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
     // A planilha traz exclusivamente o cadastro das empresas.
@@ -2302,15 +2328,21 @@ async function handleSyncDrive() {
         };
       }
     });
-    // [v6.1.9] SINCRONIZACAO ADITIVA — a planilha so INTRODUZ empresas novas.
-    // Antes esta linha era `state.empresas = <planilha>`, ou seja, a planilha mandava
-    // em tudo. Por isso existia a "trava de planilha": era a unica defesa contra ela
-    // sobrescrever o que a equipe ajustou no app. So que a trava tambem congelava a
-    // entrada de empresas novas — empresas cadastradas na planilha depois disso nunca
-    // chegavam para a equipe (foi o que aconteceu com as empresas da Leyla).
-    // Agora: empresa que ja existe no app NAO e tocada (nome, CNPJ, cidade,
-    // responsavel e status locais mandam) e empresa nova entra com o cadastro dela.
-    // Como nada e sobrescrito, a sincronizacao ficou segura por construcao.
+    // [v6.1.9] SINCRONIZACAO ADITIVA NOS DADOS, mas a planilha continua mandando no
+    // STATUS (ATIVO/INATIVO) — igual ao comportamento antigo.
+    //
+    // Antes era `state.empresas = <planilha>`: a planilha sobrescrevia TUDO. Por isso
+    // existia a "trava de planilha", a unica defesa contra ela passar por cima do que
+    // a equipe ajustou no app. So que travar tambem congelava a entrada de empresas
+    // novas, e empresas cadastradas depois disso nunca chegavam a quem e responsavel
+    // por elas (foi o que aconteceu com as empresas da Leyla).
+    //
+    // Agora a divisao e explicita:
+    //   - CADASTRO (nome, CNPJ, cidade, responsavel) de empresa que ja existe no app:
+    //     a planilha NAO toca. O ajuste da equipe manda.
+    //   - EMPRESA NOVA na planilha: entra com o cadastro dela.
+    //   - STATUS: a planilha manda. Quem saiu de ATIVO la sai daqui, como sempre foi.
+    //   - ALVARAS: nunca mais vem da planilha (o app e o dono desde v6.1.1).
     const todasEmpresas = dados.empresas || [];
     const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
     if (!Array.isArray(state.empresas)) state.empresas = [];
@@ -2331,6 +2363,26 @@ async function handleSyncDrive() {
       const c = _soDigitos(e && e.cnpj); if (c) _cnpjsLocais.add(c);
     });
     if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
+    // Status vem da planilha: sai do app quem deixou de ser ATIVO la. Cadastros
+    // manuais do app nao estao na planilha e sao repostos logo abaixo por
+    // reinjetarEmpresasManuais(). A guarda `ativasRemoto.length` evita esvaziar a
+    // base inteira se a planilha responder vazia por falha de rede/permissao.
+    if (ativasRemoto.length) {
+      const _idsAtivoRemoto = new Set(ativasRemoto.map(e => String(e.id)));
+      const _nomesAtivoRemoto = new Set(ativasRemoto.map(e => _normId(e && e.nome)).filter(Boolean));
+      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+      const _antes = state.empresas.length;
+      state.empresas = state.empresas.filter(e => {
+        if (_idsAtivoRemoto.has(String(e && e.id))) return true;
+        const n = _normId(e && e.nome); if (n && _nomesAtivoRemoto.has(n)) return true;
+        const c = _soDigitos(e && e.cnpj); if (c && _cnpjsAtivoRemoto.has(c)) return true;
+        return false; // nao consta mais como ATIVO na planilha
+      });
+      const _saidas = _antes - state.empresas.length;
+      if (_saidas) console.log('[Sync] empresas que deixaram de ser ATIVO na planilha:', _saidas);
+    } else {
+      console.warn('[Sync] planilha nao devolveu nenhuma empresa ATIVO — status NAO aplicado (base preservada)');
+    }
     const idsAtivo = new Set(state.empresas.map(e => e.id));
     // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
     // A planilha traz exclusivamente o cadastro das empresas.
