@@ -1,0 +1,145 @@
+name: Testar Acesso Real
+
+# Dois testes complementares:
+#  1) Le do Google o ruleset REALMENTE publicado e confere a lista de autorizados.
+#  2) SIMULA a pessoa usando o sistema: autentica como ela (custom token do Admin
+#     SDK, sem precisar da senha), grava um documento pelas MESMAS regras que o
+#     app usa, le de volta e apaga. E o teste que responde "ela consegue salvar?".
+#
+# Escreve em azuos/_teste_permissao_<pessoa> — coberto pela mesma regra de
+# match /azuos/{doc=**}, mas sem encostar em nenhum dado real.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar credencial
+        env:
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_C: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+        run: |
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"; [ -z "$V" ] && V="$SA_C"
+          [ -z "$V" ] && { echo "ERRO: sem credencial."; exit 1; }
+          printf '%s' "$V" > "$HOME/sa.json"
+          node -e "console.log('Conta:', JSON.parse(require('fs').readFileSync(process.env.HOME+'/sa.json','utf8')).client_email)"
+
+      - name: Autenticar no gcloud
+        run: |
+          gcloud auth activate-service-account --key-file="$HOME/sa.json" --quiet
+          echo "TOKEN=$(gcloud auth print-access-token)" >> "$GITHUB_ENV"
+
+      - name: 1) Regras publicadas neste momento
+        run: |
+          set -e
+          REL=$(curl -s -H "Authorization: Bearer $TOKEN" \
+            "https://firebaserules.googleapis.com/v1/projects/azuos-paralegal/releases/cloud.firestore")
+          RS=$(echo "$REL" | python3 -c "import json,sys; print(json.load(sys.stdin)['rulesetName'])")
+          echo "$REL" | python3 -c "import json,sys; d=json.load(sys.stdin); print('ruleset publicado:', d['rulesetName']); print('criado em       :', d.get('createTime'))"
+          curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$RS" > /tmp/live.json
+          python3 - <<'PY'
+          import json, re
+          d = json.load(open('/tmp/live.json'))
+          src = ''.join(f['content'] for f in d['source']['files'])
+          open('/tmp/live.rules','w').write(src)
+          em = re.findall(r"'([^']+@[^']+)'", src)
+          print('autorizados no ar:', len(em))
+          for alvo in ['yara@azuoscontabil.com.br','gabryel@azuoscontabil.com.br',
+                       'azuos@azuoscontabil.com.br','leylaazuos@gmail.com',
+                       'leyla@azuoscontabil.com.br']:
+              print(('  OK    ' if alvo in em else '  FALTA '), alvo)
+          PY
+
+      - name: Instalar firebase-admin
+        run: npm init -y >/dev/null 2>&1 && npm i firebase-admin@12 --no-audit --no-fund --loglevel=error
+
+      - name: 2) Simular a pessoa digitando e salvando
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
+          WEB_API_KEY: AIzaSyAetNviUEud17HVdmUyfY_FaMVaK4WwWA8
+        run: |
+          cat > /tmp/sim.mjs <<'JS'
+          import admin from 'firebase-admin';
+          admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: 'azuos-paralegal' });
+
+          const KEY = process.env.WEB_API_KEY;
+          const PROJ = 'azuos-paralegal';
+          const alvos = [
+            'yara@azuoscontabil.com.br',
+            'gabryel@azuoscontabil.com.br',
+            'azuos@azuoscontabil.com.br',
+            'leylaazuos@gmail.com',
+            'leyla@azuoscontabil.com.br',
+          ];
+
+          let falhas = 0, semConta = [];
+
+          for (const email of alvos) {
+            const rot = email.padEnd(32);
+            let user;
+            try {
+              user = await admin.auth().getUserByEmail(email);
+            } catch (e) {
+              console.log(`  SEM CONTA  ${rot} -> nao existe no Firebase Authentication`);
+              semConta.push(email);
+              continue;
+            }
+
+            // 1) vira "a pessoa" sem precisar da senha
+            const custom = await admin.auth().createCustomToken(user.uid);
+            const r1 = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${KEY}`, {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ token: custom, returnSecureToken: true })
+            });
+            const j1 = await r1.json();
+            if (!j1.idToken) {
+              console.log(`  FALHA      ${rot} -> nao consegui autenticar: ${JSON.stringify(j1.error?.message||j1)}`);
+              falhas++; continue;
+            }
+
+            // 2) grava, como o app grava (mesma colecao, mesmas regras)
+            const doc = `_teste_permissao_${email.replace(/[^a-z0-9]/gi,'_')}`;
+            const url = `https://firestore.googleapis.com/v1/projects/${PROJ}/databases/(default)/documents/azuos/${doc}`;
+            const corpo = { fields: { origem: { stringValue: 'teste automatico' }, quando: { stringValue: new Date().toISOString() } } };
+            const r2 = await fetch(url, {
+              method: 'PATCH', headers: { 'Authorization': `Bearer ${j1.idToken}`, 'Content-Type':'application/json' },
+              body: JSON.stringify(corpo)
+            });
+            if (!r2.ok) {
+              const err = await r2.text();
+              console.log(`  BLOQUEADO  ${rot} -> HTTP ${r2.status} ${err.slice(0,120)}`);
+              falhas++; continue;
+            }
+
+            // 3) le de volta
+            const r3 = await fetch(url, { headers: { 'Authorization': `Bearer ${j1.idToken}` } });
+            const leu = r3.ok;
+
+            // 4) limpa
+            await fetch(url, { method: 'DELETE', headers: { 'Authorization': `Bearer ${j1.idToken}` } });
+
+            console.log(`  OK         ${rot} -> gravou${leu ? ' e leu' : ' (leitura falhou)'} com sucesso`);
+            if (!leu) falhas++;
+          }
+
+          console.log('');
+          if (semConta.length) {
+            console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
+            console.log('Essas pessoas NAO conseguem nem entrar no sistema. Crie o acesso em Usuarios -> Painel de Acesso.');
+          }
+          console.log(falhas === 0 && semConta.length === 0
+            ? 'RESULTADO: todos conseguem gravar.'
+            : `RESULTADO: ${falhas} falha(s) de gravacao, ${semConta.length} sem conta.`);
+          JS
+          node /tmp/sim.mjs
