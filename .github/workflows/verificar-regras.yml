@@ -163,6 +163,29 @@ jobs:
             if (!leu) falhas++;
           }
 
+          // ---- Quem e quem: cruza o CADASTRO do app com as CONTAS de login ----
+          // O app tem lista propria de usuarios (vem da planilha). Aparecer ali NAO
+          // significa ter login no Firebase. E o que costuma gerar o mal-entendido
+          // de "essa pessoa tem conta sim".
+          const db = admin.firestore();
+          const snap = await db.collection('azuos').doc('shared').get();
+          const dados = snap.exists ? snap.data() : {};
+          const cadastro = dados.usuarios || [];
+          console.log('CADASTRO DE USUARIOS DENTRO DO APP (' + cadastro.length + '):');
+          const emailsAuth = new Set(todos.map(u => (u.email||'').toLowerCase()));
+          cadastro.forEach(u => {
+            const em = String(u.email||'').toLowerCase();
+            const temLogin = emailsAuth.has(em);
+            console.log('   ' + String(u.nome||'(sem nome)').padEnd(16)
+              + String(u.email||'(sem e-mail)').padEnd(38)
+              + (temLogin ? 'TEM LOGIN' : 'SEM LOGIN no Firebase'));
+          });
+          console.log('');
+          const chaves = Object.keys(dados.ciencias_por_usuario || {});
+          console.log('QUEM JA REGISTROU CIENCIA (chaves gravadas):');
+          chaves.forEach(k => console.log('   ' + k + '  -> ' + ((dados.ciencias_por_usuario[k]||[]).length) + ' registros'));
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
