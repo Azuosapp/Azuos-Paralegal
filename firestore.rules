@@ -43,14 +43,15 @@ service cloud.firestore {
           'leylabraz1994@outlook.com',         // Leyla — e ESTE o login dela
           'paralegal10@gmail.com',
           'integracao.grupoazuos@gmail.com',
-          'grupob2bbrasil@icloud.com',
+          'grupob2bbrasil@icloud.com'
 
-          // --- reservados: ainda SEM conta criada em 29/07/2026 ---
-          // Ficam liberados de antemao para o dia em que o acesso for criado.
-          'leyla@azuoscontabil.com.br',
-          'yara@azuoscontabil.com.br',
-          'gabryel@azuoscontabil.com.br',
-          'azuos@azuoscontabil.com.br'
+          // NAO adicione e-mail "reservado", de conta que ainda nao existe.
+          // Uma auditoria de arquitetura em 29/07/2026 mostrou que isso era uma
+          // porta aberta: o e-mail autorizado aqui, somado ao auto-cadastro da
+          // tela de login, permitia que QUALQUER pessoa criasse a conta com
+          // aquele endereco e ganhasse leitura e escrita totais no banco.
+          // A ordem correta e: criar o acesso (Usuarios -> Criar acesso), e SO
+          // ENTAO incluir o e-mail aqui.
         ];
     }
 

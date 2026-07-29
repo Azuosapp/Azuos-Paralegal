@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.6 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.7 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -804,8 +804,12 @@ function attachLogin(){
   document.getElementById('aba-entrar').onclick = () => { _loginModo = 'entrar'; document.getElementById('app').innerHTML = renderLogin(); attachLogin(); };
   document.getElementById('aba-cadastrar').onclick = () => { _loginModo = 'cadastrar'; document.getElementById('app').innerHTML = renderLogin(); attachLogin(); };
 
-  // Validador de domínio
-  const dominioValido = (email) => true; // v5.6 ? cadastro livre
+  // [v6.2.7] Auto-cadastro FECHADO. Estava liberado para qualquer e-mail
+  // (`=> true`), e isso, somado a e-mails autorizados em firestore.rules sem
+  // conta correspondente, permitia que qualquer pessoa criasse a conta com um
+  // daqueles enderecos e ganhasse acesso total ao banco.
+  // O acesso agora nasce em Usuarios -> Criar acesso, feito pelo administrador.
+  const dominioValido = (email) => false;
 
   // Mensagens de erro Firebase legíveis
   const traduzErroFirebase = (err, digitado) => {
@@ -851,7 +855,7 @@ function attachLogin(){
       if (senha !== senha2) { showError('As senhas não conferem.'); return; }
       if (senha.length < 6) { showError('Senha precisa ter ao menos 6 caracteres.'); return; }
       if (!dominioValido(email)) {
-        showError('Só e-mails @azuoscontabil.com.br ou @souzaassessoriacontabil.com.br podem se cadastrar.');
+        showError('O cadastro é feito pelo administrador. Peça o seu acesso — você receberá o e-mail e uma senha temporária.');
         return;
       }
       btn.disabled = true;
