@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.8 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.9 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -922,8 +922,12 @@ function _resolverEmailLogin(digitado){
       return n===alvo || n.split(/\s+/)[0]===alvo.split(/\s+/)[0];
     });
     if(achou) return (achou.email||'').toLowerCase();
-    // 2) fallback: mapa oficial (nome -> e-mail @azuoscontabil)
-    var M={ 'azuos admin':'contato@azuoscontabil.com.br','comercial':'comercial@azuoscontabil.com.br','thierry':'thierrymforte@gmail.com','camila':'camila@azuoscontabil.com.br','ketrin':'ketrin@azuoscontabil.com.br','leyla':'leyla@azuoscontabil.com.br','luanna':'luanna@azuoscontabil.com.br','diogenes':'diogenes@azuoscontabil.com.br' };
+    // 2) fallback: mapa oficial (nome -> e-mail de login)
+    // [v6.2.9] 'leyla' apontava para leyla@azuoscontabil.com.br, endereco que NAO
+    // existe no Firebase Authentication. Num navegador sem state.usuarios em cache
+    // (primeiro acesso, cache limpo), a Leyla digitar o nome no login resolvia para
+    // o endereco errado e a entrada falhava. O login real e leylabraz1994@outlook.com.
+    var M={ 'azuos admin':'contato@azuoscontabil.com.br','comercial':'comercial@azuoscontabil.com.br','thierry':'thierrymforte@gmail.com','camila':'camila@azuoscontabil.com.br','ketrin':'ketrin@azuoscontabil.com.br','leyla':'leylabraz1994@outlook.com','luanna':'luanna@azuoscontabil.com.br','diogenes':'diogenes@azuoscontabil.com.br' };
     if(M[alvo]) return M[alvo];
     var p1=alvo.split(/\s+/)[0];
     if(M[p1]) return M[p1];
@@ -2909,14 +2913,31 @@ function showModal(content){
   const div = document.createElement('div');
   div.id = 'modal-overlay';
   div.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40';
-  // [v6.2.8] Coluna flex em vez de rolagem no bloco inteiro. Antes o
-  // #modal-content rolava por completo, entao em tela baixa o titulo e o botao
-  // "Salvar" saiam de vista. Agora o corpo do modal (marcado com .modal-corpo)
-  // rola sozinho e cabecalho/rodape ficam sempre visiveis. Quando o conteudo
-  // cabe, nao aparece barra nenhuma.
-  div.innerHTML = `<div id="modal-content" role="dialog" aria-modal="true" class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">${content}</div>`;
+  // [v6.2.9] Dois modos, e a escolha e do conteudo — nao global.
+  //
+  // Quando o conteudo marca o proprio corpo com data-modal-corpo, o modal vira
+  // coluna flex: o corpo rola sozinho e cabecalho/rodape ficam sempre visiveis
+  // (antes, com rolagem no bloco inteiro, o titulo e o botao Salvar saiam de
+  // vista em tela baixa).
+  //
+  // Sem essa marca, mantem-se o comportamento antigo (o bloco todo rola). Isso
+  // e essencial: os demais modais do sistema (alvara, empresa, manutencao, crop)
+  // nao tem corpo rolavel, e forcar overflow-hidden neles CORTARIA o conteudo
+  // sem nenhuma forma de alcanca-lo.
+  var _temCorpo = String(content||'').indexOf('data-modal-corpo') >= 0;
+  var _cls = _temCorpo ? 'flex flex-col overflow-hidden' : 'overflow-y-auto scrollbar-thin';
+  div.innerHTML = `<div id="modal-content" role="dialog" aria-modal="true" class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] ${_cls}">${content}</div>`;
   document.body.appendChild(div);
-  div.onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
+  // [v6.2.9] Clicar fora nao descarta mais um formulario preenchido em silencio.
+  // O overlay tem p-4, entao ha 16px de area "letal" colada na borda do modal —
+  // um clique torto apagava 8 campos sem confirmacao nem desfazer.
+  div.onclick = (e) => {
+    if (e.target.id !== 'modal-overlay') return;
+    if (typeof _modalTemAlteracaoPendente === 'function' && _modalTemAlteracaoPendente()) {
+      if (!confirm('Você alterou o cadastro e ainda não salvou.\n\nDescartar as alterações?')) return;
+    }
+    closeModal();
+  };
   // [v6.2.8] Acessibilidade: Esc fecha, foco entra no modal e volta ao sair, e
   // o Tab fica preso dentro dele. O listener e removido em closeModal — sem
   // isso, cada modal aberto deixava um listener orfao numa SPA que nunca recarrega.
@@ -2953,6 +2974,9 @@ function closeModal(){
   window._modalFocoAnterior = null;
   window._alvAtual = null;
   window._alvDescartar = false;
+  // [v6.2.9] limpa o retrato do cadastro; sem isto, o proximo modal herdaria
+  // valores antigos e o aviso de "alteracao nao salva" dispararia sem motivo.
+  window._fuOriginal = null;
 }
 function _autoSalvarAlvaraSeMudou(){
   if (window._alvDescartar) return;                 // "Cancelar": descarte intencional
@@ -4473,7 +4497,7 @@ async function _acessoExecutar(tipo, nome, email){
   email=(email||'').trim().toLowerCase(); nome=(nome||'').trim();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ alert('Informe um e-mail válido.'); return; }
 
-  var status='feito', resultado='', senhaOut=null;
+  var status='feito', resultado='', senhaOut=null, _emailEnviado=false;
   try{
     if(tipo==='reset'){
       await window.fbAuth.sendPasswordResetEmail(email);
@@ -4488,6 +4512,26 @@ async function _acessoExecutar(tipo, nome, email){
         try{ if(nome && cred && cred.user) await cred.user.updateProfile({ displayName: nome }); }catch(e){}
         try{ await sec.auth().signOut(); }catch(e){}
         resultado='conta criada'; senhaOut=senha;
+        // [v6.2.9] TODO usuario novo recebe e-mail automaticamente, sem depender de
+        // o admin copiar e repassar a senha.
+        //
+        // O e-mail NAO leva a senha escrita: o Firebase envia um link para a pessoa
+        // DEFINIR a senha dela. Mandar senha em texto puro por e-mail exigiria um
+        // servidor de envio proprio (Cloud Function + SMTP) e deixaria a senha
+        // gravada na caixa postal para sempre — pior para a pessoa e para a Azuos.
+        // Com o link, quem escolhe a senha e o titular, e ela nunca trafega em claro.
+        //
+        // A senha temporaria continua sendo gerada e mostrada na tela: serve de
+        // plano B se o e-mail cair no spam ou o endereco estiver errado.
+        try{
+          await window.fbAuth.sendPasswordResetEmail(email);
+          resultado = 'conta criada e e-mail de acesso enviado para ' + email;
+          _emailEnviado = true;
+        }catch(e){
+          // a conta JA existe neste ponto; nao transformar isso em erro geral
+          console.warn('[acessos] conta criada, mas o e-mail falhou:', (e&&e.message)||e);
+          resultado = 'conta criada, mas NAO consegui enviar o e-mail — repasse a senha da tela';
+        }
       }catch(err){
         if(err && err.code==='auth/email-already-in-use'){
           await window.fbAuth.sendPasswordResetEmail(email);
@@ -4522,7 +4566,7 @@ async function _acessoExecutar(tipo, nome, email){
   // [v6.2.5] devolve o resultado: quem chama precisa MOSTRAR a senha temporaria.
   // Antes a senha so existia no "Painel de Acesso"; com ele fora da tela, sem
   // este retorno a senha se perderia e a conta nasceria inacessivel.
-  return { status: status, resultado: resultado, senha: senhaOut };
+  return { status: status, resultado: resultado, senha: senhaOut, emailEnviado: _emailEnviado };
 }
 // [v6.2.5] acessoCriar removida: lia os inputs do "Painel de Acesso", que saiu
 // da tela. Criar acesso agora e usuarioCriarAcesso(id), dentro do cadastro.
@@ -4585,6 +4629,22 @@ function usuarioTrocarEmail(id){
     }
   }, 400);
 }
+// [v6.2.9] Guarda contra perda de formulario. openModalUsuario registra os
+// valores originais; aqui comparamos com o que esta na tela agora.
+function _modalTemAlteracaoPendente(){
+  try{
+    var orig = window._fuOriginal;
+    if(!orig) return false;
+    if(window._fotoTmp !== null && window._fotoTmp !== undefined) return true;
+    for(var k in orig){
+      if(!Object.prototype.hasOwnProperty.call(orig,k)) continue;
+      var el = document.getElementById(k);
+      if(!el) continue;
+      if(String(el.value||'') !== String(orig[k]||'')) return true;
+    }
+    return false;
+  }catch(e){ return false; }
+}
 // [v6.2.6] Remover foto e uma acao destrutiva: pede confirmacao.
 function _fuRemoverFoto(){
   if(!confirm('Remover a foto desta pessoa?')) return;
@@ -4596,11 +4656,20 @@ function _fuRemoverFoto(){
 // [v6.2.6] Mostra a senha temporaria DENTRO do modal. Antes ia num prompt(), que
 // o navegador pode suprimir quando e o segundo dialogo seguido — e a senha se
 // perdia, deixando a conta recem-criada inacessivel.
-function _fuMostrarSenha(senha){
+function _fuMostrarSenha(senha, emailEnviado, paraEmail){
   var box = document.getElementById('fu-senha-box');
   var val = document.getElementById('fu-senha-val');
-  if(box && val){ val.textContent = senha; box.classList.remove('hidden'); return true; }
-  return false;
+  if(!(box && val)) return false;
+  val.textContent = senha;
+  var aviso = document.getElementById('fu-senha-aviso');
+  if(aviso){
+    aviso.textContent = emailEnviado
+      ? '✉️ E-mail enviado para ' + (paraEmail||'a pessoa') + ' com o link para ela criar a senha. Guarde a senha abaixo só como plano B, caso o e-mail não chegue.'
+      : '⚠️ Não consegui enviar o e-mail. Repasse a senha abaixo à pessoa.';
+    aviso.style.color = emailEnviado ? 'var(--azuos-text-muted)' : 'var(--azuos-danger)';
+  }
+  box.classList.remove('hidden');
+  return true;
 }
 function _fuCopiarSenha(){
   var val = document.getElementById('fu-senha-val');
@@ -4623,13 +4692,13 @@ async function usuarioCriarAcesso(id){
   if(!u.email){ alert('Informe o e-mail no cadastro antes de criar o acesso.'); return; }
   if(window._fuAcessoEmCurso) return;   // trava de clique duplo
   if(!confirm('Criar o acesso de "' + (u.nome||'') + '" com o e-mail ' + u.email + '?\n\n'
-      + 'Se a pessoa AINDA NÃO tem login, uma senha temporária será gerada e mostrada aqui.\n'
-      + 'Se JÁ tiver, ela recebe um link de redefinição por e-mail.')) return;
+      + 'A pessoa recebe um e-mail automaticamente para definir a senha dela.\n'
+      + 'Uma senha temporária também aparece aqui, como plano B se o e-mail não chegar.')) return;
   window._fuAcessoEmCurso = true;
   try{
     var r = await _acessoExecutar('criar', u.nome||'', u.email);
     if(r && r.senha){
-      if(!_fuMostrarSenha(r.senha)) prompt('Copie a senha temporária de ' + u.email + ':', r.senha);
+      if(!_fuMostrarSenha(r.senha, r.emailEnviado, u.email)) prompt('Copie a senha temporária de ' + u.email + ':', r.senha);
     } else if(r && r.status==='feito'){
       alert('✅ ' + r.resultado);
     }
@@ -4734,6 +4803,12 @@ function openModalUsuario(id) {
     if (inp) inp.onchange = function(e){ var file = e.target.files && e.target.files[0]; if (file) _fotoAbrirCropper(file); e.target.value=''; };
   }, 120);
   const u = id ? state.usuarios.find(x=>String(x.id)===String(id)) : {nome:'', email:'', cargo:'Paralegal', ativo:true};
+  // [v6.2.9] retrato dos valores originais, para detectar alteracao nao salva
+  window._fuOriginal = {
+    'fu-nome': u.nome||'', 'fu-email': u.email||'', 'fu-nascimento': u.nascimento||'',
+    'fu-telefone': u.telefone||'', 'fu-cpf': u.cpf||'', 'fu-departamento': u.departamento||'',
+    'fu-cargo': u.cargo||'Paralegal', 'fu-ativo': u.ativo ? '1' : '0'
+  };
   // [v6.2.8] label com for= : sem isso o leitor de tela anuncia "caixa de edicao"
   // sem nome, e clicar no rotulo nao foca o campo.
   const _lbl = (f) => `for="${f}" class="block text-xs font-semibold mb-1"`;
@@ -4746,7 +4821,7 @@ function openModalUsuario(id) {
       <h3 class="text-lg font-bold" style="color:var(--azuos-text)">${id?'Editar':'Novo'} usuário</h3>
       <button onclick="closeModal()" aria-label="Fechar" class="text-2xl leading-none" style="color:var(--azuos-text-muted)">×</button>
     </div>
-    <div class="px-5 py-4 space-y-3 flex-1 min-h-0 overflow-y-auto">
+    <div data-modal-corpo class="px-5 py-4 space-y-3 flex-1 min-h-0 overflow-y-auto">
 
       <!-- [v6.2.6] Foto ao lado de nome/e-mail. Empilha em tela estreita. -->
       <div class="flex flex-col sm:flex-row items-center sm:items-start gap-3">
@@ -4790,7 +4865,8 @@ function openModalUsuario(id) {
           ${_ehEuMesmo ? `<button type="button" onclick="closeModal(); setTimeout(abrirModalSenha, 150);" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">🔒 Minha senha</button>` : ''}
         </div>
         <div id="fu-senha-box" class="hidden mt-2 rounded-lg p-2.5" style="background:var(--azuos-surface);border:1px solid var(--azuos-success)">
-          <div class="text-[11px] font-bold mb-1" style="color:var(--azuos-text)">Senha temporária — copie antes de fechar</div>
+          <div class="text-[11px] font-bold mb-1" style="color:var(--azuos-text)">Acesso criado</div>
+          <div id="fu-senha-aviso" class="text-[11px] mb-2" style="color:var(--azuos-text-muted)"></div>
           <div class="flex items-center gap-2">
             <code id="fu-senha-val" class="flex-1 px-2 py-1.5 rounded font-mono text-sm select-all" style="background:var(--azuos-bg);color:var(--azuos-text)"></code>
             <button type="button" onclick="_fuCopiarSenha()" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:#047857">📋 Copiar</button>
