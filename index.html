@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.1.9 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.1.10 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -581,11 +581,24 @@ function _azuosOficialJaExiste(oficial, lista){
     if(!oficial) return false;
     var us = Array.isArray(lista) ? lista : ((typeof state!=='undefined' && state && state.usuarios) || []);
     var em = String(oficial.email||'').toLowerCase().trim();
-    var nm = _normId(oficial.nome);
-    for(var i=0;i<us.length;i++){
-      var u = us[i]; if(!u) continue;
+    var i, u;
+    // 1) Mesmo e-mail: e a mesma conta, sem duvida.
+    for(i=0;i<us.length;i++){
+      u = us[i]; if(!u) continue;
       if(em && String(u.email||'').toLowerCase().trim() === em) return true;
-      if(nm && _normId(u.nome) === nm) return true;
+    }
+    // 2) [v6.1.10] Casar por NOME so vale quando o e-mail candidato e um endereco
+    // OFICIAL conhecido — isto e, quando sabemos que aquele endereco pertence
+    // aquela pessoa e ela pode ter migrado para outro (v6.0.44). Casar por nome
+    // sem essa condicao bloquearia um HOMONIMO legitimo (uma segunda Camila com
+    // e-mail proprio nunca entraria no app, sem aviso nenhum).
+    var of = (typeof _azuosOficialPorEmail==='function') ? _azuosOficialPorEmail(em) : null;
+    if(!of) return false;
+    var nm = _normId(of.nome);
+    if(!nm) return false;
+    for(i=0;i<us.length;i++){
+      u = us[i]; if(!u) continue;
+      if(_normId(u.nome) === nm) return true;
     }
     return false;
   }catch(e){ return false; }
@@ -1784,7 +1797,7 @@ function renderEmpresas(){
                do markup (e nao escondidos por CSS) para nao deixar controle morto. -->
           <label for="csv-file" class="cursor-pointer px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm">📥 Importar CSV</label>
           <input id="csv-file" type="file" accept=".csv,.tsv,.txt" class="hidden">
-          <button id="nova-empresa" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Nova empresa</button>
+          <button id="nova-empresa" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm">+ Nova empresa</button>
         </div>
       </header>
       <div class="bg-white rounded-xl shadow-sm p-4 mb-4 grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -2172,39 +2185,51 @@ async function handleSyncDriveAuto() {
     //   - EMPRESA NOVA na planilha: entra com o cadastro dela.
     //   - STATUS: a planilha manda. Quem saiu de ATIVO la sai daqui, como sempre foi.
     //   - ALVARAS: nunca mais vem da planilha (o app e o dono desde v6.1.1).
+    // [v6.1.10] IDENTIDADE DE EMPRESA = nome normalizado (+ CNPJ quando houver).
+    // NUNCA o `id`: o id da planilha e a POSICAO DA LINHA. Quando linhas entram ou
+    // saem, o mesmo id passa a apontar para outra empresa. Medido na base real:
+    // 60 ids apontavam para empresas diferentes no app e na planilha, e usar o id
+    // como chave descartava 16 empresas ATIVO de forma permanente e silenciosa.
     const todasEmpresas = dados.empresas || [];
     const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
     if (!Array.isArray(state.empresas)) state.empresas = [];
     const _soDigitos = (v) => String(v == null ? '' : v).replace(/\D/g, '');
-    const _idsLocais = new Set(state.empresas.map(e => String(e && e.id)));
-    const _nomesLocais = new Set(state.empresas.map(e => _normId(e && e.nome)).filter(Boolean));
-    const _cnpjsLocais = new Set(state.empresas.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+    const _kNome = (e) => _normId(e && e.nome);
+    const _kCnpj = (e) => _soDigitos(e && e.cnpj);
+    // Cadastros feitos no app nao existem na planilha: ela nao pode remove-los.
+    // Mesma chave usada por reinjetarEmpresasManuais (nome|cnpj, sem normalizar).
+    const _keysManuais = new Set((state.empresas_manuais || [])
+      .map(m => ((m && m.nome) || '').trim() + '|' + ((m && m.cnpj) || '').trim()));
+    const _ehManual = (e) => _keysManuais.has(((e && e.nome) || '').trim() + '|' + ((e && e.cnpj) || '').trim());
+
+    const _nomesLocais = new Set(state.empresas.map(_kNome).filter(Boolean));
+    const _cnpjsLocais = new Set(state.empresas.map(_kCnpj).filter(Boolean));
     const _novas = ativasRemoto.filter(e => {
-      if (_idsLocais.has(String(e.id))) return false;
-      const n = _normId(e && e.nome); if (n && _nomesLocais.has(n)) return false;
-      const c = _soDigitos(e && e.cnpj); if (c && _cnpjsLocais.has(c)) return false;
+      const n = _kNome(e); if (n && _nomesLocais.has(n)) return false;
+      const c = _kCnpj(e); if (c && _cnpjsLocais.has(c)) return false;
       return true;
     });
+    // Empresa nova recebe id PROPRIO do app (o da planilha e posicional e pode
+    // colidir com um id local ja em uso, embaralhando alvarás e edicoes_empresas).
+    let _proxId = state.empresas.reduce((m, e) => Math.max(m, Number(e && e.id) || 0), 0);
     _novas.forEach(e => {
-      state.empresas.push(e);
-      _idsLocais.add(String(e.id));
-      const n = _normId(e && e.nome); if (n) _nomesLocais.add(n);
-      const c = _soDigitos(e && e.cnpj); if (c) _cnpjsLocais.add(c);
+      const nova = Object.assign({}, e, { id: ++_proxId });
+      state.empresas.push(nova);
+      const n = _kNome(nova); if (n) _nomesLocais.add(n);
+      const c = _kCnpj(nova); if (c) _cnpjsLocais.add(c);
     });
     if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
-    // Status vem da planilha: sai do app quem deixou de ser ATIVO la. Cadastros
-    // manuais do app nao estao na planilha e sao repostos logo abaixo por
-    // reinjetarEmpresasManuais(). A guarda `ativasRemoto.length` evita esvaziar a
-    // base inteira se a planilha responder vazia por falha de rede/permissao.
+    // Status vem da planilha: sai do app quem deixou de ser ATIVO la — casando por
+    // nome/CNPJ, nunca por id. A guarda `ativasRemoto.length` evita esvaziar a base
+    // inteira se a planilha responder vazia por falha de rede/permissao.
     if (ativasRemoto.length) {
-      const _idsAtivoRemoto = new Set(ativasRemoto.map(e => String(e.id)));
-      const _nomesAtivoRemoto = new Set(ativasRemoto.map(e => _normId(e && e.nome)).filter(Boolean));
-      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+      const _nomesAtivoRemoto = new Set(ativasRemoto.map(_kNome).filter(Boolean));
+      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(_kCnpj).filter(Boolean));
       const _antes = state.empresas.length;
       state.empresas = state.empresas.filter(e => {
-        if (_idsAtivoRemoto.has(String(e && e.id))) return true;
-        const n = _normId(e && e.nome); if (n && _nomesAtivoRemoto.has(n)) return true;
-        const c = _soDigitos(e && e.cnpj); if (c && _cnpjsAtivoRemoto.has(c)) return true;
+        if (_ehManual(e)) return true; // cadastro do app: a planilha nao manda
+        const n = _kNome(e); if (n && _nomesAtivoRemoto.has(n)) return true;
+        const c = _kCnpj(e); if (c && _cnpjsAtivoRemoto.has(c)) return true;
         return false; // nao consta mais como ATIVO na planilha
       });
       const _saidas = _antes - state.empresas.length;
@@ -2212,6 +2237,10 @@ async function handleSyncDriveAuto() {
     } else {
       console.warn('[Sync] planilha nao devolveu nenhuma empresa ATIVO — status NAO aplicado (base preservada)');
     }
+    // [v6.1.10] reinjeta ANTES de calcular idsAtivo: a filtragem de alvarás usa
+    // idsAtivo e, com a empresa manual fora da lista nesse instante, os alvarás
+    // dela eram apagados a cada sync.
+    reinjetarEmpresasManuais();
     const idsAtivo = new Set(state.empresas.map(e => e.id));
     // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
     // A planilha traz exclusivamente o cadastro das empresas.
@@ -2223,13 +2252,15 @@ async function handleSyncDriveAuto() {
       state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
       console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
     } else {
-      // Sem base na nuvem ainda: MANTEM os alvarás que o app ja tem (nao le
-      // dados.alvaras) e publica essa base na nuvem para virar a fonte oficial.
+      // [v6.1.10] Sem base na nuvem: MANTEM os alvarás locais e NAO publica nada.
+      // _alvarasCloudLoad devolve null tanto para "nuvem vazia" quanto para falha
+      // transitoria (rede/permissao) — sao indistinguiveis aqui. Publicar nesse
+      // ponto podia sobrescrever a base de todos com o snapshot do SEED (5730
+      // registros antigos) no primeiro acesso de um navegador sem localStorage.
+      // A migracao inicial para a nuvem ja aconteceu na v6.1.2.
       state.alvaras = Array.isArray(state.alvaras) ? state.alvaras : [];
-      console.log('[Sync] nuvem de alvarás vazia — mantendo a base local:', state.alvaras.length);
-      if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudSave === 'function') {
-        try { window._alvarasCloudSave(state.alvaras); } catch(e){}
-      }
+      console.warn('[Sync] nuvem de alvarás indisponivel ou vazia — mantendo a base local ('
+        + state.alvaras.length + ') SEM publicar, para nao sobrescrever a base da equipe');
     }
     // Restaura dados do usuário (revisado, conversas, anexos, obs)
     let restaurados = 0;
@@ -2241,7 +2272,7 @@ async function handleSyncDriveAuto() {
       }
     });
     sanearTipos();
-    reinjetarEmpresasManuais();
+    // [v6.1.10] reinjetarEmpresasManuais() ja rodou ANTES do calculo de idsAtivo.
     console.log('[Sync] Filtrado:', state.empresas.length, 'ATIVO de', todasEmpresas.length, 'total empresas |', state.alvaras.length, 'alvarás de ATIVO |', restaurados, 'com dados do usuário preservados');
     // DIAGNÓSTICO v5.2: mostra amostra dos alvarás recebidos
     if (state.alvaras.length) {
@@ -2264,19 +2295,29 @@ async function handleSyncDriveAuto() {
       SEED.tipos_alvara = dados.tipos_alvara.filter(t => t !== 'CERTIFICADO DIGITAL' && t !== 'INPI');
     }
     const e = dados.estatisticas || {};
-    log('Sincronização automática', `${e.total_empresas||state.empresas.length} empresas, ${e.total_alvaras||state.alvaras.length} alvarás`);
+    // [v6.1.9] Relata o que REALMENTE aconteceu. Antes usava e.total_alvaras (a
+    // contagem de alvarás DA PLANILHA), que desde v6.1.9 nao e mais carregada —
+    // o numero no historico ficava alto e sem relacao com o app.
+    log('Sincronização automática', `${state.empresas.length} empresas ATIVO`
+      + (_novas.length ? `, ${_novas.length} nova(s)` : ', nenhuma nova')
+      + `, ${state.alvaras.length} alvarás no app`);
     saveState();
     render();
     const toast = document.createElement('div');
     toast.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#10b981,#059669);color:white;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(16,185,129,0.6);z-index:9999;font-family:Inter,sans-serif;font-size:14px;font-weight:500;'; toast.className='toast-slide';
-    toast.innerHTML = `✅ Sincronizado automaticamente: <strong>${e.ativas||0}</strong> ATIVO + <strong>${e.total_alvaras||0}</strong> alvarás`;
+    toast.innerHTML = _novas.length
+      ? `✅ <strong>${_novas.length}</strong> empresa(s) nova(s) da planilha · <strong>${state.empresas.length}</strong> ATIVO no total`
+      : `✅ Atualizado: <strong>${state.empresas.length}</strong> empresas ATIVO`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4500);
   } catch (err) {
     console.error('[Auto-sync] falhou:', err);
     const toast = document.createElement('div');
     toast.style.cssText = 'position:fixed;top:20px;right:20px;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;padding:14px 22px;border-radius:14px;box-shadow:0 10px 30px -8px rgba(239,68,68,0.6);z-index:9999;font-family:Inter,sans-serif;font-size:14px;font-weight:500;max-width:400px;'; toast.className='toast-slide';
-    toast.innerHTML = `⚠️ Falha ao sincronizar: ${err.message}. Clique em "🔄 Sincronizar do Drive" manualmente.`;
+    // [v6.1.9] Nao existe mais botao manual de sincronizar — mandar o usuario clicar
+    // num controle que nao esta na tela so gera procura inutil. O sync tenta de novo
+    // sozinho no proximo ciclo (boot / 10 min / ao reativar a aba).
+    toast.innerHTML = `⚠️ Não consegui atualizar a lista de empresas agora: ${err.message}.<br>Vou tentar de novo automaticamente. Os dados já carregados continuam disponíveis.`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 6000);
   }
@@ -2346,39 +2387,51 @@ async function handleSyncDrive() {
     //   - EMPRESA NOVA na planilha: entra com o cadastro dela.
     //   - STATUS: a planilha manda. Quem saiu de ATIVO la sai daqui, como sempre foi.
     //   - ALVARAS: nunca mais vem da planilha (o app e o dono desde v6.1.1).
+    // [v6.1.10] IDENTIDADE DE EMPRESA = nome normalizado (+ CNPJ quando houver).
+    // NUNCA o `id`: o id da planilha e a POSICAO DA LINHA. Quando linhas entram ou
+    // saem, o mesmo id passa a apontar para outra empresa. Medido na base real:
+    // 60 ids apontavam para empresas diferentes no app e na planilha, e usar o id
+    // como chave descartava 16 empresas ATIVO de forma permanente e silenciosa.
     const todasEmpresas = dados.empresas || [];
     const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
     if (!Array.isArray(state.empresas)) state.empresas = [];
     const _soDigitos = (v) => String(v == null ? '' : v).replace(/\D/g, '');
-    const _idsLocais = new Set(state.empresas.map(e => String(e && e.id)));
-    const _nomesLocais = new Set(state.empresas.map(e => _normId(e && e.nome)).filter(Boolean));
-    const _cnpjsLocais = new Set(state.empresas.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+    const _kNome = (e) => _normId(e && e.nome);
+    const _kCnpj = (e) => _soDigitos(e && e.cnpj);
+    // Cadastros feitos no app nao existem na planilha: ela nao pode remove-los.
+    // Mesma chave usada por reinjetarEmpresasManuais (nome|cnpj, sem normalizar).
+    const _keysManuais = new Set((state.empresas_manuais || [])
+      .map(m => ((m && m.nome) || '').trim() + '|' + ((m && m.cnpj) || '').trim()));
+    const _ehManual = (e) => _keysManuais.has(((e && e.nome) || '').trim() + '|' + ((e && e.cnpj) || '').trim());
+
+    const _nomesLocais = new Set(state.empresas.map(_kNome).filter(Boolean));
+    const _cnpjsLocais = new Set(state.empresas.map(_kCnpj).filter(Boolean));
     const _novas = ativasRemoto.filter(e => {
-      if (_idsLocais.has(String(e.id))) return false;
-      const n = _normId(e && e.nome); if (n && _nomesLocais.has(n)) return false;
-      const c = _soDigitos(e && e.cnpj); if (c && _cnpjsLocais.has(c)) return false;
+      const n = _kNome(e); if (n && _nomesLocais.has(n)) return false;
+      const c = _kCnpj(e); if (c && _cnpjsLocais.has(c)) return false;
       return true;
     });
+    // Empresa nova recebe id PROPRIO do app (o da planilha e posicional e pode
+    // colidir com um id local ja em uso, embaralhando alvarás e edicoes_empresas).
+    let _proxId = state.empresas.reduce((m, e) => Math.max(m, Number(e && e.id) || 0), 0);
     _novas.forEach(e => {
-      state.empresas.push(e);
-      _idsLocais.add(String(e.id));
-      const n = _normId(e && e.nome); if (n) _nomesLocais.add(n);
-      const c = _soDigitos(e && e.cnpj); if (c) _cnpjsLocais.add(c);
+      const nova = Object.assign({}, e, { id: ++_proxId });
+      state.empresas.push(nova);
+      const n = _kNome(nova); if (n) _nomesLocais.add(n);
+      const c = _kCnpj(nova); if (c) _cnpjsLocais.add(c);
     });
     if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
-    // Status vem da planilha: sai do app quem deixou de ser ATIVO la. Cadastros
-    // manuais do app nao estao na planilha e sao repostos logo abaixo por
-    // reinjetarEmpresasManuais(). A guarda `ativasRemoto.length` evita esvaziar a
-    // base inteira se a planilha responder vazia por falha de rede/permissao.
+    // Status vem da planilha: sai do app quem deixou de ser ATIVO la — casando por
+    // nome/CNPJ, nunca por id. A guarda `ativasRemoto.length` evita esvaziar a base
+    // inteira se a planilha responder vazia por falha de rede/permissao.
     if (ativasRemoto.length) {
-      const _idsAtivoRemoto = new Set(ativasRemoto.map(e => String(e.id)));
-      const _nomesAtivoRemoto = new Set(ativasRemoto.map(e => _normId(e && e.nome)).filter(Boolean));
-      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(e => _soDigitos(e && e.cnpj)).filter(Boolean));
+      const _nomesAtivoRemoto = new Set(ativasRemoto.map(_kNome).filter(Boolean));
+      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(_kCnpj).filter(Boolean));
       const _antes = state.empresas.length;
       state.empresas = state.empresas.filter(e => {
-        if (_idsAtivoRemoto.has(String(e && e.id))) return true;
-        const n = _normId(e && e.nome); if (n && _nomesAtivoRemoto.has(n)) return true;
-        const c = _soDigitos(e && e.cnpj); if (c && _cnpjsAtivoRemoto.has(c)) return true;
+        if (_ehManual(e)) return true; // cadastro do app: a planilha nao manda
+        const n = _kNome(e); if (n && _nomesAtivoRemoto.has(n)) return true;
+        const c = _kCnpj(e); if (c && _cnpjsAtivoRemoto.has(c)) return true;
         return false; // nao consta mais como ATIVO na planilha
       });
       const _saidas = _antes - state.empresas.length;
@@ -2386,6 +2439,10 @@ async function handleSyncDrive() {
     } else {
       console.warn('[Sync] planilha nao devolveu nenhuma empresa ATIVO — status NAO aplicado (base preservada)');
     }
+    // [v6.1.10] reinjeta ANTES de calcular idsAtivo: a filtragem de alvarás usa
+    // idsAtivo e, com a empresa manual fora da lista nesse instante, os alvarás
+    // dela eram apagados a cada sync.
+    reinjetarEmpresasManuais();
     const idsAtivo = new Set(state.empresas.map(e => e.id));
     // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
     // A planilha traz exclusivamente o cadastro das empresas.
@@ -2397,13 +2454,15 @@ async function handleSyncDrive() {
       state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
       console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
     } else {
-      // Sem base na nuvem ainda: MANTEM os alvarás que o app ja tem (nao le
-      // dados.alvaras) e publica essa base na nuvem para virar a fonte oficial.
+      // [v6.1.10] Sem base na nuvem: MANTEM os alvarás locais e NAO publica nada.
+      // _alvarasCloudLoad devolve null tanto para "nuvem vazia" quanto para falha
+      // transitoria (rede/permissao) — sao indistinguiveis aqui. Publicar nesse
+      // ponto podia sobrescrever a base de todos com o snapshot do SEED (5730
+      // registros antigos) no primeiro acesso de um navegador sem localStorage.
+      // A migracao inicial para a nuvem ja aconteceu na v6.1.2.
       state.alvaras = Array.isArray(state.alvaras) ? state.alvaras : [];
-      console.log('[Sync] nuvem de alvarás vazia — mantendo a base local:', state.alvaras.length);
-      if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudSave === 'function') {
-        try { window._alvarasCloudSave(state.alvaras); } catch(e){}
-      }
+      console.warn('[Sync] nuvem de alvarás indisponivel ou vazia — mantendo a base local ('
+        + state.alvaras.length + ') SEM publicar, para nao sobrescrever a base da equipe');
     }
     // Restaura dados do usuário (revisado, conversas, anexos, obs)
     let restaurados = 0;
@@ -2415,7 +2474,7 @@ async function handleSyncDrive() {
       }
     });
     sanearTipos();
-    reinjetarEmpresasManuais();
+    // [v6.1.10] reinjetarEmpresasManuais() ja rodou ANTES do calculo de idsAtivo.
     console.log('[Sync] Filtrado:', state.empresas.length, 'ATIVO de', todasEmpresas.length, 'total empresas |', state.alvaras.length, 'alvarás de ATIVO |', restaurados, 'com dados do usuário preservados');
     // DIAGNÓSTICO v5.2: mostra amostra dos alvarás recebidos
     if (state.alvaras.length) {
