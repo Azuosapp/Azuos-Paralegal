@@ -1,0 +1,90 @@
+/* =============================================================================
+ * AZUOS DESIGN SYSTEM — trazido do trilha-azuos (referencia de producao).
+ * Fonte: Azuosapp/trilha-azuos, src/brand/azuos-design-system.css
+ *
+ * Adaptacoes para o Paralegal:
+ *   - Removida a ponte "@theme inline" (aquilo e Tailwind v4; aqui e v3 via CDN).
+ *   - Removida a regra global de `body`: o Paralegal ja define o proprio fundo,
+ *     e sequestra-lo mudaria a cara de todas as telas de uma vez.
+ * O resto e identico, para que os dois sistemas falem a MESMA linguagem visual.
+ * ========================================================================== */
+:root {
+  /* Azuos brand — cores oficiais */
+  --azuos-blue-darkest: #0A1A4A;
+  --azuos-blue-dark: #0F2460;
+  --azuos-blue: #1B3A8C;        /* AZUL OFICIAL */
+  --azuos-blue-light: #2B5CE6;
+  --azuos-yellow: #F5C518;      /* AMARELO OFICIAL */
+  --azuos-yellow-dark: #E6B000;
+
+  /* Neutros baseados na marca */
+  --azuos-bg: #F0F4FF;
+  --azuos-surface: #ffffff;
+  --azuos-text: #1E293B;
+  --azuos-text-muted: #64748B;
+  --azuos-border: rgba(27, 58, 140, 0.08);
+
+  /* Estados */
+  --azuos-success: #10B981;
+  --azuos-warning: #F59E0B;
+  --azuos-danger: #EF4444;
+
+  /* Sombras */
+  --azuos-shadow: 0 4px 24px rgba(27, 58, 140, 0.10);
+  --azuos-shadow-lg: 0 16px 48px rgba(27, 58, 140, 0.18);
+
+  /* Gradientes reutilizáveis */
+  --azuos-sidebar: linear-gradient(180deg, #0A1A4A 0%, #0F2460 60%, #1B3A8C 100%);
+  --azuos-hero: linear-gradient(135deg, #0A1A4A 0%, #1B3A8C 60%, #2B5CE6 100%);
+  --azuos-button: linear-gradient(135deg, #1B3A8C 0%, #2B5CE6 100%);
+  --azuos-yellow-gradient: linear-gradient(135deg, #F5C518 0%, #E6B000 100%);
+
+  /* Tipografia — Inter é a fonte oficial. --font-inter é injetada por next/font;
+     o fallback garante Inter mesmo sem o next/font. */
+  --azuos-font-sans: var(--font-inter), Inter, system-ui, -apple-system, sans-serif;
+
+  /* Aliases genéricos */
+  --background: var(--azuos-bg);
+  --foreground: var(--azuos-text);
+}
+
+
+
+/* Animações */
+@keyframes az-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-az-fade { animation: az-fade 0.18s ease-out; }
+
+@keyframes az-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes az-slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* Input padrão Azuos */
+.az-input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--azuos-border);
+  background: var(--azuos-surface);
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  color: var(--azuos-text);
+  outline: none;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.az-input::placeholder { color: var(--azuos-text-muted); }
+.az-input:focus {
+  border-color: var(--azuos-blue-light);
+  box-shadow: 0 0 0 3px rgba(43, 92, 230, 0.15);
+}
+
+/* Scrollbar Azuos */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--azuos-bg); }
+::-webkit-scrollbar-thumb { background: var(--azuos-blue); border-radius: 3px; }
