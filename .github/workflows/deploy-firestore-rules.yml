@@ -46,11 +46,15 @@ jobs:
 
       - name: Preparar credencial do Firebase
         env:
-          # O repositorio tem os dois nomes (um deles com "0" no lugar do "O").
-          # Aceitamos qualquer um para nao depender de qual esta preenchido.
-          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
-          SA_C: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+          # ORDEM IMPORTA. O projeto tem DUAS contas de servico, com papeis diferentes:
+          #   github-deploy@...            -> Administrador do Firebase (PODE publicar regras)
+          #   firebase-adminsdk-fbsvc@...  -> so Authentication/Admin SDK (NAO pode)
+          # A primeira tentativa deste workflow pegou a conta sem permissao e voltou
+          # 403 na firebaserules.googleapis.com. Por isso tentamos primeiro o segredo
+          # que o deploy de Hosting ja usa com sucesso (github-deploy).
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_C: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
         run: |
           V="$SA_A"
           [ -z "$V" ] && V="$SA_B"
@@ -59,6 +63,8 @@ jobs:
           printf '%s' "$V" > "$HOME/sa.json"
           node -e "JSON.parse(require('fs').readFileSync(process.env.HOME + '/sa.json','utf8'))" \
             || { echo 'ERRO: o segredo nao e um JSON valido.'; exit 1; }
+          # Mostra QUAL conta sera usada — sem isso o 403 vira adivinhacao.
+          node -e "console.log('Conta de servico:', JSON.parse(require('fs').readFileSync(process.env.HOME + '/sa.json','utf8')).client_email)"
 
       - name: Mostrar quem sera autorizado (conferencia no log)
         run: |
