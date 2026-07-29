@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.1 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.2 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4485,6 +4485,64 @@ function acessoReset(email, nome){
   if(!email){ alert('Este usuário não tem e-mail. Edite o usuário e informe o e-mail pessoal primeiro.'); return; }
   if(confirm('Redefinir a senha de '+(nome||email)+'?\n\nSerá enviado um link de redefinição para o e-mail da pessoa.')) _acessoExecutar('reset', nome, email);
 }
+/* [v6.2.2] Acoes de e-mail/senha dentro do cadastro do usuario.
+   LIMITE DO FIREBASE, respeitado de proposito: pelo SDK do navegador ninguem
+   troca a senha nem o e-mail de LOGIN de outra pessoa — isso exige o Admin SDK
+   no servidor. O que da para fazer, e o que fazemos aqui:
+     - trocar o e-mail: atualiza o cadastro e cria o login novo (senha temporaria
+       na hora), porque o login antigo continua existindo no Firebase Auth;
+     - redefinir senha: manda link de redefinicao para a pessoa escolher a dela;
+     - trocar a propria senha: so aparece quando voce edita o SEU cadastro. */
+function usuarioTrocarEmail(id){
+  if (estruturaBloqueada()) return;
+  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode trocar o e-mail de acesso.'); return; }
+  var u = (state.usuarios||[]).find(function(x){ return String(x.id)===String(id); });
+  if(!u){ alert('Usuário não encontrado. Recarregue a página e tente de novo.'); return; }
+  var atual = (u.email||'').trim();
+  var novo = prompt('Novo e-mail de acesso de ' + (u.nome||'') + ':\n\n(o antigo era: ' + (atual||'nenhum') + ')', atual);
+  if(novo===null) return;
+  novo = String(novo).trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(novo)){ alert('E-mail inválido.'); return; }
+  if(novo === atual.toLowerCase()){ alert('Esse já é o e-mail atual.'); return; }
+  var dono = (state.usuarios||[]).find(function(x){ return x && String(x.id)!==String(id) && (x.email||'').toLowerCase().trim()===novo; });
+  if(dono){ alert('Esse e-mail já está no cadastro de "' + (dono.nome||'') + '". Cada pessoa precisa de um e-mail próprio.'); return; }
+
+  if(!confirm('Trocar o e-mail de acesso de "' + (u.nome||'') + '"?\n\n'
+      + 'De:   ' + (atual||'(sem e-mail)') + '\n'
+      + 'Para: ' + novo + '\n\n'
+      + 'A partir de agora a pessoa entra com o e-mail NOVO. Em seguida vou oferecer criar o login dele com uma senha temporária.')) return;
+
+  // 1) cadastro do app
+  state.usuarios = state.usuarios.map(function(x){ return String(x.id)===String(id) ? Object.assign({}, x, {email:novo}) : x; });
+  // preserva a foto no mapa duravel e tira o e-mail novo da lista de removidos
+  try{
+    state.fotos_usuarios = state.fotos_usuarios || {};
+    if(u.foto) state.fotos_usuarios[novo] = u.foto;
+    if(Array.isArray(state.usuarios_removidos)) state.usuarios_removidos = state.usuarios_removidos.filter(function(e){ return e!==novo; });
+  }catch(e){}
+  log('Trocou e-mail de acesso', (u.nome||'') + ': ' + (atual||'(sem)') + ' → ' + novo);
+  saveState();
+  try{ if(window._salvarUsuariosFirestore) window._salvarUsuariosFirestore(); }catch(e){}
+  closeModal(); render();
+  if(typeof toast==='function') toast('✅ E-mail do cadastro atualizado para ' + novo, 'emerald');
+
+  // 2) login no Firebase Auth (o antigo continua existindo; este e o novo)
+  setTimeout(function(){
+    if(confirm('Criar agora o login de ' + novo + ' com senha temporária?\n\n'
+        + 'Se a pessoa JÁ tem conta nesse endereço, será enviado um link de redefinição.\n\n'
+        + 'Importante: a conta antiga (' + (atual||'—') + ') continua existindo no Firebase e precisa ser removida por lá, se for o caso.')){
+      _acessoExecutar('criar', u.nome||'', novo);
+      try{ setState({page:'usuarios'}); }catch(e){}
+    }
+  }, 400);
+}
+function usuarioRedefinirSenha(id){
+  var u = (state.usuarios||[]).find(function(x){ return String(x.id)===String(id); });
+  if(!u){ alert('Usuário não encontrado. Recarregue a página e tente de novo.'); return; }
+  if(!u.email){ alert('Este usuário não tem e-mail. Informe o e-mail no cadastro antes de redefinir a senha.'); return; }
+  closeModal();
+  setTimeout(function(){ acessoReset(u.email, u.nome||''); }, 150);
+}
 function acessoCopiar(id){
   var p=(window._acessosCache||[]).find(function(x){return x && x.id===id;});
   if(p && p.senha_temp && navigator.clipboard){ navigator.clipboard.writeText(p.senha_temp).then(function(){ if(typeof toast==='function') toast('Senha copiada!','emerald'); }); }
@@ -4580,6 +4638,7 @@ function openModalUsuario(id) {
   const _lblSty = 'style="color:var(--azuos-text)"';
   const _inp = 'az-input';
   const _deps = _departamentosConhecidos();
+  const _ehEuMesmo = !!(id && state.sessao && (state.sessao.email||'').toLowerCase().trim() === (u.email||'').toLowerCase().trim() && u.email);
   showModal(`
     <div class="px-5 py-4 border-b flex justify-between items-center" style="border-color:var(--azuos-border)">
       <h3 class="text-lg font-bold" style="color:var(--azuos-text)">${id?'Editar':'Novo'} usuário</h3>
@@ -4621,6 +4680,21 @@ function openModalUsuario(id) {
           <select id="fu-ativo" class="${_inp}"><option value="1" ${u.ativo?'selected':''}>Ativo</option><option value="0" ${!u.ativo?'selected':''}>Inativo</option></select>
         </div>
       </div>
+
+      ${id ? `
+      <div class="rounded-xl p-4" style="background:var(--azuos-bg);border:1px solid var(--azuos-border)">
+        <div class="flex items-center gap-2 mb-1"><span>🔐</span><h4 class="font-bold text-sm" style="color:var(--azuos-text)">E-mail e senha de acesso</h4></div>
+        <p class="text-[11px] mb-3" style="color:var(--azuos-text-muted)">
+          Login atual: <b>${esc(u.email||'(sem e-mail)')}</b>. Estas ações mexem na conta de acesso, não no cadastro acima — valem na hora, sem precisar salvar.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="usuarioTrocarEmail('${String(id)}')" class="px-3 py-2 text-xs font-bold rounded-lg text-white" style="background:var(--azuos-button)">✉️ Trocar e-mail de acesso</button>
+          <button type="button" onclick="usuarioRedefinirSenha('${String(id)}')" class="px-3 py-2 text-xs font-bold rounded-lg" style="background:var(--azuos-warning);color:#fff">🔑 Redefinir senha</button>
+          ${_ehEuMesmo ? `<button type="button" onclick="closeModal(); setTimeout(abrirModalSenha, 150);" class="px-3 py-2 text-xs font-bold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">🔒 Trocar minha senha</button>` : ''}
+        </div>
+        ${_ehEuMesmo ? '' : `<p class="text-[11px] mt-2" style="color:var(--azuos-text-muted)">Só a própria pessoa consegue <b>digitar</b> uma senha nova. Para os outros, use "Redefinir senha": ela recebe um link por e-mail e escolhe a dela.</p>`}
+      </div>` : `
+      <p class="text-[11px]" style="color:var(--azuos-text-muted)">Salve o cadastro para liberar as ações de e-mail e senha.</p>`}
     </div>
     <div class="px-5 py-4 border-t flex justify-end gap-2" style="border-color:var(--azuos-border)">
       <button onclick="closeModal()" class="px-4 py-2 rounded-lg font-semibold" style="background:var(--azuos-bg);color:var(--azuos-text)">Cancelar</button>
