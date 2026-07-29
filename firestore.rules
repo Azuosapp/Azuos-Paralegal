@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// ============================================================
+//  Regras de segurança do Firestore — Azuos Paralegal
+//  Objetivo: SOMENTE os e-mails autorizados abaixo podem ler/escrever
+//  no banco. Qualquer outra conta (mesmo logada) é bloqueada.
+//
+//  IMPORTANTE: para um usuário NOVO da equipe conseguir acessar, o
+//  e-mail dele precisa ser adicionado na lista `autorizado()` e as
+//  regras precisam ser PUBLICADAS de novo no Console do Firebase.
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Lista branca de e-mails autorizados (em minúsculas).
+    //
+    // ATENÇÃO — esta lista é a causa mais comum de "não consigo salvar" / "dá erro
+    // ao abrir chamado". Quem não estiver aqui LOGA no sistema normalmente, mas
+    // TODA escrita no banco é recusada (permission-denied). Como o app guarda o
+    // dado no navegador antes de sincronizar, a pessoa acha que salvou — e nada
+    // chega para o resto da equipe.
+    //
+    // Ao cadastrar alguém novo, ou quando alguém trocar de e-mail de acesso,
+    // ACRESCENTE aqui e publique de novo (Console do Firebase → Firestore →
+    // Rules). O deploy do site NÃO publica regras — ver COMO-PUBLICAR-REGRAS-FIREBASE.md.
+    function autorizado() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+          'contato@azuoscontabil.com.br',
+          'comercial@azuoscontabil.com.br',
+          'thierrymforte@gmail.com',
+          'camila@azuoscontabil.com.br',
+          'ketrin@azuoscontabil.com.br',
+          'leyla@azuoscontabil.com.br',
+          'leylaazuos@gmail.com',
+          'luanna@azuoscontabil.com.br',
+          'diogenes@azuoscontabil.com.br',
+          'azuos@azuoscontabil.com.br',
+          'gabryel@azuoscontabil.com.br',
+          'yara@azuoscontabil.com.br'
+        ];
+    }
+
+    // Coleções usadas pelo app — somente autorizados.
+    match /azuos/{doc=**}       { allow read, write: if autorizado(); }
+    match /alvaras/{doc=**}     { allow read, write: if autorizado(); }
+    match /backups/{doc=**}     { allow read, write: if autorizado(); }
+    match /por_usuario/{doc=**} { allow read, write: if autorizado(); }
+
+    // Tudo o que não foi listado acima fica bloqueado por padrão.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

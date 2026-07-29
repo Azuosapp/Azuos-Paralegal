@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.2 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.3 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -317,6 +317,29 @@ async function _fsWriteNow() {
   } catch(e) {
     console.error('[FS] Erro ao gravar:', e.message);
     window._fsIgnoreNext = false;
+    // [v6.2.3] A falha de gravacao era SILENCIOSA (so console). O caso classico e
+    // permission-denied: a pessoa nao esta na lista branca de firestore.rules,
+    // entra no sistema normalmente, digita, ve o dado na tela (esta no navegador)
+    // e acha que salvou — mas nada chega para a equipe. Foi o que aconteceu com
+    // chamados de Manutencao que nunca apareciam para o admin.
+    // Avisamos UMA vez por sessao, para nao virar spam a cada 2s de debounce.
+    try {
+      var _cod = (e && (e.code || e.message)) || '';
+      var _negado = String(_cod).indexOf('permission-denied') >= 0 || String(_cod).indexOf('PERMISSION_DENIED') >= 0;
+      if (!window._fsAvisouErro) {
+        window._fsAvisouErro = true;
+        if (_negado) {
+          alert('⚠️ Este acesso não tem permissão para gravar no banco.\n\n'
+            + 'Você consegue usar o sistema, mas NADA que você fizer será salvo para a equipe '
+            + '— chamados de Manutenção, ciências e edições ficam só neste navegador.\n\n'
+            + 'Avise o administrador: o e-mail ' + ((state.sessao && state.sessao.email) || '(desconhecido)')
+            + ' precisa ser incluído nas Regras do Firestore.');
+        } else if (typeof toast === 'function') {
+          toast('⚠️ Não consegui sincronizar com o servidor: ' + (e && e.message ? e.message : 'erro desconhecido')
+            + '. Seus dados seguem salvos neste navegador.', 'red');
+        }
+      }
+    } catch(_){}
   }
 }
 
@@ -4134,8 +4157,15 @@ function manutAbrirChamado(){
   var t={ id:'mnt_'+Date.now()+'_'+Math.random().toString(36).slice(2,8), tipo:(tipo==='melhoria'?'melhoria':'bug'), titulo:titulo.trim().slice(0,200), descricao:descricao.trim().slice(0,4000)||'', pagina:pagina.trim().slice(0,300)||'', prints:prints, autor_nome:me.nome||'', autor_email:me.email||'', status:'aberto', nota_admin:'', obs_interna:'', arquivado:false, created_at:new Date().toISOString(), updated_at:new Date().toISOString() };
   state.manutencao = _manutLista(); state.manutencao.unshift(t);
   window._manutPrints=[]; window._manutTipo='bug';
-  try{ saveState(); }catch(e){}
-  if(typeof toast==='function') toast('✅ Chamado enviado!','emerald');
+  // [v6.2.3] Antes dizia "Chamado enviado!" sempre, mesmo quando a gravacao
+  // falhava — e o chamado nunca chegava ao admin. Agora a mensagem reflete o
+  // que de fato aconteceu.
+  var _gravou = false;
+  try{ _gravou = (saveState() !== false); }catch(e){ _gravou = false; }
+  if(typeof toast==='function'){
+    if(_gravou) toast('✅ Chamado enviado! Você acompanha em "Meus chamados".','emerald');
+    else toast('⚠️ Não consegui salvar o chamado neste navegador. Anote o que escreveu antes de sair da tela.','red');
+  }
   try{ render(); }catch(e){}
 }
 function _manutAdmin(){ return state.sessao && state.sessao.cargo==='Administrador'; }
