@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.5 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.6 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4341,10 +4341,14 @@ function renderUsuarios(){
               <input type="checkbox" ${u.cargo==='Administrador'?'checked':''} onchange="toggleUsuarioAdmin('${u.id}', this.checked)" class="w-4 h-4 accent-amber-600">
               <span>🛡️ Administrador</span>
             </label>` : ''}
+            <!-- [v6.2.6] Saiu o botao "🔑 Senha": era a MESMA acao do "Redefinir
+                 senha" que agora vive dentro de Editar, com rotulo diferente e um
+                 title que mentia ("gera senha temporaria" — na verdade envia link).
+                 Ainda por cima aparecia para nao-admin, pois so o checkbox de
+                 Administrador estava protegido. -->
             <div class="flex gap-1 mt-3 pt-3 border-t border-slate-100">
-              <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50">Editar</button>
-              <button onclick="acessoReset('${esc((u.email||'').replace(/'/g,''))}','${esc((u.nome||'').replace(/'/g,''))}')" class="flex-1 text-xs py-1.5 rounded text-amber-600 hover:bg-amber-50" title="Gera uma senha temporária nova">🔑 Senha</button>
-              <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50">Excluir</button>
+              <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-2 rounded text-blue-600 hover:bg-blue-50">Editar</button>
+              <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-2 rounded text-red-600 hover:bg-red-50">Excluir</button>
             </div>
           </div>`).join('')}
       </div>
@@ -4489,6 +4493,9 @@ async function _acessoExecutar(tipo, nome, email){
 // [v6.2.5] acessoCriar removida: lia os inputs do "Painel de Acesso", que saiu
 // da tela. Criar acesso agora e usuarioCriarAcesso(id), dentro do cadastro.
 function acessoReset(email, nome){
+  // [v6.2.6] guard de admin: a funcao ficava exposta num botao do card visivel
+  // para qualquer perfil, e nao conferia o cargo antes de disparar.
+  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode redefinir a senha de outra pessoa.'); return; }
   if(!email){ alert('Este usuário não tem e-mail. Edite o usuário e informe o e-mail pessoal primeiro.'); return; }
   if(confirm('Redefinir a senha de '+(nome||email)+'?\n\nSerá enviado um link de redefinição para o e-mail da pessoa.')) _acessoExecutar('reset', nome, email);
 }
@@ -4517,7 +4524,8 @@ function usuarioTrocarEmail(id){
   if(!confirm('Trocar o e-mail de acesso de "' + (u.nome||'') + '"?\n\n'
       + 'De:   ' + (atual||'(sem e-mail)') + '\n'
       + 'Para: ' + novo + '\n\n'
-      + 'A partir de agora a pessoa entra com o e-mail NOVO. Em seguida vou oferecer criar o login dele com uma senha temporária.')) return;
+      + 'A partir de agora a pessoa entra com o e-mail NOVO. Em seguida vou oferecer criar o login dele com uma senha temporária.\n\n'
+      + 'Atenção: a janela de cadastro será fechada — se você alterou algum campo e ainda não salvou, essas alterações serão perdidas.')) return;
 
   // 1) cadastro do app
   state.usuarios = state.usuarios.map(function(x){ return String(x.id)===String(id) ? Object.assign({}, x, {email:novo}) : x; });
@@ -4543,6 +4551,32 @@ function usuarioTrocarEmail(id){
     }
   }, 400);
 }
+// [v6.2.6] Remover foto e uma acao destrutiva: pede confirmacao.
+function _fuRemoverFoto(){
+  if(!confirm('Remover a foto desta pessoa?')) return;
+  window._fotoTmp = '';
+  var p = document.getElementById('fu-foto-preview');
+  var n = document.getElementById('fu-nome');
+  if(p) p.innerHTML = ((n && n.value)||'').split(' ').map(function(s){return s[0];}).slice(0,2).join('').toUpperCase() || '?';
+}
+// [v6.2.6] Mostra a senha temporaria DENTRO do modal. Antes ia num prompt(), que
+// o navegador pode suprimir quando e o segundo dialogo seguido — e a senha se
+// perdia, deixando a conta recem-criada inacessivel.
+function _fuMostrarSenha(senha){
+  var box = document.getElementById('fu-senha-box');
+  var val = document.getElementById('fu-senha-val');
+  if(box && val){ val.textContent = senha; box.classList.remove('hidden'); return true; }
+  return false;
+}
+function _fuCopiarSenha(){
+  var val = document.getElementById('fu-senha-val');
+  if(!val) return;
+  var t = val.textContent || '';
+  try{
+    if(navigator.clipboard) navigator.clipboard.writeText(t).then(function(){ if(typeof toast==='function') toast('Senha copiada!','emerald'); });
+    else { var r=document.createRange(); r.selectNode(val); window.getSelection().removeAllRanges(); window.getSelection().addRange(r); document.execCommand('copy'); }
+  }catch(e){}
+}
 // [v6.2.5] Criar o LOGIN de quem so existe no cadastro. Isto vivia no "Painel de
 // Acesso", removido da tela de Usuarios; a funcao continua, agora dentro do
 // proprio cadastro da pessoa. Descoberto em 29/07/2026 que Yara, Gabryel e Azuos
@@ -4553,27 +4587,27 @@ async function usuarioCriarAcesso(id){
   var u = (state.usuarios||[]).find(function(x){ return String(x.id)===String(id); });
   if(!u){ alert('Usuário não encontrado. Recarregue a página e tente de novo.'); return; }
   if(!u.email){ alert('Informe o e-mail no cadastro antes de criar o acesso.'); return; }
+  if(window._fuAcessoEmCurso) return;   // trava de clique duplo
   if(!confirm('Criar o acesso de "' + (u.nome||'') + '" com o e-mail ' + u.email + '?\n\n'
-      + 'Uma senha temporária será gerada e mostrada na tela para você repassar.\n'
-      + 'Se a pessoa já tiver conta, será enviado um link de redefinição.')) return;
-  var r = await _acessoExecutar('criar', u.nome||'', u.email);
-  if(r && r.senha){
-    // prompt em vez de alert: o texto fica selecionavel para copiar.
-    prompt('Acesso criado para ' + (u.nome||'') + '.\n\n'
-      + 'E-mail: ' + u.email + '\n'
-      + 'Copie a senha temporária abaixo e repasse à pessoa.\n'
-      + 'Ela pode trocar depois em "Esqueci minha senha".', r.senha);
-  } else if(r && r.status==='feito'){
-    alert('✅ ' + r.resultado);
-  }
-  try{ render(); }catch(e){}
+      + 'Se a pessoa AINDA NÃO tem login, uma senha temporária será gerada e mostrada aqui.\n'
+      + 'Se JÁ tiver, ela recebe um link de redefinição por e-mail.')) return;
+  window._fuAcessoEmCurso = true;
+  try{
+    var r = await _acessoExecutar('criar', u.nome||'', u.email);
+    if(r && r.senha){
+      if(!_fuMostrarSenha(r.senha)) prompt('Copie a senha temporária de ' + u.email + ':', r.senha);
+    } else if(r && r.status==='feito'){
+      alert('✅ ' + r.resultado);
+    }
+  } finally { window._fuAcessoEmCurso = false; }
 }
 function usuarioRedefinirSenha(id){
   var u = (state.usuarios||[]).find(function(x){ return String(x.id)===String(id); });
   if(!u){ alert('Usuário não encontrado. Recarregue a página e tente de novo.'); return; }
   if(!u.email){ alert('Este usuário não tem e-mail. Informe o e-mail no cadastro antes de redefinir a senha.'); return; }
-  closeModal();
-  setTimeout(function(){ acessoReset(u.email, u.nome||''); }, 150);
+  // [v6.2.6] NAO fecha mais o modal: fechar descartava, sem aviso, tudo o que a
+  // pessoa tivesse digitado nos campos acima.
+  acessoReset(u.email, u.nome||'');
 }
 function acessoCopiar(id){
   var p=(window._acessosCache||[]).find(function(x){return x && x.id===id;});
@@ -4678,18 +4712,22 @@ function openModalUsuario(id) {
     </div>
     <div class="px-5 py-4 space-y-3">
 
-      <!-- [v6.2.5] Compacto: foto ao lado de nome/e-mail, e os quatro campos
-           curtos em 2 colunas. Cabe sem barra de rolagem. -->
-      <div class="flex items-start gap-3">
+      <!-- [v6.2.6] Foto ao lado de nome/e-mail. Empilha em tela estreita. -->
+      <div class="flex flex-col sm:flex-row items-center sm:items-start gap-3">
         <div class="flex flex-col items-center gap-1 shrink-0">
           <div id="fu-foto-preview" class="w-16 h-16 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden" style="background:var(--azuos-button);color:#fff">${u.foto ? `<img src="${u.foto}" class="w-full h-full object-cover">` : esc((u.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase() || '?')}</div>
           <input type="file" id="fu-foto-file" accept="image/*" class="hidden">
-          <button type="button" onclick="document.getElementById('fu-foto-file').click()" class="text-[11px] font-bold" style="color:var(--azuos-blue)">📷 Foto</button>
-          <button type="button" onclick="window._fotoTmp='';document.getElementById('fu-foto-preview').innerHTML=(document.getElementById('fu-nome').value||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase() || '?'" class="text-[10px]" style="color:var(--azuos-danger)">remover</button>
+          <div class="flex gap-1">
+            <button type="button" onclick="document.getElementById('fu-foto-file').click()" class="px-3 py-2 text-[11px] font-bold rounded-lg" style="color:var(--azuos-blue)">📷 Foto</button>
+            <button type="button" onclick="_fuRemoverFoto()" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="color:var(--azuos-danger)">Remover</button>
+          </div>
         </div>
-        <div class="flex-1 grid gap-2">
+        <div class="flex-1 w-full grid gap-2">
           <div><label class="${_lbl}" ${_lblSty}>Nome *</label><input id="fu-nome" value="${esc(u.nome||'')}" class="${_inp}"></div>
-          <div><label class="${_lbl}" ${_lblSty}>E-mail</label><input id="fu-email" type="email" value="${esc(u.email||'')}" class="${_inp}"></div>
+          <div>
+            <label class="${_lbl}" ${_lblSty}>E-mail ${id ? '<span class="font-normal" style="color:var(--azuos-text-muted)">(é o login — use "Trocar e-mail" abaixo)</span>' : ''}</label>
+            <input id="fu-email" type="email" value="${esc(u.email||'')}" class="${_inp}" ${id ? 'readonly style="background:var(--azuos-bg);cursor:not-allowed"' : ''}>
+          </div>
         </div>
       </div>
 
@@ -4708,19 +4746,24 @@ function openModalUsuario(id) {
 
       ${id ? `
       <div class="rounded-xl px-3 py-2.5" style="background:var(--azuos-bg);border:1px solid var(--azuos-border)">
-        <div class="flex items-center justify-between gap-2 flex-wrap">
-          <div class="text-[11px]" style="color:var(--azuos-text-muted)">🔐 Login: <b style="color:var(--azuos-text)">${esc(u.email||'(sem e-mail)')}</b></div>
-          <div class="flex flex-wrap gap-1.5">
-            <button type="button" onclick="usuarioCriarAcesso('${String(id)}')" title="Cria a conta de login e gera uma senha temporária" class="px-2.5 py-1.5 text-[11px] font-bold rounded-lg" style="background:var(--azuos-success);color:#fff">🆕 Criar acesso</button>
-            <button type="button" onclick="usuarioTrocarEmail('${String(id)}')" class="px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white" style="background:var(--azuos-button)">✉️ Trocar e-mail</button>
-            <button type="button" onclick="usuarioRedefinirSenha('${String(id)}')" class="px-2.5 py-1.5 text-[11px] font-bold rounded-lg" style="background:var(--azuos-warning);color:#fff">🔑 Redefinir senha</button>
-            ${_ehEuMesmo ? `<button type="button" onclick="closeModal(); setTimeout(abrirModalSenha, 150);" class="px-2.5 py-1.5 text-[11px] font-bold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">🔒 Minha senha</button>` : ''}
+        <div class="text-[11px] mb-2" style="color:var(--azuos-text-muted)">🔐 Login: <b style="color:var(--azuos-text)">${esc(u.email||'(sem e-mail)')}</b> — estas ações valem na hora e não dependem do "Salvar".</div>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" onclick="usuarioRedefinirSenha('${String(id)}')" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:var(--azuos-button)">🔑 Redefinir senha</button>
+          <button type="button" onclick="usuarioTrocarEmail('${String(id)}')" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">✉️ Trocar e-mail</button>
+          <button type="button" onclick="usuarioCriarAcesso('${String(id)}')" title="Para quem ainda não tem login. Se já tiver, envia link de redefinição." class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-text);border:1px solid var(--azuos-border)">🆕 Criar acesso</button>
+          ${_ehEuMesmo ? `<button type="button" onclick="closeModal(); setTimeout(abrirModalSenha, 150);" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">🔒 Minha senha</button>` : ''}
+        </div>
+        <div id="fu-senha-box" class="hidden mt-2 rounded-lg p-2.5" style="background:var(--azuos-surface);border:1px solid var(--azuos-success)">
+          <div class="text-[11px] font-bold mb-1" style="color:var(--azuos-text)">Senha temporária — copie antes de fechar</div>
+          <div class="flex items-center gap-2">
+            <code id="fu-senha-val" class="flex-1 px-2 py-1.5 rounded font-mono text-sm select-all" style="background:var(--azuos-bg);color:var(--azuos-text)"></code>
+            <button type="button" onclick="_fuCopiarSenha()" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:var(--azuos-success)">📋 Copiar</button>
           </div>
         </div>
       </div>` : `
       <p class="text-[11px]" style="color:var(--azuos-text-muted)">Salve o cadastro para liberar as ações de e-mail e senha.</p>`}
     </div>
-    <div class="px-5 py-4 border-t flex justify-end gap-2" style="border-color:var(--azuos-border)">
+    <div class="px-5 py-4 border-t flex justify-end gap-2 sticky bottom-0" style="border-color:var(--azuos-border);background:var(--azuos-surface)">
       <button onclick="closeModal()" class="px-4 py-2 rounded-lg font-semibold" style="background:var(--azuos-bg);color:var(--azuos-text)">Cancelar</button>
       <button onclick="salvarUsuario(${id?("'"+String(id)+"'"):'null'})" class="px-5 py-2 rounded-lg text-sm font-bold text-white" style="background:var(--azuos-button)">Salvar dados</button>
     </div>
