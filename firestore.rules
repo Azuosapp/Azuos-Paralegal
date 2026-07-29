@@ -24,22 +24,33 @@ service cloud.firestore {
     // Ao cadastrar alguém novo, ou quando alguém trocar de e-mail de acesso,
     // ACRESCENTE aqui e publique de novo (Console do Firebase → Firestore →
     // Rules). O deploy do site NÃO publica regras — ver COMO-PUBLICAR-REGRAS-FIREBASE.md.
+    // Conferido em 29/07/2026 contra as contas REAIS do Firebase Authentication
+    // (workflow "Testar Acesso Real"). Nao confie na intuicao sobre qual e o
+    // e-mail de alguem: varias pessoas entram com endereco pessoal, e havia
+    // endereco autorizado aqui que nao existia como conta nenhuma.
     function autorizado() {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email.lower() in [
-          'contato@azuoscontabil.com.br',
-          'comercial@azuoscontabil.com.br',
+          // --- contas com login confirmado ---
+          'contato@azuoscontabil.com.br',      // AZUOS Admin
           'thierrymforte@gmail.com',
+          'comercial@azuoscontabil.com.br',
           'camila@azuoscontabil.com.br',
           'ketrin@azuoscontabil.com.br',
-          'leyla@azuoscontabil.com.br',
-          'leylaazuos@gmail.com',
           'luanna@azuoscontabil.com.br',
           'diogenes@azuoscontabil.com.br',
-          'azuos@azuoscontabil.com.br',
+          'leylabraz1994@outlook.com',         // Leyla — e ESTE o login dela
+          'paralegal10@gmail.com',
+          'integracao.grupoazuos@gmail.com',
+          'grupob2bbrasil@icloud.com',
+
+          // --- reservados: ainda SEM conta criada em 29/07/2026 ---
+          // Ficam liberados de antemao para o dia em que o acesso for criado.
+          'leyla@azuoscontabil.com.br',
+          'yara@azuoscontabil.com.br',
           'gabryel@azuoscontabil.com.br',
-          'yara@azuoscontabil.com.br'
+          'azuos@azuoscontabil.com.br'
         ];
     }
 

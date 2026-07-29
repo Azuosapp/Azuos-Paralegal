@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.3 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.4 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -591,9 +591,14 @@ function _azuosOficialPorEmail(email){
     'leyla@azuoscontabil.com.br':{nome:'Leyla',cargo:'Paralegal'},
     'luanna@azuoscontabil.com.br':{nome:'Luanna',cargo:'Paralegal'},
     'diogenes@azuoscontabil.com.br':{nome:'Diogenes',cargo:'Paralegal'},
-    // [v6.0.44] e-mails PESSOAIS mapeados para o nome oficial (contas novas criadas
-    // com o e-mail pessoal, para quem nao acessa a caixa @azuoscontabil):
-    'leylaazuos@gmail.com':{nome:'Leyla',cargo:'Paralegal'}
+    // [v6.0.44] e-mails PESSOAIS mapeados para o nome oficial (contas criadas com
+    // o e-mail pessoal, para quem nao acessa a caixa @azuoscontabil).
+    // [v6.2.4] CORRIGIDO: aqui estava 'leylaazuos@gmail.com', endereco que NAO
+    // existe no Firebase Authentication. O login real da Leyla, conferido nas
+    // contas do projeto em 29/07/2026, e leylabraz1994@outlook.com. Com o
+    // endereco errado, a sessao dela nao casava com o cadastro e caia no perfil
+    // "convidado", quebrando nome, ciencias e a consolidacao de usuario.
+    'leylabraz1994@outlook.com':{nome:'Leyla',cargo:'Paralegal'}
   };
   return M[(email||'').toLowerCase().trim()]||null;
 }
