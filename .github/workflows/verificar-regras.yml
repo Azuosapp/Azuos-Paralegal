@@ -186,6 +186,54 @@ jobs:
           chaves.forEach(k => console.log('   ' + k + '  -> ' + ((dados.ciencias_por_usuario[k]||[]).length) + ' registros'));
           console.log('');
 
+          // ---- Quem e quem: identifica conta pelo que ela EDITOU ----
+          // Contas sem displayName nao dizem de quem sao. Mas cada edicao de alvara
+          // guarda _editado_por, e cada alvara pertence a uma empresa que tem
+          // responsavel. Cruzando os tres, o dono da conta aparece.
+          try {
+            const alvMeta = await db.collection('azuos').doc('alvaras_meta').get();
+            let alvs = [];
+            if (alvMeta.exists) {
+              const n = (alvMeta.data() || {}).n || 0;
+              let json = '';
+              for (let i = 0; i < n; i++) {
+                const c = await db.collection('azuos').doc('alvaras_' + i).get();
+                json += ((c.data() || {}).d) || '';
+              }
+              if (json) { try { alvs = JSON.parse(json); } catch (e) { alvs = []; } }
+            }
+            console.log('alvaras na nuvem:', alvs.length);
+
+            const porId = {};
+            alvs.forEach(a => { if (a && a.id != null) porId[String(a.id)] = a; });
+
+            const eds = dados.edicoes_alvaras || {};
+            const perfil = {};   // email -> { total, empresas:Set, responsaveis:{} }
+            Object.keys(eds).forEach(aid => {
+              const e = eds[aid];
+              const quem = e && e._editado_por;
+              if (!quem) return;
+              const k = String(quem).toLowerCase();
+              perfil[k] = perfil[k] || { total: 0, resp: {} };
+              perfil[k].total++;
+              const a = porId[String(aid)];
+              const r = a && (a.responsavel || '');
+              if (r) perfil[k].resp[r] = (perfil[k].resp[r] || 0) + 1;
+            });
+
+            console.log('');
+            console.log('QUEM EDITOU O QUE (identifica conta sem nome):');
+            Object.keys(perfil).sort((a, b) => perfil[b].total - perfil[a].total).forEach(k => {
+              const p = perfil[k];
+              const top = Object.keys(p.resp).sort((a, b) => p.resp[b] - p.resp[a]).slice(0, 4)
+                .map(r => r + ' (' + p.resp[r] + ')').join(', ');
+              console.log('   ' + k.padEnd(36) + p.total + ' edicoes  -> empresas de: ' + (top || '(sem responsavel identificado)'));
+            });
+          } catch (e) {
+            console.log('nao consegui cruzar edicoes:', (e && e.message) || e);
+          }
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
