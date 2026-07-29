@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.1 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -4319,11 +4319,10 @@ function renderUsuarios(){
             </div>
             <div class="flex-1">
               <h3 class="font-semibold" style="color:var(--azuos-text)">${esc(u.nome)}</h3>
-              ${u.funcao ? `<p class="text-xs font-semibold" style="color:var(--azuos-blue)">${esc(u.funcao)}</p>` : ''}
-              ${u.departamento ? `<p class="text-[11px]" style="color:var(--azuos-text-muted)">${esc(u.departamento)}</p>` : ''}
+              ${u.departamento ? `<p class="text-xs font-semibold" style="color:var(--azuos-blue)">${esc(u.departamento)}</p>` : ''}
               <p class="text-xs mb-1" style="color:var(--azuos-text-muted)">${esc(u.cargo)}</p>
               <p class="text-xs truncate" style="color:var(--azuos-text-muted)">${esc(u.email)}</p>
-              ${u.funcao_desde && _tempoNaFuncao(u.funcao_desde) ? `<p class="text-[11px] mt-1" style="color:var(--azuos-text-muted)">💼 Nesta função ${esc(_tempoNaFuncao(u.funcao_desde))}</p>` : ''}
+              ${u.telefone ? `<p class="text-[11px] mt-1" style="color:var(--azuos-text-muted)">📱 ${esc(u.telefone)}</p>` : ''}
             </div>
             ${(state.sessao && state.sessao.cargo==='Administrador') ? `
             <label class="flex items-center gap-2 mt-3 text-xs font-medium ${u.cargo==='Administrador'?'text-amber-700':'text-slate-600'} cursor-pointer select-none" title="Marcar dá a esta pessoa acesso TOTAL de administrador">
@@ -4563,18 +4562,6 @@ function _cropAplicar(){
   _cropFechar();
 }
 
-// [v6.2.0] "há X meses/anos nesta função" — mesma regra do trilha-azuos
-// (src/app/(produtor)/painel/alunos/[id]/PersonalDataForm.tsx).
-function _tempoNaFuncao(desde){
-  if(!desde) return null;
-  var d = new Date(desde); if(isNaN(d)) return null;
-  var dias = Math.floor((Date.now() - d.getTime()) / 86400000);
-  if(dias < 30) return 'recém-assumido';
-  var meses = Math.floor(dias / 30.4);
-  if(meses < 12) return 'há ' + meses + (meses === 1 ? ' mês' : ' meses');
-  var anos = Math.floor(meses / 12);
-  return 'há ' + anos + (anos === 1 ? ' ano' : ' anos');
-}
 // Departamentos: o Paralegal nao tem tela de gestao como o Trilhas, entao a
 // lista se monta sozinha com o que ja foi digitado (datalist) — auto-gerenciavel.
 function _departamentosConhecidos(){
@@ -4593,7 +4580,6 @@ function openModalUsuario(id) {
   const _lblSty = 'style="color:var(--azuos-text)"';
   const _inp = 'az-input';
   const _deps = _departamentosConhecidos();
-  const _tempo = _tempoNaFuncao(u.funcao_desde);
   showModal(`
     <div class="px-5 py-4 border-b flex justify-between items-center" style="border-color:var(--azuos-border)">
       <h3 class="text-lg font-bold" style="color:var(--azuos-text)">${id?'Editar':'Novo'} usuário</h3>
@@ -4614,52 +4600,25 @@ function openModalUsuario(id) {
         <div class="sm:col-span-2"><label class="${_lbl}" ${_lblSty}>Nome *</label><input id="fu-nome" value="${esc(u.nome||'')}" class="${_inp}"></div>
         <div class="sm:col-span-2"><label class="${_lbl}" ${_lblSty}>E-mail</label><input id="fu-email" type="email" value="${esc(u.email||'')}" class="${_inp}"></div>
 
-        <div><label class="${_lbl}" ${_lblSty}>Data de admissão</label><input id="fu-admissao" type="date" value="${esc(u.admissao||'')}" class="${_inp}"></div>
         <div><label class="${_lbl}" ${_lblSty}>Data de nascimento</label><input id="fu-nascimento" type="date" value="${esc(u.nascimento||'')}" class="${_inp}"></div>
-
         <div><label class="${_lbl}" ${_lblSty}>Telefone / WhatsApp</label><input id="fu-telefone" type="tel" value="${esc(u.telefone||'')}" placeholder="(00) 00000-0000" class="${_inp}"></div>
-        <div><label class="${_lbl}" ${_lblSty}>CPF</label><input id="fu-cpf" inputmode="numeric" value="${esc(u.cpf||'')}" placeholder="000.000.000-00" class="${_inp}"></div>
 
+        <div><label class="${_lbl}" ${_lblSty}>CPF</label><input id="fu-cpf" inputmode="numeric" value="${esc(u.cpf||'')}" placeholder="000.000.000-00" class="${_inp}"></div>
         <div>
           <label class="${_lbl}" ${_lblSty}>Departamento</label>
           <input id="fu-departamento" list="fu-deps" value="${esc(u.departamento||'')}" placeholder="Ex.: Paralegal" class="${_inp}">
           <datalist id="fu-deps">${_deps.map(d=>`<option value="${esc(d)}"></option>`).join('')}</datalist>
           <span class="text-[11px]" style="color:var(--azuos-text-muted)">A lista se completa sozinha com os departamentos já usados.</span>
         </div>
-        <div>
-          <label class="${_lbl}" ${_lblSty}>Função</label>
-          <input id="fu-funcao" type="text" value="${esc(u.funcao||'')}" placeholder="Ex.: Assistente Paralegal Júnior" class="${_inp}">
-          ${_tempo ? `<span class="text-[11px] font-bold block" style="color:var(--azuos-blue)">💼 Nesta função ${esc(_tempo)} (desde ${esc(_dataBR(u.funcao_desde))})</span>` : ''}
-          <span class="text-[11px]" style="color:var(--azuos-text-muted)">Ao trocar a função, o tempo reinicia automaticamente.</span>
-        </div>
 
-        <div>
-          <label class="${_lbl}" ${_lblSty}>É pai/mãe?</label>
-          <select id="fu-filhos" class="${_inp}">
-            <option value="" ${!u.filhos?'selected':''}>Não informado</option>
-            <option value="sim" ${u.filhos==='sim'?'selected':''}>Sim</option>
-            <option value="nao" ${u.filhos==='nao'?'selected':''}>Não</option>
-          </select>
-        </div>
         <div>
           <label class="${_lbl}" ${_lblSty}>Perfil de acesso</label>
           <select id="fu-cargo" class="${_inp}">${['Consulta','Paralegal','Coordenador','Administrador'].map(c=>`<option ${c===u.cargo?'selected':''}>${c}</option>`).join('')}</select>
           <span class="text-[11px]" style="color:var(--azuos-text-muted)">Define o que a pessoa pode fazer no sistema.</span>
         </div>
-
-        <div class="sm:col-span-2">
-          <label class="${_lbl}" ${_lblSty}>Gostos pessoais</label>
-          <textarea id="fu-gostos" rows="2" placeholder="Hobbies, comida favorita, time, o que gosta de fazer…" class="${_inp}" style="resize:none">${esc(u.gostos||'')}</textarea>
-        </div>
-
         <div>
           <label class="${_lbl}" ${_lblSty}>Acesso à plataforma</label>
           <select id="fu-ativo" class="${_inp}"><option value="1" ${u.ativo?'selected':''}>Ativo</option><option value="0" ${!u.ativo?'selected':''}>Inativo</option></select>
-        </div>
-        <div>
-          <label class="${_lbl}" ${_lblSty}>Data de rescisão</label>
-          <input id="fu-rescisao" type="date" value="${esc(u.data_rescisao||'')}" class="${_inp}">
-          <span class="text-[11px]" style="color:var(--azuos-text-muted)">Preencha só quando a pessoa sair.</span>
         </div>
       </div>
     </div>
@@ -4669,7 +4628,6 @@ function openModalUsuario(id) {
     </div>
   `);
 }
-function _dataBR(iso){ try{ var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (m[3]+'/'+m[2]+'/'+m[1]) : ''; }catch(e){ return ''; } }
 function salvarUsuario(id){
   if (estruturaBloqueada()) return;
   const nome = document.getElementById('fu-nome').value.trim();
@@ -4680,31 +4638,18 @@ function salvarUsuario(id){
   // nenhuma nova foi enviada.
   const _uExist = id ? state.usuarios.find(function(x){ return String(x.id)===String(id); }) : null;
   const _val = function(el){ var n = document.getElementById(el); return n ? String(n.value||'').trim() : ''; };
-  const _funcao = _val('fu-funcao');
-  // [v6.2.0] Igual ao trilha-azuos: trocar a funcao REINICIA o tempo na funcao.
-  // Se a funcao nao mudou, preserva a data original (nao "rejuvenesce" ninguem).
-  let _funcaoDesde = (_uExist && _uExist.funcao_desde) || '';
-  if (_funcao && _funcao !== ((_uExist && _uExist.funcao) || '')) {
-    _funcaoDesde = new Date().toISOString().slice(0, 10);
-  }
-  if (!_funcao) _funcaoDesde = '';
   const data = {
     foto: (window._fotoTmp !== null ? window._fotoTmp : ((_uExist && _uExist.foto) || '')),
     nome,
     email: _val('fu-email'),
     cargo: document.getElementById('fu-cargo').value,        // perfil de ACESSO
     ativo: document.getElementById('fu-ativo').value === '1',
-    // [v6.2.0] campos de cadastro espelhados do trilha-azuos
-    admissao: _val('fu-admissao'),
+    // [v6.2.1] Cadastro enxugado a pedido: destes quatro. Os demais campos do
+    // trilha-azuos (admissao, funcao, e pai/mae, gostos, rescisao) sairam.
     nascimento: _val('fu-nascimento'),
     telefone: _val('fu-telefone'),
     cpf: _val('fu-cpf'),
-    departamento: _val('fu-departamento'),
-    funcao: _funcao,                                          // funcao/cargo real
-    funcao_desde: _funcaoDesde,
-    filhos: _val('fu-filhos'),
-    gostos: _val('fu-gostos'),
-    data_rescisao: _val('fu-rescisao')
+    departamento: _val('fu-departamento')
   };
   try{ if(data.email && Array.isArray(state.usuarios_removidos)){ var _e=(data.email||'').toLowerCase().trim(); state.usuarios_removidos = state.usuarios_removidos.filter(function(x){return x!==_e;}); } }catch(e){}
   try{ state.fotos_usuarios = state.fotos_usuarios || {}; if(data.foto && data.email) state.fotos_usuarios[(data.email||'').toLowerCase().trim()] = data.foto; }catch(e){}
