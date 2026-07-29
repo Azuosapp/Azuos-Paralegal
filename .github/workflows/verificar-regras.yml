@@ -90,6 +90,24 @@ jobs:
             'leyla@azuoscontabil.com.br',
           ];
 
+          // Quem REALMENTE tem conta. Sem isto, "sem conta" pode significar tanto
+          // "a pessoa nao foi cadastrada" quanto "ela entra com outro endereco".
+          const todos = [];
+          let page;
+          do {
+            const r = await admin.auth().listUsers(1000, page);
+            r.users.forEach(u => todos.push(u));
+            page = r.pageToken;
+          } while (page);
+          console.log(`CONTAS EXISTENTES NO FIREBASE AUTHENTICATION (${todos.length}):`);
+          todos
+            .sort((a,b) => (a.email||'').localeCompare(b.email||''))
+            .forEach(u => {
+              const ult = u.metadata?.lastSignInTime ? new Date(u.metadata.lastSignInTime).toISOString().slice(0,10) : 'nunca';
+              console.log(`   ${(u.email||'(sem e-mail)').padEnd(38)} ultimo acesso: ${ult}${u.disabled ? '  [DESATIVADA]' : ''}`);
+            });
+          console.log('');
+
           let falhas = 0, semConta = [];
 
           for (const email of alvos) {
