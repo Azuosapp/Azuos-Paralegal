@@ -1,0 +1,65 @@
+name: Deploy Firestore Rules
+
+# Publica firestore.rules no projeto.
+#
+# POR QUE ESTE WORKFLOW EXISTE: o deploy do site NAO publica regras do Firestore.
+# Elas so valiam quando alguem colava o arquivo no Console do Firebase na mao —
+# e foi por isso que quatro contas ativas (Yara, Gabryel, Azuos e o login pessoal
+# da Leyla) ficaram sem permissao de escrita no banco sem ninguem perceber.
+# Com isto, a lista de autorizados passa a ser publicada junto com o codigo.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+      - '.github/workflows/deploy-firestore-rules.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-firestore-rules
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar credencial do Firebase
+        env:
+          # O repositorio tem os dois nomes (um deles com "0" no lugar do "O").
+          # Aceitamos qualquer um para nao depender de qual esta preenchido.
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+          SA_C: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+        run: |
+          V="$SA_A"
+          [ -z "$V" ] && V="$SA_B"
+          [ -z "$V" ] && V="$SA_C"
+          if [ -z "$V" ]; then echo "ERRO: nenhum segredo de service account preenchido."; exit 1; fi
+          printf '%s' "$V" > "$HOME/sa.json"
+          node -e "JSON.parse(require('fs').readFileSync(process.env.HOME + '/sa.json','utf8'))" \
+            || { echo 'ERRO: o segredo nao e um JSON valido.'; exit 1; }
+
+      - name: Mostrar quem sera autorizado (conferencia no log)
+        run: |
+          echo "E-mails que ficarao com permissao de escrita:"
+          grep -oE "'[^']+@[^']+'" firestore.rules | tr -d "'" | sed 's/^/  - /'
+
+      - name: Publicar as regras
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
+        run: |
+          npx --yes firebase-tools@13 deploy \
+            --only firestore:rules \
+            --project azuos-paralegal \
+            --non-interactive --force
