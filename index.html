@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.2.7 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.2.8 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -2909,9 +2909,34 @@ function showModal(content){
   const div = document.createElement('div');
   div.id = 'modal-overlay';
   div.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40';
-  div.innerHTML = `<div id="modal-content" class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin">${content}</div>`;
+  // [v6.2.8] Coluna flex em vez de rolagem no bloco inteiro. Antes o
+  // #modal-content rolava por completo, entao em tela baixa o titulo e o botao
+  // "Salvar" saiam de vista. Agora o corpo do modal (marcado com .modal-corpo)
+  // rola sozinho e cabecalho/rodape ficam sempre visiveis. Quando o conteudo
+  // cabe, nao aparece barra nenhuma.
+  div.innerHTML = `<div id="modal-content" role="dialog" aria-modal="true" class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">${content}</div>`;
   document.body.appendChild(div);
   div.onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
+  // [v6.2.8] Acessibilidade: Esc fecha, foco entra no modal e volta ao sair, e
+  // o Tab fica preso dentro dele. O listener e removido em closeModal — sem
+  // isso, cada modal aberto deixava um listener orfao numa SPA que nunca recarrega.
+  try{
+    window._modalFocoAnterior = document.activeElement;
+    setTimeout(function(){
+      var f = div.querySelector('input:not([type=hidden]):not([readonly]),select,textarea,button');
+      if (f) try{ f.focus(); }catch(e){}
+    }, 0);
+    div._esc = function(e){
+      if (e.key === 'Escape') { closeModal(); return; }
+      if (e.key !== 'Tab') return;
+      var n = div.querySelectorAll('a[href],button,input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])');
+      if (!n.length) return;
+      var p = n[0], u = n[n.length-1];
+      if (e.shiftKey && document.activeElement === p) { e.preventDefault(); u.focus(); }
+      else if (!e.shiftKey && document.activeElement === u) { e.preventDefault(); p.focus(); }
+    };
+    document.addEventListener('keydown', div._esc);
+  }catch(e){}
 }
 function closeModal(){
   // [v6.0.36] Rede de seguranca: ao FECHAR o alvara (X, clicar fora, ou navegar),
@@ -2920,7 +2945,12 @@ function closeModal(){
   // proposito (ele seta window._alvDescartar = true antes de fechar).
   try{ _autoSalvarAlvaraSeMudou(); }catch(e){}
   const m = document.getElementById('modal-overlay');
-  if (m) m.remove();
+  if (m) {
+    try{ if (m._esc) document.removeEventListener('keydown', m._esc); }catch(e){}
+    m.remove();
+  }
+  try{ if (window._modalFocoAnterior && window._modalFocoAnterior.focus) window._modalFocoAnterior.focus(); }catch(e){}
+  window._modalFocoAnterior = null;
   window._alvAtual = null;
   window._alvDescartar = false;
 }
@@ -4704,17 +4734,19 @@ function openModalUsuario(id) {
     if (inp) inp.onchange = function(e){ var file = e.target.files && e.target.files[0]; if (file) _fotoAbrirCropper(file); e.target.value=''; };
   }, 120);
   const u = id ? state.usuarios.find(x=>String(x.id)===String(id)) : {nome:'', email:'', cargo:'Paralegal', ativo:true};
-  const _lbl = 'block text-xs font-semibold mb-1';
+  // [v6.2.8] label com for= : sem isso o leitor de tela anuncia "caixa de edicao"
+  // sem nome, e clicar no rotulo nao foca o campo.
+  const _lbl = (f) => `for="${f}" class="block text-xs font-semibold mb-1"`;
   const _lblSty = 'style="color:var(--azuos-text)"';
   const _inp = 'az-input';
   const _deps = _departamentosConhecidos();
   const _ehEuMesmo = !!(id && state.sessao && (state.sessao.email||'').toLowerCase().trim() === (u.email||'').toLowerCase().trim() && u.email);
   showModal(`
-    <div class="px-5 py-4 border-b flex justify-between items-center" style="border-color:var(--azuos-border)">
+    <div class="px-5 py-4 border-b flex justify-between items-center shrink-0" style="border-color:var(--azuos-border)">
       <h3 class="text-lg font-bold" style="color:var(--azuos-text)">${id?'Editar':'Novo'} usuário</h3>
-      <button onclick="closeModal()" class="text-2xl leading-none" style="color:var(--azuos-text-muted)">×</button>
+      <button onclick="closeModal()" aria-label="Fechar" class="text-2xl leading-none" style="color:var(--azuos-text-muted)">×</button>
     </div>
-    <div class="px-5 py-4 space-y-3">
+    <div class="px-5 py-4 space-y-3 flex-1 min-h-0 overflow-y-auto">
 
       <!-- [v6.2.6] Foto ao lado de nome/e-mail. Empilha em tela estreita. -->
       <div class="flex flex-col sm:flex-row items-center sm:items-start gap-3">
@@ -4727,25 +4759,25 @@ function openModalUsuario(id) {
           </div>
         </div>
         <div class="flex-1 w-full grid gap-2">
-          <div><label class="${_lbl}" ${_lblSty}>Nome *</label><input id="fu-nome" value="${esc(u.nome||'')}" class="${_inp}"></div>
+          <div><label ${_lbl('fu-nome')} ${_lblSty}>Nome *</label><input id="fu-nome" value="${esc(u.nome||'')}" class="${_inp}"></div>
           <div>
-            <label class="${_lbl}" ${_lblSty}>E-mail ${id ? '<span class="font-normal" style="color:var(--azuos-text-muted)">(é o login — use "Trocar e-mail" abaixo)</span>' : ''}</label>
+            <label ${_lbl('fu-email')} ${_lblSty}>E-mail ${id ? '<span class="font-normal" style="color:var(--azuos-text-muted)">(é o login — use "Trocar e-mail" abaixo)</span>' : ''}</label>
             <input id="fu-email" type="email" value="${esc(u.email||'')}" class="${_inp}" ${id ? 'readonly style="background:var(--azuos-bg);cursor:not-allowed"' : ''}>
           </div>
         </div>
       </div>
 
       <div class="grid gap-2 sm:grid-cols-2">
-        <div><label class="${_lbl}" ${_lblSty}>Data de nascimento</label><input id="fu-nascimento" type="date" value="${esc(u.nascimento||'')}" class="${_inp}"></div>
-        <div><label class="${_lbl}" ${_lblSty}>Telefone / WhatsApp</label><input id="fu-telefone" type="tel" value="${esc(u.telefone||'')}" placeholder="(00) 00000-0000" class="${_inp}"></div>
-        <div><label class="${_lbl}" ${_lblSty}>CPF</label><input id="fu-cpf" inputmode="numeric" value="${esc(u.cpf||'')}" placeholder="000.000.000-00" class="${_inp}"></div>
+        <div><label ${_lbl('fu-nascimento')} ${_lblSty}>Data de nascimento</label><input id="fu-nascimento" type="date" value="${esc(u.nascimento||'')}" class="${_inp}"></div>
+        <div><label ${_lbl('fu-telefone')} ${_lblSty}>Telefone / WhatsApp</label><input id="fu-telefone" type="tel" value="${esc(u.telefone||'')}" placeholder="(00) 00000-0000" class="${_inp}"></div>
+        <div><label ${_lbl('fu-cpf')} ${_lblSty}>CPF</label><input id="fu-cpf" inputmode="numeric" value="${esc(u.cpf||'')}" placeholder="000.000.000-00" class="${_inp}"></div>
         <div>
-          <label class="${_lbl}" ${_lblSty}>Departamento</label>
+          <label ${_lbl('fu-departamento')} ${_lblSty}>Departamento</label>
           <input id="fu-departamento" list="fu-deps" value="${esc(u.departamento||'')}" placeholder="Ex.: Paralegal" class="${_inp}">
           <datalist id="fu-deps">${_deps.map(d=>`<option value="${esc(d)}"></option>`).join('')}</datalist>
         </div>
-        <div><label class="${_lbl}" ${_lblSty}>Perfil de acesso</label><select id="fu-cargo" class="${_inp}">${['Consulta','Paralegal','Coordenador','Administrador'].map(c=>`<option ${c===u.cargo?'selected':''}>${c}</option>`).join('')}</select></div>
-        <div><label class="${_lbl}" ${_lblSty}>Acesso à plataforma</label><select id="fu-ativo" class="${_inp}"><option value="1" ${u.ativo?'selected':''}>Ativo</option><option value="0" ${!u.ativo?'selected':''}>Inativo</option></select></div>
+        <div><label ${_lbl('fu-cargo')} ${_lblSty}>Perfil de acesso</label><select id="fu-cargo" class="${_inp}">${['Consulta','Paralegal','Coordenador','Administrador'].map(c=>`<option ${c===u.cargo?'selected':''}>${c}</option>`).join('')}</select></div>
+        <div><label ${_lbl('fu-ativo')} ${_lblSty}>Acesso à plataforma</label><select id="fu-ativo" class="${_inp}"><option value="1" ${u.ativo?'selected':''}>Ativo</option><option value="0" ${!u.ativo?'selected':''}>Inativo</option></select></div>
       </div>
 
       ${id ? `
@@ -4761,13 +4793,13 @@ function openModalUsuario(id) {
           <div class="text-[11px] font-bold mb-1" style="color:var(--azuos-text)">Senha temporária — copie antes de fechar</div>
           <div class="flex items-center gap-2">
             <code id="fu-senha-val" class="flex-1 px-2 py-1.5 rounded font-mono text-sm select-all" style="background:var(--azuos-bg);color:var(--azuos-text)"></code>
-            <button type="button" onclick="_fuCopiarSenha()" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:var(--azuos-success)">📋 Copiar</button>
+            <button type="button" onclick="_fuCopiarSenha()" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:#047857">📋 Copiar</button>
           </div>
         </div>
       </div>` : `
       <p class="text-[11px]" style="color:var(--azuos-text-muted)">Salve o cadastro para liberar as ações de e-mail e senha.</p>`}
     </div>
-    <div class="px-5 py-4 border-t flex justify-end gap-2 sticky bottom-0" style="border-color:var(--azuos-border);background:var(--azuos-surface)">
+    <div class="px-5 py-4 border-t flex justify-end gap-2 shrink-0" style="border-color:var(--azuos-border);background:var(--azuos-surface)">
       <button onclick="closeModal()" class="px-4 py-2 rounded-lg font-semibold" style="background:var(--azuos-bg);color:var(--azuos-text)">Cancelar</button>
       <button onclick="salvarUsuario(${id?("'"+String(id)+"'"):'null'})" class="px-5 py-2 rounded-lg text-sm font-bold text-white" style="background:var(--azuos-button)">Salvar dados</button>
     </div>
