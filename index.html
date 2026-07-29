@@ -1778,9 +1778,10 @@ function renderEmpresas(){
           <p class="text-sm text-slate-500">${lista.length} de ${state.empresas.length} empresas</p>
         </div>
         <div class="flex gap-2">
-          ${(state.sessao && state.sessao.cargo==='Administrador') ? `<button id="trava-planilha" title="Congela/libera a atualizacao automatica pela planilha" class="px-4 py-2 rounded-lg font-medium text-sm ${state.trava_planilha?'bg-amber-500 text-white hover:bg-amber-600':'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${state.trava_planilha?'🔒 Planilha travada':'🔓 Planilha liberada'}</button>` : ''}
-          <!-- [v6.1.9] Sem botao "Sincronizar do Drive": a entrada de empresas novas
-               e automatica e aditiva, entao nao ha nada para acionar na mao. -->
+          <!-- [v6.1.9] Saíram daqui "🔄 Sincronizar do Drive" e "🔒 Planilha travada".
+               A entrada de empresas novas virou automatica e o sync nao sobrescreve
+               mais cadastro, entao nao ha o que acionar nem o que travar. Removidos
+               do markup (e nao escondidos por CSS) para nao deixar controle morto. -->
           <label for="csv-file" class="cursor-pointer px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium text-sm">📥 Importar CSV</label>
           <input id="csv-file" type="file" accept=".csv,.tsv,.txt" class="hidden">
           <button id="nova-empresa" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">+ Nova empresa</button>
@@ -2049,7 +2050,9 @@ function attachEmpresas(){
   if (_fc) _fc.onchange = (e) => { _filtroCidade = e.target.value; renderPartial(); };
   document.getElementById('nova-empresa').onclick = () => openModalEmpresa(null);
   document.getElementById('csv-file').onchange = handleCsvImport;
-  var _sd = document.getElementById('sync-drive'); // [v6.1.9] so admin: pode nao existir
+  // [v6.1.9] #sync-drive e #trava-planilha nao existem mais no markup. Os binds
+  // ficam guardados por if para o caso de alguma rotina antiga reinserir o botao.
+  var _sd = document.getElementById('sync-drive');
   if (_sd) _sd.onclick = handleSyncDrive;
   var _tp = document.getElementById('trava-planilha');
   if (_tp) _tp.onclick = toggleTravaPlanilha;
@@ -7307,11 +7310,9 @@ function abrirBaselineDialog() {
     /* [v6.0.56] Removidos da UI a pedido: Resetar cache, Alterar senha (agora dentro
        de 'Meu perfil'), Tema escuro/claro, Vencimentos e a barra de Exportar/Importar
        config + Reset demo. Escondidos por CSS pois sao reinseridos por rotinas antigas. */
-    /* [v6.1.9] #sync-drive e #trava-planilha seguem escondidos de proposito: a entrada
-       de empresas novas virou automatica e aditiva, entao nao existe mais sync manual
-       nem trava para acionar. Mantidos na lista porque rotinas antigas os reinserem. */
-    #btn-resetar-cache, #btn-trocar-senha, #btn-modo-escuro, #ux609-box, #cfg-actions-bar,
-    #sync-drive, #trava-planilha {
+    /* [v6.1.9] #sync-drive e #trava-planilha saíram desta lista: agora nao sao mais
+       renderizados no markup, entao esconde-los por CSS seria regra morta. */
+    #btn-resetar-cache, #btn-trocar-senha, #btn-modo-escuro, #ux609-box, #cfg-actions-bar {
       display: none !important;
     }
   `;
