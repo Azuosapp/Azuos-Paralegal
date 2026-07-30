@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.4.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.5.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -1404,6 +1404,69 @@ function _gamListaConcluidos(chave, mes){
   out.sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
   return out;
 }
+/* [v6.5.0] Validacao em LOTE dos anexos que ja estao no sistema.
+   A leitura automatica no envio (v6.4.0) so vale para anexos NOVOS. O que ja
+   estava anexado continuava "⚠ pendente" — em julho/2026 eram 34 assim, nenhum
+   validado, porque dependia de alguem clicar no 🤖 de cada um. Isto varre o mes
+   inteiro e valida tudo de uma vez. */
+function _gamPendentesDoMes(mes){
+  var out=[]; var eds=state.edicoes_alvaras||{};
+  Object.keys(eds).forEach(function(aid){
+    var e=eds[aid];
+    if(!e||!e._editado_por||!e._editado_em) return;
+    if(!_gamConta(e.status)) return;
+    var cm=(e._editado_em||'').slice(0,7);
+    if(mes && cm!==mes) return;
+    var u=_gamUser(e._editado_por); if(!u) return;
+    if(_gamEhGestor(u.cargo)) return;
+    var anx=_anexosDoAlvara(aid);
+    if(!anx.length) return;                       // sem anexo nao ha o que validar
+    if(_alvaraValidadoNoMes(aid, cm)) return;     // ja validado
+    out.push({ aid:aid, mes:cm, quem:(u.nome||u.email||'') });
+  });
+  return out;
+}
+async function _gamValidarTodosPendentes(mes){
+  if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode validar em lote.'); return; }
+  var lista=_gamPendentesDoMes(mes);
+  if(!lista.length){ alert('Nenhum anexo pendente de validação neste mês.'); return; }
+  if(!confirm('Validar ' + lista.length + ' anexo(s) com a IA?\n\n'
+    + 'Cada documento é lido individualmente, então pode levar alguns minutos.\n'
+    + 'Deixe esta aba aberta até terminar. Você pode acompanhar o andamento na tela.')) return;
+
+  var btn=document.getElementById('gam-validar-lote');
+  var okCount=0, naoCount=0, erroCount=0;
+  for(var i=0;i<lista.length;i++){
+    var item=lista[i];
+    if(btn) btn.textContent='🤖 Validando ' + (i+1) + ' de ' + lista.length + '...';
+    try{
+      var anexos=_anexosDoAlvara(item.aid);
+      var algum=false;
+      for(var j=0;j<anexos.length;j++){
+        var a=anexos[j], texto='';
+        try{ texto=await _iaConteudoAnexo(a); }catch(e){}
+        var an=_iaAnalisar(texto, item.mes);
+        a._validacao={ ok:an.ok, mes:item.mes, data:an.dataNoMes||'', temKw:an.temKw,
+          motivo:(an.ok?'IA (lote)':(!an.temKw?'nao parece documento de alvara':'sem data em '+_gamMesLabel(item.mes))),
+          em:new Date().toISOString(),
+          por:((state.sessao&&(state.sessao.email||state.sessao.nome))||''), manual:false };
+        if(an.ok) algum=true;
+      }
+      if(algum) okCount++; else naoCount++;
+    }catch(e){ erroCount++; console.warn('[gam lote]', item.aid, (e&&e.message)||e); }
+    // salva a cada 5, para nao perder o trabalho se a aba fechar no meio
+    if(i%5===4){ try{ saveState(); }catch(e){} }
+  }
+  try{ saveState(); }catch(e){}
+  if(btn) btn.textContent='🤖 Validar anexos pendentes';
+  alert('Validação concluída.\n\n'
+    + '✅ Validados: ' + okCount + '\n'
+    + '⚠️ Não confirmados pela IA: ' + naoCount + '\n'
+    + (erroCount?('❌ Falharam ao ler: ' + erroCount + '\n'):'')
+    + '\nOs não confirmados continuam contando para a premiação — a validação é uma conferência, não um requisito. '
+    + 'Se algum estiver correto, use o ✔ no detalhe da pessoa para confirmar manualmente.');
+  try{ render(); }catch(e){}
+}
 function _gamAbrirDetalhe(chave, mes, nome){
   _gamDetChave=chave;
   var lista=_gamListaConcluidos(chave, mes);
@@ -1647,7 +1710,22 @@ function renderPremiacao(){
           </div>`; }).join('')}
       </div>
     </div>
-    <p class="text-xs text-slate-400 mt-3">Conta apenas alvarás <strong>concluídos E com anexo</strong> no app (sem anexo não soma). Use o botão 🤖 Validar no detalhe para conferir o anexo com a IA. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
+    ${(function(){
+      // [v6.5.0] Validacao em lote do que ja esta anexado. So admin, e so aparece
+      // quando ha algo pendente — senao vira botao inutil na tela.
+      if(!ehAdmin) return '';
+      var pend=[]; try{ pend=_gamPendentesDoMes(mesSel); }catch(e){}
+      if(!pend.length) return '';
+      return `
+      <div class="mt-3 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style="background:var(--azuos-bg);border:1px solid var(--azuos-border)">
+        <div class="text-xs" style="color:var(--azuos-text)">
+          <b>${pend.length}</b> anexo(s) ainda não conferidos pela IA neste mês.
+          <span style="color:var(--azuos-text-muted)">Eles <b>já contam</b> para a premiação — a validação é uma conferência do documento.</span>
+        </div>
+        <button id="gam-validar-lote" onclick="_gamValidarTodosPendentes('${mesSel}')" class="px-3 py-2 rounded-lg text-xs font-bold text-white shrink-0" style="background:var(--azuos-button)">🤖 Validar anexos pendentes</button>
+      </div>`;
+    })()}
+    <p class="text-xs text-slate-400 mt-3">Conta apenas alvarás <strong>concluídos E com anexo</strong> no app (sem anexo não soma). Desde a v6.4.0 a IA lê o documento e preenche o vencimento assim que o anexo é enviado. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
     `}
   </div>`;
 }
