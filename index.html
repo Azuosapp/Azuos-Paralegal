@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.3.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.4.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3416,13 +3416,50 @@ function adicionarAnexo(input) {
       else { if(typeof toast==='function') toast('\u2705 Anexo salvo. Concluindo envio a plataforma...', 'blue'); }
     }).catch(function(err){ console.error('[anexo]',err); if(typeof toast==='function') toast('\u26a0\ufe0f Anexo salvo localmente; reenviando a plataforma...', 'red'); });
     input.value='';
-    if (_tipo && _tipo.indexOf('image/')===0 && typeof Tesseract!=='undefined') { try{ iaLerDocumento(b64,_nome); }catch(e){} }
+    // [v6.4.0] TODO anexo passa pela IA — antes so imagem passava, e a maioria dos
+    // alvaras e PDF, entao na pratica quase nada era lido. Agora usa _iaOcrAnexo,
+    // que trata PDF (texto embutido, com OCR de fallback quando e digitalizado) e
+    // imagem.
+    try{ iaLerDocumento(b64, _nome, _tipo, id); }catch(e){}
   };
   reader.readAsDataURL(file);
 }
 
-// 🤖 IA: lê documento via OCR e extrai datas (validade + ano)
-async function iaLerDocumento(dataUrl, nomeArq) {
+/* [v6.4.0] Marca o anexo como lido/validado pela IA, no formato que a Premiacao
+   espera (_alvaraValidadoNoMes). Sem isto, anexo lido continuava aparecendo como
+   "⚠ pendente" na Premiacao para sempre — em julho/2026 eram 34 assim, nenhum
+   validado, porque a validacao so acontecia se alguem clicasse no botao 🤖 do
+   detalhe, e ninguem clicava. */
+function _iaMarcarValidacao(idbId, an, mes){
+  try{
+    var df = document.getElementById('fa-anexos-data');
+    if(!df) return false;
+    var lista = JSON.parse(df.value || '[]');
+    var achou = false;
+    lista.forEach(function(a){
+      if(a && a._idb === idbId){
+        a._validacao = {
+          ok: !!(an && an.ok), mes: mes, data: (an && an.dataNoMes) || '',
+          temKw: !!(an && an.temKw),
+          motivo: (an && an.ok) ? 'IA na hora do envio'
+                : (an && !an.temKw ? 'nao parece documento de alvara' : 'sem data no mes de referencia'),
+          em: new Date().toISOString(),
+          por: ((state.sessao && (state.sessao.email || state.sessao.nome)) || ''),
+          manual: false
+        };
+        achou = true;
+      }
+    });
+    if(achou){
+      df.value = JSON.stringify(lista);
+      // persiste na hora, sem depender do botao Salvar (mesmo caminho do anexo)
+      try{ _persistirCamposAlvaraAtual({ anexos: lista }); }catch(e){}
+    }
+    return achou;
+  }catch(e){ return false; }
+}
+// 🤖 IA: lê documento (PDF ou imagem), extrai datas e PREENCHE os campos do alvará
+async function iaLerDocumento(dataUrl, nomeArq, tipoArq, idbId) {
   // Mostrar status na UI
   // [v6.0.37] renomeado de 'toast' para nao sombrear a funcao global toast()
   let _iaToastEl = document.createElement('div');
@@ -3432,14 +3469,8 @@ async function iaLerDocumento(dataUrl, nomeArq) {
   document.body.appendChild(_iaToastEl);
 
   try {
-    const { data: { text } } = await Tesseract.recognize(dataUrl, 'por', {
-      logger: m => {
-        if (m.status === 'recognizing text' && _iaToastEl) {
-          const pct = Math.round((m.progress||0)*100);
-          _iaToastEl.innerHTML = `🤖 <strong>IA</strong> lendo... ${pct}%`;
-        }
-      }
-    });
+    // [v6.4.0] _iaOcrAnexo cobre PDF e imagem; antes so imagem era lida.
+    const text = await _iaOcrAnexo(dataUrl, tipoArq || nomeArq || '');
 
     // Procurar datas no texto (dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy)
     const datas = [];
@@ -3467,34 +3498,52 @@ async function iaLerDocumento(dataUrl, nomeArq) {
     }
     const anoMaisRecente = anos.length ? Math.max(...anos) : (dataValidade?.y || null);
 
-    // Atualizar o toast com resultado
+    // [v6.4.0] Marca o anexo para a Premiacao, tenha ou nao achado data.
+    const _mesRef = new Date().toISOString().slice(0,7);
+    const _an = (typeof _iaAnalisar === 'function') ? _iaAnalisar(text, _mesRef) : null;
+    if (idbId) { try{ _iaMarcarValidacao(idbId, _an, _mesRef); }catch(e){} }
+
     if (_iaToastEl) _iaToastEl.remove();
     if (!dataValidade && !anoMaisRecente) {
       const t = document.createElement('div');
       t.style.cssText = 'position:fixed;top:16px;right:16px;background:#dc2626;color:white;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-family:sans-serif;font-size:13px;';
-      t.innerHTML = `🤖 IA: nenhuma data encontrada no documento`;
+      t.innerHTML = `🤖 IA: nenhuma data encontrada em <em>${esc(nomeArq)}</em>. Preencha o vencimento à mão.`;
       document.body.appendChild(t);
-      setTimeout(() => t.remove(), 4500);
+      setTimeout(() => t.remove(), 5000);
       return;
     }
 
-    // Mostrar dialog perguntando se quer aplicar
+    // [v6.4.0] PREENCHE o campo, em vez de só sugerir. Regra: só preenche o que
+    // está VAZIO — nunca sobrescreve o que a pessoa digitou. E mostra o que foi
+    // preenchido, com desfazer, para a automação não virar surpresa.
     const vencInput = document.getElementById('fa-venc');
-    const obsInput = document.getElementById('fa-obs');
+    const preenchidos = [];
+    let _vencAntes = null;
+    if (dataValidade && vencInput && !String(vencInput.value||'').trim()) {
+      _vencAntes = vencInput.value;
+      vencInput.value = dataValidade.str;
+      try{ vencInput.dispatchEvent(new Event('change', {bubbles:true})); }catch(e){}
+      preenchidos.push(`📅 Vencimento: <strong>${dataValidade.str}</strong>`);
+    }
+
     const msg = [];
-    if (dataValidade) msg.push(`📅 Validade detectada: <strong>${dataValidade.str}</strong>`);
-    if (anoMaisRecente && (!dataValidade || dataValidade.y !== anoMaisRecente)) msg.push(`🗓️ Ano referência: <strong>${anoMaisRecente}</strong>`);
+    if (preenchidos.length) msg.push('<b>Preenchi para você:</b><br>' + preenchidos.join('<br>'));
+    else if (dataValidade) msg.push(`📅 Data encontrada: <strong>${dataValidade.str}</strong><br><span style="color:#64748b">Não preenchi porque o vencimento já estava preenchido.</span>`);
+    if (anoMaisRecente && (!dataValidade || dataValidade.y !== anoMaisRecente)) msg.push(`🗓️ Ano de referência: <strong>${anoMaisRecente}</strong>`);
+    msg.push(_an && _an.ok
+      ? '<span style="color:#047857">✅ Anexo validado para a Premiação.</span>'
+      : '<span style="color:#b45309">⚠️ Anexo registrado, mas a IA não confirmou (documento sem data deste mês ou fora do padrão de alvará).</span>');
 
     const t = document.createElement('div');
-    t.style.cssText = 'position:fixed;top:16px;right:16px;background:white;color:#1e293b;padding:14px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:99999;font-family:sans-serif;font-size:13px;border:2px solid #3b82f6;max-width:340px;';
+    t.style.cssText = 'position:fixed;top:16px;right:16px;background:white;color:#1e293b;padding:14px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:99999;font-family:Inter,sans-serif;font-size:13px;border:2px solid #1B3A8C;max-width:360px;';
     t.innerHTML = `
-      <div style="font-weight:bold;color:#1e40af;margin-bottom:6px;">🤖 IA leu o documento</div>
-      <div style="margin-bottom:8px;">${msg.join('<br>')}</div>
-      ${dataValidade && vencInput && !vencInput.value ? `<button onclick="document.getElementById('fa-venc').value='${dataValidade.str}';this.parentElement.remove();" style="background:#10b981;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-right:4px;">✓ Aplicar vencimento</button>` : ''}
-      <button onclick="this.parentElement.remove()" style="background:#e2e8f0;color:#475569;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;">Ignorar</button>
+      <div style="font-weight:bold;color:#1B3A8C;margin-bottom:6px;">🤖 IA leu ${esc(nomeArq)}</div>
+      <div style="margin-bottom:8px;line-height:1.5">${msg.join('<br>')}</div>
+      ${_vencAntes !== null ? `<button onclick="var v=document.getElementById('fa-venc'); if(v){v.value='';} this.parentElement.remove();" style="background:#e2e8f0;color:#475569;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-right:4px;">↩ Desfazer</button>` : ''}
+      <button onclick="this.parentElement.remove()" style="background:#1B3A8C;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">OK</button>
     `;
     document.body.appendChild(t);
-    setTimeout(() => { if (t.parentElement) t.remove(); }, 15000);
+    setTimeout(() => { if (t.parentElement) t.remove(); }, 20000);
   } catch (err) {
     console.error('OCR falhou:', err);
     if (_iaToastEl) _iaToastEl.remove();
