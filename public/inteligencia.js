@@ -89,6 +89,31 @@
   window._auditProxSoMeu = (typeof window._auditProxSoMeu === 'boolean') ? window._auditProxSoMeu : false;
   // grupos abertos (accordion) — vazio = tudo RECOLHIDO ao abrir. key = gkey.
   window._intelGruposAbertos = window._intelGruposAbertos || {};
+  // seleção de alvarás p/ aplicar data só nos MARCADOS (sobrevive a re-render). Set de aid (string).
+  window._intelSel = window._intelSel || {};
+  function _selHas(aid){ return !!window._intelSel[String(aid)]; }
+  function _selCount(ids){ return ids.filter(_selHas).length; }
+  // renderiza a BARRA de aplicação (massa OU selecionados) + checkbox "marcar todos" do grupo.
+  // ids = array de aid do grupo; verbo = "Aplicar"|"Reagendar"; escopoLbl = "empresa"|"lista".
+  function _barraAplicar(gkey, ids, verbo, escopoLbl){
+    var nSel = _selCount(ids);
+    var alvo = nSel > 0 ? nSel : ids.length;         // marcados; se nenhum, aplica em todos
+    var todosMarcados = ids.length>0 && nSel===ids.length;
+    var rotulo = nSel > 0 ? (verbo+' aos '+nSel+' selecionados') : (verbo+' aos '+ids.length);
+    var dica = nSel > 0 ? ('define a data nos '+nSel+' alvará(s) marcado(s)')
+                        : ('marque alguns acima, ou aplique a data em TODOS os '+ids.length+' desta '+escopoLbl);
+    return ''
+      + '<div class="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100">'
+      +   '<label class="flex items-center gap-1.5 text-[11px] font-bold text-blue-700 uppercase cursor-pointer select-none mr-1">'
+      +     '<input type="checkbox" class="intel-chk-all w-4 h-4 accent-blue-600" data-gkey="'+gkey+'" '+(todosMarcados?'checked':'')+'>'
+      +     'Marcar todos'
+      +   '</label>'
+      +   '<span class="text-[11px] font-bold text-blue-700 uppercase">⚡ '+verbo+':</span>'
+      +   '<input type="date" class="intel-massa-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500" data-gkey="'+gkey+'" min="'+_minIso()+'" value="">'
+      +   '<button class="intel-massa-btn px-3 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-gkey="'+gkey+'" data-alvo="'+alvo+'" disabled>'+rotulo+'</button>'
+      +   '<span class="text-[11px] text-blue-600">'+dica+'</span>'
+      + '</div>';
+  }
 
   var TERMINAIS = /^(conclu|pago|em vigor|sem obrigat|arquivad|isento)/i;
 
@@ -672,17 +697,14 @@
                 ${isEmp && g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}" title="Abrir a empresa">Abrir empresa</button>` : ''}
               </div>
               ${!aberto ? '' : `
-              <!-- barra de aplicação em MASSA -->
-              <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
-                <span class="text-[11px] font-bold text-blue-700 uppercase">⚡ Aplicar em todos:</span>
-                <input type="date" class="intel-massa-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500" data-gkey="${gkey}" min="${_minIso()}" value="">
-                <button class="intel-massa-btn px-3 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-gkey="${gkey}" disabled>Aplicar aos ${g.itens.length}</button>
-                <span class="text-[11px] text-blue-600">define a mesma próxima atualização para todos os alvarás desta ${isEmp?'empresa':'lista'}</span>
-              </div>
+              <!-- barra de aplicação: em MASSA ou só nos SELECIONADOS -->
+              ${_barraAplicar(gkey, g.itens.map(function(a){return String(a.id);}), 'Aplicar', isEmp?'empresa':'lista')}
               <div class="divide-y divide-slate-50">
                 ${g.itens.map(function(a){
                   var vc = vencColor(a);
-                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50">
+                  var _aid = _esc(String(a.id));
+                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50 ${_selHas(a.id)?'bg-blue-50/60':''}">
+                    <input type="checkbox" class="intel-chk w-4 h-4 accent-blue-600 shrink-0" data-aid="${_aid}" data-gkey="${gkey}" ${_selHas(a.id)?'checked':''} title="Selecionar este alvará">
                     <div class="flex-1 min-w-0">
                       <span class="font-medium text-slate-700">${_esc(a.tipo||'(sem tipo)')}</span>
                       ${!isEmp?`<span class="text-slate-400"> · ${_esc(a.empresa||'')}</span>`:''}
@@ -808,16 +830,13 @@
                 ${g.id!=null ? `<button class="intel-open shrink-0 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700" data-eid="${g.id}" title="Abrir a empresa">Abrir empresa</button>` : ''}
               </div>
               ${!aberto ? '' : `
-              <!-- barra de aplicação em MASSA (reagendar todos de uma vez) -->
-              <div class="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
-                <span class="text-[11px] font-bold text-blue-700 uppercase">⚡ Reagendar todos:</span>
-                <input type="date" class="intel-massa-inp text-xs text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500" data-gkey="${gkey}" min="${_minIso()}" value="">
-                <button class="intel-massa-btn px-3 py-1 bg-blue-600 text-white rounded text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed" data-gkey="${gkey}" disabled>Aplicar aos ${g.itens.length}</button>
-                <span class="text-[11px] text-blue-600">define a mesma nova data de próxima atualização para todos os vencidos desta empresa</span>
-              </div>
+              <!-- barra de aplicação: em MASSA ou só nos SELECIONADOS -->
+              ${_barraAplicar(gkey, g.itens.map(function(a){return String(a.id);}), 'Reagendar', 'empresa')}
               <div class="divide-y divide-slate-50">
                 ${g.itens.map(function(a){
-                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50">
+                  var _aid = _esc(String(a.id));
+                  return `<div class="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50 ${_selHas(a.id)?'bg-blue-50/60':''}">
+                    <input type="checkbox" class="intel-chk w-4 h-4 accent-blue-600 shrink-0" data-aid="${_aid}" data-gkey="${gkey}" ${_selHas(a.id)?'checked':''} title="Selecionar este alvará">
                     <div class="flex-1 min-w-0">
                       <span class="font-medium text-slate-700">${_esc(a.tipo||'(sem tipo)')}</span>
                       ${a.status?`<span class="ml-2 text-[10px] uppercase tracking-wide text-slate-400">${_esc(a.status)}</span>`:''}
@@ -1297,16 +1316,59 @@
       var sync = function(){ if (btn) btn.disabled = !inp.value; };
       inp.oninput = sync; inp.onchange = sync;
     });
+    // helper: ids do grupo (via checkboxes) e recálculo do rótulo/alvo do botão SEM re-render
+    function _idsDoGrupo(gkey){ var r=[]; document.querySelectorAll('.intel-chk[data-gkey="'+gkey+'"]').forEach(function(c){ r.push(c.dataset.aid); }); return r; }
+    function _atualizaBotaoMassa(gkey){
+      var btn = document.querySelector('.intel-massa-btn[data-gkey="'+gkey+'"]');
+      if (!btn) return;
+      var ids = _idsDoGrupo(gkey);
+      var sel = ids.filter(function(a){ return !!window._intelSel[String(a)]; });
+      var verbo = /reagendar/i.test(btn.textContent) ? 'Reagendar' : 'Aplicar';
+      var alvo = sel.length>0 ? sel.length : ids.length;
+      btn.dataset.alvo = alvo;
+      btn.textContent = sel.length>0 ? (verbo+' aos '+sel.length+' selecionados') : (verbo+' aos '+ids.length);
+      // sincroniza o "marcar todos"
+      var all = document.querySelector('.intel-chk-all[data-gkey="'+gkey+'"]');
+      if (all) all.checked = ids.length>0 && sel.length===ids.length;
+    }
+    // checkbox POR LINHA: marca/desmarca no _intelSel (sem full render p/ não perder a data digitada)
+    document.querySelectorAll('.intel-chk').forEach(function(chk){
+      chk.onclick = function(ev){
+        if (ev) ev.stopPropagation();
+        var aid = String(chk.dataset.aid);
+        if (chk.checked) window._intelSel[aid] = true; else delete window._intelSel[aid];
+        var row = chk.closest('.flex.flex-wrap'); if (row) row.classList.toggle('bg-blue-50/60', chk.checked);
+        _atualizaBotaoMassa(chk.dataset.gkey);
+      };
+    });
+    // "MARCAR TODOS" do grupo
+    document.querySelectorAll('.intel-chk-all').forEach(function(all){
+      all.onclick = function(ev){
+        if (ev) ev.stopPropagation();
+        var gkey = all.dataset.gkey; var marcar = all.checked;
+        document.querySelectorAll('.intel-chk[data-gkey="'+gkey+'"]').forEach(function(c){
+          c.checked = marcar;
+          var aid = String(c.dataset.aid);
+          if (marcar) window._intelSel[aid] = true; else delete window._intelSel[aid];
+          var row = c.closest('.flex.flex-wrap'); if (row) row.classList.toggle('bg-blue-50/60', marcar);
+        });
+        _atualizaBotaoMassa(gkey);
+      };
+    });
     document.querySelectorAll('.intel-massa-btn').forEach(function(btn){
       btn.onclick = function(){
         var inp = document.querySelector('.intel-massa-inp[data-gkey="'+btn.dataset.gkey+'"]');
-        if (!inp || !inp.value) { alert('Escolha a data para aplicar em massa.'); return; }
-        // coleta os ids do grupo (os inputs individuais dentro do mesmo card)
-        var card = btn.closest('.bg-white');
-        var ids = [];
-        if (card) card.querySelectorAll('.intel-prox-inp').forEach(function(i){ ids.push(i.dataset.aid); });
+        if (!inp || !inp.value) { alert('Escolha a data para aplicar.'); return; }
+        var gkey = btn.dataset.gkey;
+        var idsGrupo = _idsDoGrupo(gkey);
+        var selec = idsGrupo.filter(function(a){ return !!window._intelSel[String(a)]; });
+        // se houver selecionados, aplica só neles; senão, em TODOS do grupo (comportamento antigo)
+        var ids = selec.length>0 ? selec : idsGrupo;
         if (!ids.length) { alert('Nenhum alvará neste grupo.'); return; }
-        if (!confirm('Aplicar ' + inp.value.split('-').reverse().join('/') + ' como próxima atualização em ' + ids.length + ' alvará(s)?\n\n(Alvarás que violarem a regra de data — ex.: 10 dias antes do vencimento — serão pulados.)')) return;
+        var oQue = selec.length>0 ? (ids.length+' alvará(s) SELECIONADO(s)') : ('TODOS os '+ids.length+' alvará(s) do grupo');
+        if (!confirm('Aplicar ' + inp.value.split('-').reverse().join('/') + ' como próxima atualização em ' + oQue + '?\n\n(Alvarás que violarem a regra de data — ex.: 10 dias antes do vencimento — serão pulados.)')) return;
+        // limpa a seleção deste grupo após aplicar (o render vem de dentro do salvar)
+        ids.forEach(function(a){ delete window._intelSel[String(a)]; });
         window._auditSalvarProxMassa(ids, inp.value);
       };
     });
