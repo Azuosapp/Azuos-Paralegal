@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.6.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.7.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -3578,6 +3578,39 @@ function adicionarAnexo(input) {
    "⚠ pendente" na Premiacao para sempre — em julho/2026 eram 34 assim, nenhum
    validado, porque a validacao so acontecia se alguem clicasse no botao 🤖 do
    detalhe, e ninguem clicava. */
+/* [v6.7.0] Desfazer de verdade: RESTAURA o valor anterior nos dois campos, em vez
+   de zerar. Zerar so era equivalente por acidente (a regra so preenche campo
+   vazio); no dia em que alguem relaxar essa regra, zerar apagaria o dado da
+   pessoa. Dispara change nos dois, para nao ficar assimetrico com o preenchimento. */
+function _iaDesfazerPreenchimento(vencAntes, proxAntes){
+  try{
+    var v=document.getElementById('fa-venc');
+    if(v && vencAntes!==null && vencAntes!==undefined){
+      v.value=vencAntes; try{ v.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
+    }
+    var p=document.getElementById('fa-prox');
+    if(p && proxAntes!==null && proxAntes!==undefined){
+      p.value=proxAntes; try{ p.dispatchEvent(new Event('change',{bubbles:true})); }catch(e){}
+    }
+    if(typeof toast==='function') toast('Preenchimento desfeito','blue');
+  }catch(e){}
+}
+/* [v6.7.0] Proxima atualizacao = 30 dias ANTES do vencimento (regra do cliente).
+   Entra e sai em dd/mm/aaaa, o formato dos campos da tela. Usa UTC para nao
+   escorregar um dia por fuso/horario de verao. */
+function _iaProximaAtualizacao(vencBR, dias){
+  try{
+    var m = String(vencBR||'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if(!m) return '';
+    var d = new Date(Date.UTC(+m[3], +m[2]-1, +m[1]));
+    if(isNaN(d)) return '';
+    // valida que a data existe de verdade (31/02 vira 03/03 no construtor)
+    if(d.getUTCDate()!==+m[1] || d.getUTCMonth()!==+m[2]-1) return '';
+    d.setUTCDate(d.getUTCDate() - (dias==null?30:dias));
+    var dd=('0'+d.getUTCDate()).slice(-2), mm=('0'+(d.getUTCMonth()+1)).slice(-2);
+    return dd+'/'+mm+'/'+d.getUTCFullYear();
+  }catch(e){ return ''; }
+}
 /* [v6.6.0] Mes de conclusao do alvara aberto no modal. */
 function _iaMesDoAlvaraAtual(){
   try{
@@ -3701,13 +3734,24 @@ async function iaLerDocumento(dataUrl, nomeArq, tipoArq, idbId) {
     // está VAZIO — nunca sobrescreve o que a pessoa digitou. E mostra o que foi
     // preenchido, com desfazer, para a automação não virar surpresa.
     const vencInput = document.getElementById('fa-venc');
+    const proxInput = document.getElementById('fa-prox');
     const preenchidos = [];
-    let _vencAntes = null;
+    let _vencAntes = null, _proxAntes = null;
     if (dataValidade && vencInput && !String(vencInput.value||'').trim()) {
       _vencAntes = vencInput.value;
       vencInput.value = dataValidade.str;
       try{ vencInput.dispatchEvent(new Event('change', {bubbles:true})); }catch(e){}
       preenchidos.push(`📅 Vencimento: <strong>${dataValidade.str}</strong>`);
+
+      // [v6.7.0] Regra do cliente: proxima atualizacao = 30 dias ANTES do
+      // vencimento. So preenche quando esta vazio, mesma politica do vencimento.
+      const _prox = _iaProximaAtualizacao(dataValidade.str);
+      if (_prox && proxInput && !String(proxInput.value||'').trim()) {
+        _proxAntes = proxInput.value;
+        proxInput.value = _prox;
+        try{ proxInput.dispatchEvent(new Event('change', {bubbles:true})); }catch(e){}
+        preenchidos.push(`🔄 Próxima atualização: <strong>${_prox}</strong> <span style="color:#64748b">(30 dias antes)</span>`);
+      }
     }
 
     const msg = [];
@@ -3732,8 +3776,8 @@ async function iaLerDocumento(dataUrl, nomeArq, tipoArq, idbId) {
     t.innerHTML = `
       <div style="font-weight:bold;color:#1B3A8C;margin-bottom:6px;">🤖 IA leu ${esc(nomeArq)}</div>
       <div style="margin-bottom:8px;line-height:1.5">${msg.join('<br>')}</div>
-      ${_vencAntes !== null ? `<button onclick="var v=document.getElementById('fa-venc'); if(v){v.value='';} this.parentElement.remove();" style="background:#e2e8f0;color:#475569;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-right:4px;">↩ Desfazer</button>` : ''}
-      <button onclick="this.parentElement.remove()" style="background:#1B3A8C;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">OK</button>
+      ${_vencAntes !== null ? `<button type="button" onclick="_iaDesfazerPreenchimento(${JSON.stringify(_vencAntes)},${JSON.stringify(_proxAntes)}); this.parentElement.remove();" style="background:#e2e8f0;color:#475569;border:none;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-right:4px;">↩ Desfazer</button>` : ''}
+      <button type="button" onclick="this.parentElement.remove()" style="background:#1B3A8C;color:white;border:none;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">OK</button>
     `;
     document.body.appendChild(t);
     setTimeout(() => { if (t.parentElement) t.remove(); }, 20000);
