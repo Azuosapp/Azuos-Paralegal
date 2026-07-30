@@ -279,6 +279,55 @@ jobs:
           }
           console.log('');
 
+          // ---- Diagnostico da PREMIACAO ----
+          // Responde: os alvaras com anexo estao CONTANDO, ou algo os exclui?
+          try {
+            const GAM = ['Concluído','Pago','Formalizado','Formalizado com o cliente','Em vigor (vencimento)'];
+            const cfg = dados.gamificacao || {};
+            const statusOk = (Array.isArray(cfg.statusConcluido) && cfg.statusConcluido.length) ? cfg.statusConcluido : GAM;
+            const eds = dados.edicoes_alvaras || {};
+            const mes = (process.env.MES_ALVO || '').trim() || new Date().toISOString().slice(0,7);
+            console.log('PREMIACAO — mes ' + mes);
+            console.log('status que pagam:', statusOk.join(', '));
+
+            let noMes = 0, semStatus = 0, comAnexo = 0, semAnexo = 0, validados = 0;
+            const porPessoa = {};
+            Object.keys(eds).forEach(aid => {
+              const e = eds[aid] || {};
+              if (!e._editado_por || !e._editado_em) return;
+              if (String(e._editado_em).slice(0,7) !== mes) return;
+              noMes++;
+              if (statusOk.indexOf(e.status) < 0) { semStatus++; return; }
+              const anx = Array.isArray(e.anexos) ? e.anexos : [];
+              const quem = String(e._editado_por).toLowerCase();
+              porPessoa[quem] = porPessoa[quem] || { conta: 0, semAnexo: 0, validado: 0 };
+              if (anx.length) {
+                comAnexo++; porPessoa[quem].conta++;
+                if (anx.some(a => a && a._validacao && a._validacao.ok && a._validacao.mes === mes)) {
+                  validados++; porPessoa[quem].validado++;
+                }
+              } else { semAnexo++; porPessoa[quem].semAnexo++; }
+            });
+
+            console.log('');
+            console.log('  editados no mes .................. ' + noMes);
+            console.log('  fora dos status que pagam ....... ' + semStatus);
+            console.log('  COM anexo (CONTAM na premiacao) . ' + comAnexo);
+            console.log('  sem anexo (nao contam) .......... ' + semAnexo);
+            console.log('  dos que contam, validados pela IA  ' + validados + '  -> os outros ' + (comAnexo - validados) + ' aparecem como "pendente", mas JA CONTAM');
+            console.log('');
+            console.log('  por pessoa:');
+            Object.keys(porPessoa).sort((a,b) => porPessoa[b].conta - porPessoa[a].conta).forEach(k => {
+              const p = porPessoa[k];
+              console.log('    ' + k.padEnd(34) + 'contam: ' + String(p.conta).padStart(3)
+                + ' | validados: ' + String(p.validado).padStart(3)
+                + ' | sem anexo: ' + String(p.semAnexo).padStart(3));
+            });
+          } catch (e) {
+            console.log('nao consegui diagnosticar a premiacao:', (e && e.message) || e);
+          }
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
