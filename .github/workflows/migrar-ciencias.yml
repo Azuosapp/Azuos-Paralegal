@@ -76,6 +76,12 @@ jobs:
           if (!chaves.length) { console.log('nada a migrar'); process.exit(0); }
 
           const docId = (k) => String(k||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').slice(0,120) || 'sem_chave';
+          // As ciencias podem ser strings OU objetos. Comparar objetos com includes()
+          // usa igualdade por REFERENCIA: depois da ida ao Firestore as referencias
+          // sao outras e TUDO parece faltando. Normalizamos para comparar por valor.
+          const chaveItem = (x) => (typeof x === 'string' ? x : JSON.stringify(x));
+          const amostra = cs[chaves[0]] && cs[chaves[0]][0];
+          console.log('tipo do item de ciencia: ' + (typeof amostra) + ' | exemplo: ' + JSON.stringify(amostra).slice(0,120));
 
           // 1) copia — UNIAO com o que ja existir no destino, para nunca perder ciencia
           let copiadas = 0;
@@ -84,8 +90,9 @@ jobs:
             const dest = db.collection('por_usuario').doc(docId(k));
             const atual = await dest.get();
             const jaLa = (atual.exists && Array.isArray((atual.data()||{}).ciencias)) ? atual.data().ciencias : [];
+            const vistos = new Set(jaLa.map(chaveItem));
             const uni = jaLa.slice();
-            lista.forEach(x => { if (!uni.includes(x)) uni.push(x); });
+            lista.forEach(x => { const c = chaveItem(x); if (!vistos.has(c)) { vistos.add(c); uni.push(x); } });
             await dest.set({ chave: k, ciencias: uni, atualizado_em: new Date().toISOString(), migrado_de: 'azuos/shared' }, { merge: true });
             console.log('   ' + String(k).padEnd(34) + lista.length + ' -> ' + uni.length + ' no destino');
             copiadas++;
@@ -97,7 +104,8 @@ jobs:
             const d = await db.collection('por_usuario').doc(docId(k)).get();
             const dest = (d.exists && Array.isArray((d.data()||{}).ciencias)) ? d.data().ciencias : [];
             const orig = Array.isArray(cs[k]) ? cs[k] : [];
-            const faltando = orig.filter(x => !dest.includes(x));
+            const noDestino = new Set(dest.map(chaveItem));
+            const faltando = orig.filter(x => !noDestino.has(chaveItem(x)));
             if (faltando.length) { console.log('   FALTOU em ' + k + ': ' + faltando.length); ok = false; }
           }
           if (!ok) { console.log('ABORTADO: nem tudo chegou ao destino. Nada foi apagado.'); process.exit(1); }

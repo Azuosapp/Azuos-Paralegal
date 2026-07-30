@@ -59,8 +59,12 @@ function _cienciasCarregarTodas(){
         if(!k || !Array.isArray(dd.ciencias)) return;
         var atual = state.ciencias_por_usuario[k];
         // uniao: nunca descarta ciencia que so existe de um lado
+        // [v7.0.1] compara por VALOR: se a ciencia for objeto, indexOf compara
+        // referencia e todo item vindo do servidor entraria duplicado.
+        var chave = function(x){ return (typeof x === 'string') ? x : JSON.stringify(x); };
         var uni = Array.isArray(atual) ? atual.slice() : [];
-        dd.ciencias.forEach(function(x){ if(uni.indexOf(x) < 0) uni.push(x); });
+        var vistos = {}; uni.forEach(function(x){ vistos[chave(x)] = 1; });
+        dd.ciencias.forEach(function(x){ var c = chave(x); if(!vistos[c]){ vistos[c]=1; uni.push(x); } });
         if(!atual || uni.length !== atual.length){ state.ciencias_por_usuario[k] = uni; mudou = true; }
       });
       return mudou;
