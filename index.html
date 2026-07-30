@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.7.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.8.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -381,7 +381,7 @@ function _fsSubscribeRealtime() {
       console.log('[FS] Mudança remota recebida — atualizando UI');
       try { _prepararAnexosLazy(); } catch(e){}
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_estadoParaLocal())); } catch(e) {}
-      try { render(); } catch(e) {}
+      try { _renderAdiavel(); } catch(e) {}
     }
   }, err => console.error('[FS] Erro no listener:', err.message));
 }
@@ -678,6 +678,37 @@ function _preservaFotosOficiais(lista){
     var _rem=(state.usuarios_removidos||[]).map(function(e){return (e||'').toLowerCase().trim();});
     return JSON.parse(JSON.stringify(lista||[])).map(function(u){ var f=fotos[(u.email||'').toLowerCase().trim()]; if(f){ u.foto=f; } return u; }).filter(function(u){ return _rem.indexOf((u.email||'').toLowerCase().trim())<0; });
   }catch(e){ return lista||[]; }
+}
+/* [v6.8.0] Re-render AUTOMATICO nao pode acontecer enquanto a pessoa digita.
+   Qualquer mudanca feita por qualquer colega chega pelo onSnapshot e chamava
+   render(), que reconstroi a tela inteira — apagando o que estava sendo digitado.
+   Com a equipe toda usando o sistema isso dispara a cada poucos segundos; o
+   formulario de Manutencao, que fica na pagina (nao e modal), era o mais atingido:
+   a pessoa comecava a escrever o chamado e o texto sumia.
+   Aqui adiamos o render ate o campo perder o foco. Renders pedidos pela propria
+   pessoa (salvar, trocar de aba) continuam imediatos — so o automatico espera. */
+function _uiDigitando(){
+  try{
+    var a = document.activeElement;
+    if(!a) return false;
+    var tag = (a.tagName||'').toUpperCase();
+    return tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT' || a.isContentEditable===true;
+  }catch(e){ return false; }
+}
+function _renderAdiavel(){
+  if(!_uiDigitando()){ try{ render(); }catch(e){} return; }
+  if(window._renderPendente) return;      // ja ha um agendado
+  window._renderPendente = true;
+  var solta = function(){
+    document.removeEventListener('focusout', solta, true);
+    setTimeout(function(){
+      // se a pessoa so pulou para o campo seguinte, continua esperando
+      if(_uiDigitando()){ window._renderPendente=false; _renderAdiavel(); return; }
+      window._renderPendente = false;
+      try{ render(); }catch(e){}
+    }, 400);
+  };
+  document.addEventListener('focusout', solta, true);
 }
 function render() {
   if (window.__AZUOS_BLOQUEADO__) return; // domínio antigo bloqueado — não renderiza o app
@@ -3468,7 +3499,9 @@ function _reidratarAnexosIDB(){
     if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan(state.edicoes_alvaras[k]); });
     if(!pend.length) return;
     var done=0, mudou=false;
-    function fim(){ if(done===pend.length && mudou){ try{ saveState(); }catch(e){} try{ if(typeof render==='function') render(); }catch(e){} } }
+    // [v6.8.0] adiavel: isto roda depois da gravacao no IndexedDB, quando a pessoa
+    // ja pode estar digitando a observacao do alvara.
+    function fim(){ if(done===pend.length && mudou){ try{ saveState(); }catch(e){} try{ if(typeof _renderAdiavel==='function') _renderAdiavel(); }catch(e){} } }
     pend.forEach(function(a){
       var id = a._idb || ('idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
       _idbPut(id, a.dados).then(function(){ return _idbGet(id); }).then(function(b){
@@ -4750,7 +4783,8 @@ function _acessosSubscribe(){
     window._acessosUnsub = window.fbDB.collection(_COL_ACESSOS).onSnapshot(function(qs){
       var arr=[]; qs.forEach(function(d){ arr.push(Object.assign({id:d.id}, d.data())); });
       window._acessosCache = arr;
-      try{ if(state.page==='usuarios' && typeof render==='function') render(); }catch(e){}
+      // [v6.8.0] adiavel: nao pode apagar o que a pessoa esta digitando
+      try{ if(state.page==='usuarios' && typeof _renderAdiavel==='function') _renderAdiavel(); }catch(e){}
     }, function(err){ console.warn('[acessos] onSnapshot:', err && err.message); });
   }catch(e){}
 }
