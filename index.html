@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.8.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.9.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -314,6 +314,7 @@ async function _fsWriteNow() {
     window._fsIgnoreNext = true;
     await ref.set(_payload, {merge: true});
     console.log('[FS] State sincronizado para nuvem');
+    return true;   // [v6.9.0] quem chama precisa saber se CHEGOU mesmo
   } catch(e) {
     console.error('[FS] Erro ao gravar:', e.message);
     window._fsIgnoreNext = false;
@@ -340,7 +341,19 @@ async function _fsWriteNow() {
         }
       }
     } catch(_){}
+    return false;
   }
+}
+/* [v6.9.0] Grava AGORA e devolve se chegou ao servidor. O caminho normal e
+   debounced em 2s e assincrono: quem chama nunca sabia o resultado, e por isso a
+   tela podia dizer "enviado" para algo que nunca saiu do navegador. Para acoes em
+   que a confirmacao importa — abrir um chamado, por exemplo — use este. */
+async function _fsGravarAgora(){
+  try{
+    if (window._fsWriteTimer) { clearTimeout(window._fsWriteTimer); window._fsWriteTimer = null; }
+    if (!window._fsReady) return false;
+    return (await _fsWriteNow()) === true;
+  }catch(e){ return false; }
 }
 
 async function _fsLoadInitial() {
@@ -4528,7 +4541,7 @@ function _manutRmPrint(i){ (window._manutPrints||[]).splice(i,1); _manutRenderPr
 function _manutAddPrint(input){ var files=input&&input.files?Array.prototype.slice.call(input.files):[]; _manutAddFiles(files); if(input) input.value=''; }
 function _manutAddFiles(files){ files.forEach(function(file){ if(!file||file.type.indexOf('image/')!==0) return; if((window._manutPrints||[]).length>=5){ if(typeof toast==='function') toast('Máximo de 5 prints','amber'); return; } if(file.size>5*1024*1024){ if(typeof toast==='function') toast('Imagem acima de 5MB','red'); return; } var reader=new FileReader(); reader.onload=function(e){ var b64=e.target.result; var id='idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); try{ _idbPut(id,b64).then(function(){ try{ if(typeof _anexoCloudPush==='function') _anexoCloudPush(id,b64,{nome:file.name,tipo:file.type}); }catch(_){} }); }catch(_){} window._manutPrints.push({nome:file.name,tipo:file.type,_idb:id,dados:b64}); _manutRenderPreview(); }; reader.readAsDataURL(file); }); }
 function _manutVerPrint(idb){ if(!idb) return false; function abrir(b){ var w=window.open('','_blank'); if(w) w.document.write('<title>Print</title><img src="'+b+'" style="max-width:100%">'); } _idbGet(idb).then(function(b){ if(b){ abrir(b); return; } if(typeof _anexoCloudFetch==='function'){ _anexoCloudFetch(idb).then(function(c){ if(c){ try{_idbPut(idb,c);}catch(e){} abrir(c); } else alert('Print ainda não sincronizado. Tente em instantes.'); }); } }); return false; }
-function manutAbrirChamado(){
+async function manutAbrirChamado(){
   var tipo = window._manutTipo || 'bug';
   var titulo=(document.getElementById('manut-titulo')||{}).value||'';
   var descricao=(document.getElementById('manut-descricao')||{}).value||'';
@@ -4539,14 +4552,39 @@ function manutAbrirChamado(){
   var t={ id:'mnt_'+Date.now()+'_'+Math.random().toString(36).slice(2,8), tipo:(tipo==='melhoria'?'melhoria':'bug'), titulo:titulo.trim().slice(0,200), descricao:descricao.trim().slice(0,4000)||'', pagina:pagina.trim().slice(0,300)||'', prints:prints, autor_nome:me.nome||'', autor_email:me.email||'', status:'aberto', nota_admin:'', obs_interna:'', arquivado:false, created_at:new Date().toISOString(), updated_at:new Date().toISOString() };
   state.manutencao = _manutLista(); state.manutencao.unshift(t);
   window._manutPrints=[]; window._manutTipo='bug';
-  // [v6.2.3] Antes dizia "Chamado enviado!" sempre, mesmo quando a gravacao
-  // falhava — e o chamado nunca chegava ao admin. Agora a mensagem reflete o
-  // que de fato aconteceu.
-  var _gravou = false;
-  try{ _gravou = (saveState() !== false); }catch(e){ _gravou = false; }
-  if(typeof toast==='function'){
-    if(_gravou) toast('✅ Chamado enviado! Você acompanha em "Meus chamados".','emerald');
-    else toast('⚠️ Não consegui salvar o chamado neste navegador. Anote o que escreveu antes de sair da tela.','red');
+
+  // [v6.9.0] CONFIRMA O ENVIO DE VERDADE antes de dizer que enviou.
+  // Ate aqui a tela dizia "Chamado enviado!" olhando so a gravacao LOCAL. O envio
+  // ao servidor e debounced em 2s, assincrono, e falhava em silencio — foi assim
+  // que os chamados da equipe nunca chegaram ao admin: apareciam na tela de quem
+  // escreveu e nao existiam no banco. Agora esperamos a confirmacao do servidor.
+  var _btn = document.querySelector('button[onclick="manutAbrirChamado()"]');
+  var _rotulo = _btn ? _btn.textContent : '';
+  if(_btn){ _btn.disabled = true; _btn.textContent = 'Enviando...'; }
+
+  var _local = false;
+  try{ _local = (saveState() !== false); }catch(e){ _local = false; }
+
+  if(!_local){
+    if(_btn){ _btn.disabled = false; _btn.textContent = _rotulo; }
+    alert('⚠️ Não consegui salvar o chamado neste navegador.\n\n'
+      + 'Copie o que você escreveu antes de sair da tela — o texto ainda está nos campos.');
+    return;
+  }
+
+  var _noServidor = false;
+  try{ _noServidor = await _fsGravarAgora(); }catch(e){ _noServidor = false; }
+
+  if(_btn){ _btn.disabled = false; _btn.textContent = _rotulo; }
+
+  if(_noServidor){
+    if(typeof toast==='function') toast('✅ Chamado enviado e recebido pela equipe. Acompanhe em "Meus chamados".','emerald');
+  } else {
+    alert('⚠️ Seu chamado foi salvo NESTE NAVEGADOR, mas ainda não chegou ao servidor.\n\n'
+      + 'Ele aparece em "Meus chamados" aqui, porém o administrador ainda NÃO consegue vê-lo.\n\n'
+      + 'O sistema vai continuar tentando enviar sozinho. Se depois de recarregar a página '
+      + 'o aviso voltar, mostre esta mensagem ao administrador — pode ser falta de permissão '
+      + 'do e-mail ' + ((state.sessao && state.sessao.email) || '(desconhecido)') + '.');
   }
   try{ render(); }catch(e){}
 }
