@@ -351,6 +351,26 @@ jobs:
           }
           console.log('');
 
+          // ---- Tamanho do documento azuos/shared (limite de 1MB do Firestore) ----
+          // O teste de permissao grava num doc pequeno e separado, entao NAO pegaria
+          // uma falha por tamanho. Se 'shared' estourar 1MB, TODA gravacao falha para
+          // todo mundo — e os chamados de manutencao vivem nele.
+          try {
+            const bruto = JSON.stringify(dados);
+            const kb = Math.round(bruto.length / 1024);
+            console.log('DOCUMENTO azuos/shared: ' + kb + ' KB de 1024 KB' + (kb > 900 ? '  <<< PERTO DO LIMITE' : ''));
+            const campos = Object.keys(dados).map(k => ({
+              k: k, kb: Math.round(JSON.stringify(dados[k] === undefined ? null : dados[k]).length / 1024)
+            })).sort((a, b) => b.kb - a.kb);
+            console.log('   maiores campos:');
+            campos.slice(0, 8).forEach(c => console.log('     ' + c.k.padEnd(26) + String(c.kb).padStart(5) + ' KB'));
+            if (kb > 1024) console.log('   >>> ESTOUROU: nenhuma gravacao neste documento funciona.');
+            else if (kb > 900) console.log('   >>> RISCO: perto do limite; qualquer acrescimo pode derrubar as gravacoes.');
+          } catch (e) {
+            console.log('nao consegui medir o documento:', (e && e.message) || e);
+          }
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
