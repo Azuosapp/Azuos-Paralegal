@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.5.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v6.6.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -598,7 +598,13 @@ function _azuosOficialPorEmail(email){
     // contas do projeto em 29/07/2026, e leylabraz1994@outlook.com. Com o
     // endereco errado, a sessao dela nao casava com o cadastro e caia no perfil
     // "convidado", quebrando nome, ciencias e a consolidacao de usuario.
-    'leylabraz1994@outlook.com':{nome:'Leyla',cargo:'Paralegal'}
+    // [v6.6.0] TODOS os enderecos ja usados pela Leyla ficam mapeados, nao so o
+    // atual. Na v6.2.4 eu SUBSTITUI o alias antigo pelo novo — com isso qualquer
+    // registro historico sob o endereco antigo virava uma pessoa chamada
+    // "Leylaazuos" e o trabalho dela aparecia dividido. Alias e acumulativo:
+    // endereco que a pessoa ja usou nunca deve ser removido daqui.
+    'leylabraz1994@outlook.com':{nome:'Leyla',cargo:'Paralegal'},
+    'leylaazuos@gmail.com':{nome:'Leyla',cargo:'Paralegal'}
   };
   return M[(email||'').toLowerCase().trim()]||null;
 }
@@ -1227,7 +1233,11 @@ function _gamValorDoAlvara(aid, e){
 }
 function _gamStatusSet(){ var g=state.gamificacao||{}; return (Array.isArray(g.statusConcluido)&&g.statusConcluido.length)?g.statusConcluido:_GAM_STATUS_PADRAO; }
 function _gamConta(s){ return _gamStatusSet().indexOf(s||'')>=0; }
-function _gamEhGestor(cargo){ var c=(cargo||'').toString().toLowerCase(); return c.indexOf('admin')>=0 || c.indexOf('gestor')>=0 || c.indexOf('consulta')>=0; }
+function _gamEhGestor(cargo){ var c=(cargo||'').toString().toLowerCase(); return c.indexOf('admin')>=0 || c.indexOf('gestor')>=0; }
+// [v6.6.0] Perfil "Consulta" e somente leitura: nao executa alvara, entao nao
+// pontua. Quando a exclusao de gestor foi removida a pedido, este perfil entrou
+// junto sem querer — o filtro antigo casava admin, gestor E consulta.
+function _gamSoLeitura(cargo){ return (cargo||'').toString().toLowerCase().indexOf('consulta')>=0; }
 function _gamUser(token){
   var t=(token==null?'':token).toString().trim().toLowerCase(); if(!t) return null;
   // v6.21.0 — resolve nome e cargo OFICIAIS pelo e-mail (evita mostrar o e-mail como nome)
@@ -1249,7 +1259,11 @@ function _gamAgrega(mes){
     var _cm=(e._editado_em||'').slice(0,7);
     if(!(_gamDataIni||_gamDataFim) && mes && _cm!==mes) return; // mes so vale quando NAO ha intervalo de datas
     var u=_gamUser(e._editado_por); if(!u) return;
-    if(_gamEhGestor(u.cargo)) return; // gestor/admin nao entra no ranking (nao e operacional)
+    // [v6.6.0] TODOS entram no ranking, inclusive gestor/admin. Antes eles eram
+    // removidos por "nao serem operacionais", mas na pratica concluem alvara como
+    // qualquer um — em julho/2026 o Admin tinha 4 e o Thierry 2, e nenhum aparecia.
+    // So o perfil Consulta (somente leitura) continua fora.
+    if(_gamSoLeitura(u.cargo)) return;
     var _dia=(e._editado_em||'').slice(0,10);
     if(_gamDataIni && _dia < _gamDataIni) return; // filtro por intervalo de datas (sobrepoe o mes)
     if(_gamDataFim && _dia > _gamDataFim) return;
@@ -1333,13 +1347,25 @@ function _iaAnalisar(texto, mesRef){
   texto=(texto||'').toLowerCase();
   var kws=['alvar','licen','funcionamento','bombeiro','sanitar','ambiental','vigil','localiza','corpo de bombeiros','protocolo','certificad','vistoria','prefeitura'];
   var temKw=kws.some(function(k){return texto.indexOf(k)>=0;});
-  var achouMes=null;
+  var achouMes=null, temData=false;
   (texto.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/g)||[]).forEach(function(ds){
     var m=ds.match(/(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{2,4})/); if(!m) return;
     var yy=m[3].length===2?('20'+m[3]):m[3]; var mm=('0'+m[2]).slice(-2);
+    var dd=parseInt(m[1],10), mi=parseInt(m[2],10), ano=parseInt(yy,10);
+    if(mi<1||mi>12||dd<1||dd>31||ano<2000||ano>2100) return;   // descarta lixo do OCR
+    temData=true;
     if(yy+'-'+mm===mesRef) achouMes=ds;
   });
-  return { temKw:temKw, dataNoMes:achouMes, ok:(temKw && !!achouMes) };
+  // [v6.6.0] CRITERIO CORRIGIDO. Antes era `temKw && data DO MES DE CONCLUSAO no
+  // documento` — e alvara real quase nunca traz a data do mes em que foi
+  // concluido: traz emissao e validade, normalmente de outros meses. Na pratica
+  // quase tudo reprovava, o selo ficava "pendente" para sempre e a validacao em
+  // lote nunca convergia: o botao reaparecia e cada clique refazia o OCR inteiro.
+  // O que a validacao precisa responder e "este anexo e mesmo um documento de
+  // alvara?" — logo: parece alvara E tem alguma data legivel.
+  // dataNoMes continua sendo devolvido como informacao extra (quando existe,
+  // reforca que o documento e daquele mes), mas nao decide mais sozinho.
+  return { temKw:temKw, dataNoMes:achouMes, temData:temData, ok:(temKw && temData) };
 }
 async function _iaConteudoAnexo(anexo){
   var dataUrl=anexo.dados;
@@ -1393,7 +1419,7 @@ function _gamListaConcluidos(chave, mes){
     var _dia=(e._editado_em||'').slice(0,10);
     if(_gamDataIni||_gamDataFim){ if(_gamDataIni && _dia<_gamDataIni) return; if(_gamDataFim && _dia>_gamDataFim) return; }
     else if(mes && cm!==mes) return;
-    var u=_gamUser(e._editado_por); if(_gamEhGestor(u&&u.cargo)) return;
+    var u=_gamUser(e._editado_por); if(_gamSoLeitura(u&&u.cargo)) return; // gestor/admin entram; Consulta nao
     var k=((u&&(u.nome||u.email))||'').toLowerCase().trim(); // [v6.1.7] agrupa por NOME
     if(k!==chave) return;
     if(!_anexosDoAlvara(aid).length) return; // [v6.1.6] só anexados (igual ao ranking)
@@ -1416,9 +1442,15 @@ function _gamPendentesDoMes(mes){
     if(!e||!e._editado_por||!e._editado_em) return;
     if(!_gamConta(e.status)) return;
     var cm=(e._editado_em||'').slice(0,7);
-    if(mes && cm!==mes) return;
+    // [v6.6.0] respeita o filtro de datas da tela. Sem isto a faixa dizia "34 no
+    // mes" enquanto o ranking mostrava um periodo menor — dois numeros brigando
+    // na mesma tela, e o botao validava alem do que estava a vista.
+    if(!(_gamDataIni||_gamDataFim) && mes && cm!==mes) return;
+    var _dia=(e._editado_em||'').slice(0,10);
+    if(_gamDataIni && _dia < _gamDataIni) return;
+    if(_gamDataFim && _dia > _gamDataFim) return;
     var u=_gamUser(e._editado_por); if(!u) return;
-    if(_gamEhGestor(u.cargo)) return;
+    if(_gamSoLeitura(u.cargo)) return; // [v6.6.0] gestor/admin entram; Consulta nao
     var anx=_anexosDoAlvara(aid);
     if(!anx.length) return;                       // sem anexo nao ha o que validar
     if(_alvaraValidadoNoMes(aid, cm)) return;     // ja validado
@@ -1426,45 +1458,71 @@ function _gamPendentesDoMes(mes){
   });
   return out;
 }
+var _gamLoteRodando = false, _gamLoteCancelar = false;
+// [v6.6.0] Progresso por ID, nunca por referencia guardada. O onSnapshot do
+// Firestore chama render() a qualquer momento e destaca o botao do DOM: escrever
+// num no destacado nao lança erro, so congela o numero na tela para sempre.
+function _gamLoteProgresso(txt){
+  var b=document.getElementById('gam-validar-lote'); if(b) b.textContent=txt;
+  var s=document.getElementById('gam-lote-status'); if(s) s.textContent=txt;
+}
+function _gamLoteParar(){ _gamLoteCancelar = true; _gamLoteProgresso('⏹ Parando após o documento atual...'); }
 async function _gamValidarTodosPendentes(mes){
+  if(_gamLoteRodando) return;   // trava de reentrancia: 2 cliques = 2 OCRs concorrentes
   if(!(state.sessao && state.sessao.cargo==='Administrador')){ alert('Apenas o administrador pode validar em lote.'); return; }
   var lista=_gamPendentesDoMes(mes);
-  if(!lista.length){ alert('Nenhum anexo pendente de validação neste mês.'); return; }
-  if(!confirm('Validar ' + lista.length + ' anexo(s) com a IA?\n\n'
-    + 'Cada documento é lido individualmente, então pode levar alguns minutos.\n'
-    + 'Deixe esta aba aberta até terminar. Você pode acompanhar o andamento na tela.')) return;
+  if(!lista.length){ alert('Nenhum anexo pendente de conferência neste período.'); return; }
+  var _est = Math.max(1, Math.round(lista.length * 0.4)); // ~25s por documento
+  if(!confirm('Conferir ' + lista.length + ' anexo(s) com a IA?\n\n'
+    + 'Cada documento é lido individualmente. Estimativa: cerca de ' + _est + ' minuto(s).\n'
+    + 'Deixe esta aba aberta. Você pode parar a qualquer momento pelo botão "Parar".')) return;
 
-  var btn=document.getElementById('gam-validar-lote');
-  var okCount=0, naoCount=0, erroCount=0;
-  for(var i=0;i<lista.length;i++){
-    var item=lista[i];
-    if(btn) btn.textContent='🤖 Validando ' + (i+1) + ' de ' + lista.length + '...';
-    try{
-      var anexos=_anexosDoAlvara(item.aid);
-      var algum=false;
-      for(var j=0;j<anexos.length;j++){
-        var a=anexos[j], texto='';
-        try{ texto=await _iaConteudoAnexo(a); }catch(e){}
-        var an=_iaAnalisar(texto, item.mes);
-        a._validacao={ ok:an.ok, mes:item.mes, data:an.dataNoMes||'', temKw:an.temKw,
-          motivo:(an.ok?'IA (lote)':(!an.temKw?'nao parece documento de alvara':'sem data em '+_gamMesLabel(item.mes))),
-          em:new Date().toISOString(),
-          por:((state.sessao&&(state.sessao.email||state.sessao.nome))||''), manual:false };
-        if(an.ok) algum=true;
-      }
-      if(algum) okCount++; else naoCount++;
-    }catch(e){ erroCount++; console.warn('[gam lote]', item.aid, (e&&e.message)||e); }
-    // salva a cada 5, para nao perder o trabalho se a aba fechar no meio
-    if(i%5===4){ try{ saveState(); }catch(e){} }
+  _gamLoteRodando = true; _gamLoteCancelar = false;
+  try{ render(); }catch(e){}   // faz aparecer o botao Parar e a area de progresso
+  var okCount=0, naoCount=0, erroCount=0, feitos=0;
+  try{
+    for(var i=0;i<lista.length;i++){
+      if(_gamLoteCancelar) break;
+      var item=lista[i];
+      _gamLoteProgresso('🤖 Conferindo ' + (i+1) + ' de ' + lista.length + '...');
+      try{
+        // [v6.6.0] Grava em edicoes_alvaras, NAO no array devolvido por
+        // _anexosDoAlvara: quando ele cai no ramo de state.alvaras, a marcacao fica
+        // so no localStorage deste navegador e nunca sobe (o sync manda apenas
+        // edicoes_alvaras). Ninguem mais veria a conferencia.
+        state.edicoes_alvaras = state.edicoes_alvaras || {};
+        var ed = state.edicoes_alvaras[item.aid] = state.edicoes_alvaras[item.aid] || {};
+        var base = _anexosDoAlvara(item.aid);
+        if(!Array.isArray(ed.anexos) || !ed.anexos.length){
+          ed.anexos = JSON.parse(JSON.stringify(base || []));
+        }
+        var algum=false;
+        for(var j=0;j<ed.anexos.length;j++){
+          if(_gamLoteCancelar) break;
+          var a=ed.anexos[j], texto='';
+          try{ texto=await _iaConteudoAnexo(a); }catch(e){}
+          var an=_iaAnalisar(texto, item.mes);
+          a._validacao=_iaMontarValidacao(an, item.mes);
+          a._validacao.motivo = an.ok ? 'IA (lote)' : a._validacao.motivo;
+          if(an.ok) algum=true;
+        }
+        if(algum) okCount++; else naoCount++;
+      }catch(e){ erroCount++; console.warn('[gam lote]', item.aid, (e&&e.message)||e); }
+      feitos++;
+      try{ saveState(); }catch(e){}   // a cada item: OCR custa segundos, salvar custa nada
+    }
+  } finally {
+    _gamLoteRodando = false;
+    try{ saveState(); }catch(e){}
   }
-  try{ saveState(); }catch(e){}
-  if(btn) btn.textContent='🤖 Validar anexos pendentes';
-  alert('Validação concluída.\n\n'
-    + '✅ Validados: ' + okCount + '\n'
-    + '⚠️ Não confirmados pela IA: ' + naoCount + '\n'
-    + (erroCount?('❌ Falharam ao ler: ' + erroCount + '\n'):'')
-    + '\nOs não confirmados continuam contando para a premiação — a validação é uma conferência, não um requisito. '
-    + 'Se algum estiver correto, use o ✔ no detalhe da pessoa para confirmar manualmente.');
+  var restaram = lista.length - feitos;
+  alert('Conferência ' + (_gamLoteCancelar?'interrompida':'concluída') + '.\n\n'
+    + '✅ Conferidos: ' + okCount + '\n'
+    + '➖ Inconclusivos: ' + naoCount + '\n'
+    + (erroCount?('❌ Não consegui ler: ' + erroCount + '\n'):'')
+    + (restaram>0?('⏸ Não processados: ' + restaram + '\n'):'')
+    + '\nIsto é uma conferência do documento, não um requisito: todos esses alvarás '
+    + 'JÁ CONTAM para a premiação, conferidos ou não.');
   try{ render(); }catch(e){}
 }
 function _gamAbrirDetalhe(chave, mes, nome){
@@ -1624,7 +1682,11 @@ function renderPremiacao(){
   var rank=_gamAgrega(mesSel);
   var val=_gamValor();
   var totalQtd=rank.reduce(function(a,r){return a+r.qtd;},0);
-  var totalPagar=rank.reduce(function(a,r){return a+r.valor;},0);
+  // [v6.6.0] "Total a pagar" conta so quem e OPERACIONAL. Gestor e admin passaram a
+  // aparecer no ranking a pedido, mas somar o valor deles neste card faria o numero
+  // que o gestor usa para pagar ficar errado — sao 6 alvaras em julho/2026.
+  var totalPagar=rank.filter(function(r){ return !_gamEhGestor(r.cargo); })
+                     .reduce(function(a,r){return a+r.valor;},0);
   var maxQtd=rank.length?rank[0].qtd:0;
   var top3=rank.slice(0,3);
   var meuGanho=(rank.filter(_gamSouEu)[0]||{}).valor||0;
@@ -1678,35 +1740,35 @@ function renderPremiacao(){
       </div>
     </header>
     ${ehAdmin ? `<div class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5 text-sm text-amber-800 flex items-center justify-between flex-wrap gap-2"><span>⚙️ Os valores e regras ficam em um menu separado.</span><button onclick="setState({page:'valores'})" class="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-semibold text-xs hover:bg-amber-700">Abrir 💰 Valores</button></div>` : ''}
-    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400">Nenhum alvara concluido em ${_lblPeriodo} ainda.</div>` : `
+    ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-500">Nenhum alvara concluido em ${_lblPeriodo} ainda.</div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
-        <div onclick="_gamAbrirDetalhe('${r.chave}','${mesSel}','${(r.nome||'').replace(/'/g,'')}')" class="text-center cursor-pointer">
+        <div onclick="_gamAbrirDetalhe('${esc(r.chave)}','${esc(mesSel)}','${esc((r.nome||'').replace(/'/g,''))}')" class="text-center cursor-pointer">
           <div class="mx-auto mb-2 w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
           <div class="rounded-t-xl ${h} flex items-end justify-center pb-1 text-3xl" style="background:linear-gradient(180deg,rgba(245,158,11,0.15),rgba(245,158,11,0.55));">${medal}</div>
           <div class="bg-white rounded-b-xl border border-slate-200 p-2">
-            <div class="font-bold text-slate-800 text-sm truncate">${esc(r.nome)}${_gamSouEu(r)?' (voce)':''}</div>
+            <div class="font-bold text-slate-800 text-sm truncate">${esc(r.nome)}${_gamSouEu(r)?' (voce)':''}${_gamEhGestor(r.cargo)?' <span class="text-[10px] text-slate-500 font-semibold">· gestão</span>':''}</div>
             <div class="text-xs text-slate-500">${r.qtd} concluidos</div>
-            <div class="font-extrabold text-emerald-600 text-sm">${podeVer?_gamFmt(r.valor):'•••'}</div>
+            <div class="font-extrabold text-emerald-700 text-sm">${podeVer?_gamFmt(r.valor):'•••'}</div>
           </div>
         </div>`; }).join('')}
     </div>
     <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
       <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-        <h2 class="font-bold text-slate-800">Ranking completo <span class="text-[11px] font-normal text-slate-400">(clique numa pessoa para ver os alvarás)</span></h2>
-        <div class="flex items-center gap-2"><button onclick="_gamAbrirCorrida()" class="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 shadow">🏁 Corrida (TV)</button><span class="text-xs text-slate-400">${rank.length} pessoas</span></div>
+        <h2 class="font-bold text-slate-800">Ranking completo <span class="text-[11px] font-normal text-slate-500">(clique numa pessoa para ver os alvarás)</span></h2>
+        <div class="flex items-center gap-2"><button onclick="_gamAbrirCorrida()" class="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 shadow">🏁 Corrida (TV)</button><span class="text-xs text-slate-500">${rank.length} pessoas</span></div>
       </div>
       <div class="divide-y divide-slate-100">
         ${rank.map(function(r,i){ var podeVer=ehAdmin||_gamSouEu(r); var eu=_gamSouEu(r); var pct=maxQtd?Math.round(100*r.qtd/maxQtd):0; return `
-          <div onclick="_gamAbrirDetalhe('${r.chave}','${mesSel}','${(r.nome||'').replace(/'/g,'')}')" class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 ${eu?'bg-amber-50':''}">
-            <div class="w-7 text-center font-bold ${i<3?'text-amber-500':'text-slate-400'}">${i+1}º</div>
+          <div onclick="_gamAbrirDetalhe('${esc(r.chave)}','${esc(mesSel)}','${esc((r.nome||'').replace(/'/g,''))}')" class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 ${eu?'bg-amber-50':''}">
+            <div class="w-7 text-center font-bold ${i<3?'text-amber-700':'text-slate-500'}">${i+1}º</div>
             <div class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
             <div class="flex-1 min-w-0">
-              <div class="font-semibold text-slate-800 text-sm truncate">${esc(r.nome)}${eu?' <span class="text-[10px] text-amber-600 font-bold">(voce)</span>':''}</div>
+              <div class="font-semibold text-slate-800 text-sm truncate">${esc(r.nome)}${eu?' <span class="text-[10px] text-amber-700 font-bold">(voce)</span>':''}${_gamEhGestor(r.cargo)?' <span class="text-[10px] text-slate-500 font-semibold">· gestão</span>':''}</div>
               <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${_gamCor(r.nome)}"></div></div>
             </div>
-            <div class="text-right shrink-0"><div class="font-bold text-slate-800 text-sm">${r.qtd}</div><div class="text-[10px] text-slate-400 uppercase">alvaras</div></div>
-            <div class="w-24 text-right shrink-0"><div class="font-extrabold text-emerald-600 text-sm">${podeVer?_gamFmt(r.valor):'<span class="text-slate-300" title="Somente voce e o gestor veem seu valor">•••</span>'}</div></div>
+            <div class="text-right shrink-0"><div class="font-bold text-slate-800 text-sm">${r.qtd}</div><div class="text-[10px] text-slate-500 uppercase">alvaras</div></div>
+            <div class="w-24 text-right shrink-0"><div class="font-extrabold text-emerald-700 text-sm">${podeVer?_gamFmt(r.valor):'<span class="text-slate-500" title="Somente voce e o gestor veem seu valor">•••</span>'}</div></div>
           </div>`; }).join('')}
       </div>
     </div>
@@ -1715,17 +1777,25 @@ function renderPremiacao(){
       // quando ha algo pendente — senao vira botao inutil na tela.
       if(!ehAdmin) return '';
       var pend=[]; try{ pend=_gamPendentesDoMes(mesSel); }catch(e){}
-      if(!pend.length) return '';
+      // [v6.6.0] a faixa PERMANECE enquanto o lote roda, senao ela some no meio da
+      // operacao (o render de um snapshot remoto zera a contagem) e o progresso
+      // desaparece da tela com o trabalho ainda rodando.
+      if(!pend.length && !_gamLoteRodando) return '';
+      var _est = Math.max(1, Math.round(pend.length * 0.4));
       return `
-      <div class="mt-3 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style="background:var(--azuos-bg);border:1px solid var(--azuos-border)">
+      <div class="mt-3 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style="background:var(--azuos-surface);border:1px solid rgba(27,58,140,0.22)">
         <div class="text-xs" style="color:var(--azuos-text)">
-          <b>${pend.length}</b> anexo(s) ainda não conferidos pela IA neste mês.
-          <span style="color:var(--azuos-text-muted)">Eles <b>já contam</b> para a premiação — a validação é uma conferência do documento.</span>
+          <b>${pend.length}</b> anexo(s) ainda não conferidos pela IA em ${esc(_lblPeriodo)}.
+          <span style="color:#475569">Eles <b>já contam</b> para a premiação — a conferência apenas confirma o documento. Leva cerca de ${_est} minuto(s).</span>
+          <span id="gam-lote-status" role="status" aria-live="polite" class="block mt-1 font-semibold" style="color:var(--azuos-blue)"></span>
         </div>
-        <button id="gam-validar-lote" onclick="_gamValidarTodosPendentes('${mesSel}')" class="px-3 py-2 rounded-lg text-xs font-bold text-white shrink-0" style="background:var(--azuos-button)">🤖 Validar anexos pendentes</button>
+        <div class="flex gap-2 shrink-0">
+          <button id="gam-validar-lote" onclick="_gamValidarTodosPendentes('${esc(mesSel)}')" ${_gamLoteRodando?'disabled aria-busy="true" class="px-4 py-3 rounded-lg text-sm font-bold text-white opacity-60 cursor-not-allowed"':'class="px-4 py-3 rounded-lg text-sm font-bold text-white"'} style="background:var(--azuos-button)">🤖 Conferir anexos</button>
+          ${_gamLoteRodando ? `<button onclick="_gamLoteParar()" class="px-4 py-3 rounded-lg text-sm font-bold" style="background:var(--azuos-surface);color:var(--azuos-danger);border:1px solid var(--azuos-border)">⏹ Parar</button>` : ''}
+        </div>
       </div>`;
     })()}
-    <p class="text-xs text-slate-400 mt-3">Conta apenas alvarás <strong>concluídos E com anexo</strong> no app (sem anexo não soma). Desde a v6.4.0 a IA lê o documento e preenche o vencimento assim que o anexo é enviado. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
+    <p class="text-xs text-slate-600 mt-3">Conta apenas alvarás <strong>concluídos E com anexo</strong> no app (sem anexo não soma). Desde a v6.4.0 a IA lê o documento e preenche o vencimento assim que o anexo é enviado. Status que pagam: <strong>${setAtual.map(esc).join(', ')}</strong>. ${ehAdmin?'Como gestor, voce ve o valor de todos e configura acima.':'Voce ve a posicao de todos e o seu proprio valor.'}</p>
     `}
   </div>`;
 }
@@ -3508,32 +3578,65 @@ function adicionarAnexo(input) {
    "⚠ pendente" na Premiacao para sempre — em julho/2026 eram 34 assim, nenhum
    validado, porque a validacao so acontecia se alguem clicasse no botao 🤖 do
    detalhe, e ninguem clicava. */
+/* [v6.6.0] Mes de conclusao do alvara aberto no modal. */
+function _iaMesDoAlvaraAtual(){
+  try{
+    var aid = window._alvAtual && window._alvAtual.id;
+    if(aid){
+      var e = (state.edicoes_alvaras||{})[aid];
+      var q = e && e._editado_em;
+      if(q) return String(q).slice(0,7);
+    }
+  }catch(e){}
+  return new Date().toISOString().slice(0,7);
+}
+/* [v6.6.0] Se o modal ja foi fechado quando o OCR terminou (PDF digitalizado leva
+   30-60s e a pessoa nao espera), o campo escondido nao existe mais. Antes isso era
+   um no-op SILENCIOSO: nada era gravado e a tela ainda dizia "validado". Agora
+   grava direto no estado nesse caso. */
+function _iaMarcarValidacaoNoEstado(idbId, an, mes){
+  try{
+    var eds = state.edicoes_alvaras || {};
+    var achou = false;
+    Object.keys(eds).forEach(function(aid){
+      var lista = eds[aid] && eds[aid].anexos;
+      if(!Array.isArray(lista)) return;
+      lista.forEach(function(a){
+        if(a && a._idb === idbId){ a._validacao = _iaMontarValidacao(an, mes); achou = true; }
+      });
+    });
+    if(achou){ try{ saveState(); }catch(e){} }
+    return achou;
+  }catch(e){ return false; }
+}
+function _iaMontarValidacao(an, mes){
+  return {
+    ok: !!(an && an.ok), mes: mes, data: (an && an.dataNoMes) || '',
+    temKw: !!(an && an.temKw),
+    motivo: (an && an.ok) ? 'IA na hora do envio'
+          : (an && !an.temKw ? 'nao parece documento de alvara' : 'sem data legivel no documento'),
+    em: new Date().toISOString(),
+    por: ((state.sessao && (state.sessao.email || state.sessao.nome)) || ''),
+    manual: false
+  };
+}
 function _iaMarcarValidacao(idbId, an, mes){
   try{
     var df = document.getElementById('fa-anexos-data');
-    if(!df) return false;
+    if(!df) return _iaMarcarValidacaoNoEstado(idbId, an, mes);
     var lista = JSON.parse(df.value || '[]');
     var achou = false;
     lista.forEach(function(a){
-      if(a && a._idb === idbId){
-        a._validacao = {
-          ok: !!(an && an.ok), mes: mes, data: (an && an.dataNoMes) || '',
-          temKw: !!(an && an.temKw),
-          motivo: (an && an.ok) ? 'IA na hora do envio'
-                : (an && !an.temKw ? 'nao parece documento de alvara' : 'sem data no mes de referencia'),
-          em: new Date().toISOString(),
-          por: ((state.sessao && (state.sessao.email || state.sessao.nome)) || ''),
-          manual: false
-        };
-        achou = true;
-      }
+      if(a && a._idb === idbId){ a._validacao = _iaMontarValidacao(an, mes); achou = true; }
     });
     if(achou){
       df.value = JSON.stringify(lista);
       // persiste na hora, sem depender do botao Salvar (mesmo caminho do anexo)
       try{ _persistirCamposAlvaraAtual({ anexos: lista }); }catch(e){}
+      return true;
     }
-    return achou;
+    // o anexo pode pertencer a outro alvara (a pessoa trocou de modal): tenta no estado
+    return _iaMarcarValidacaoNoEstado(idbId, an, mes);
   }catch(e){ return false; }
 }
 // 🤖 IA: lê documento (PDF ou imagem), extrai datas e PREENCHE os campos do alvará
@@ -3576,10 +3679,13 @@ async function iaLerDocumento(dataUrl, nomeArq, tipoArq, idbId) {
     }
     const anoMaisRecente = anos.length ? Math.max(...anos) : (dataValidade?.y || null);
 
-    // [v6.4.0] Marca o anexo para a Premiacao, tenha ou nao achado data.
-    const _mesRef = new Date().toISOString().slice(0,7);
+    // [v6.6.0] O mes da validacao tem de ser o mes de CONCLUSAO do alvara — e o que
+    // _alvaraValidadoNoMes compara. Usar new Date() quebrava toda virada de mes:
+    // anexo enviado em 01/agosto de um alvara concluido em 31/julho era gravado
+    // como 2026-08, e a Premiacao de julho seguia mostrando "pendente" para sempre.
+    const _mesRef = _iaMesDoAlvaraAtual();
     const _an = (typeof _iaAnalisar === 'function') ? _iaAnalisar(text, _mesRef) : null;
-    if (idbId) { try{ _iaMarcarValidacao(idbId, _an, _mesRef); }catch(e){} }
+    const _marcou = idbId ? _iaMarcarValidacao(idbId, _an, _mesRef) : false;
 
     if (_iaToastEl) _iaToastEl.remove();
     if (!dataValidade && !anoMaisRecente) {
@@ -3608,9 +3714,18 @@ async function iaLerDocumento(dataUrl, nomeArq, tipoArq, idbId) {
     if (preenchidos.length) msg.push('<b>Preenchi para você:</b><br>' + preenchidos.join('<br>'));
     else if (dataValidade) msg.push(`📅 Data encontrada: <strong>${dataValidade.str}</strong><br><span style="color:#64748b">Não preenchi porque o vencimento já estava preenchido.</span>`);
     if (anoMaisRecente && (!dataValidade || dataValidade.y !== anoMaisRecente)) msg.push(`🗓️ Ano de referência: <strong>${anoMaisRecente}</strong>`);
-    msg.push(_an && _an.ok
-      ? '<span style="color:#047857">✅ Anexo validado para a Premiação.</span>'
-      : '<span style="color:#b45309">⚠️ Anexo registrado, mas a IA não confirmou (documento sem data deste mês ou fora do padrão de alvará).</span>');
+    // [v6.6.0] A mensagem reflete o que REALMENTE aconteceu. Antes dizia "validado"
+    // olhando so o resultado da analise, mesmo quando a gravacao tinha falhado em
+    // silencio (modal fechado antes de o OCR terminar). E o caso normal — anexo
+    // aceito, conferencia inconclusiva — deixou de usar cor de alerta: em ambar,
+    // aparecia em quase todo envio e a equipe passava a ignorar todos os avisos.
+    if (!_marcou) {
+      msg.push('<span style="color:#b45309">⚠️ Não consegui registrar a conferência (a janela do alvará foi fechada antes de eu terminar de ler). Use o 🤖 Validar na Premiação.</span>');
+    } else if (_an && _an.ok) {
+      msg.push('<span style="color:#047857">✅ Documento conferido e registrado para a Premiação.</span>');
+    } else {
+      msg.push('<span style="color:#64748b">Anexo registrado normalmente. A conferência automática ficou inconclusiva — não impede nada, o alvará conta igual.</span>');
+    }
 
     const t = document.createElement('div');
     t.style.cssText = 'position:fixed;top:16px;right:16px;background:white;color:#1e293b;padding:14px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:99999;font-family:Inter,sans-serif;font-size:13px;border:2px solid #1B3A8C;max-width:360px;';
