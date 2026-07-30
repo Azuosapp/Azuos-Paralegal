@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v6.9.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v7.0.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -403,6 +403,13 @@ async function bootFirestoreSync() {
   if (!window.fbAuth?.currentUser) { console.log('[FS] Aguardando autenticação...'); return; }
   window._fsReady = true;
   await _fsLoadInitial();
+  // [v7.0.0] ciencias agora vivem em por_usuario/{chave}, fora do azuos/shared.
+  try{
+    if (typeof window._cienciasCarregarTodas === 'function') {
+      const _mudou = await window._cienciasCarregarTodas();
+      if (_mudou) { try{ saveState(); }catch(e){} try{ _renderAdiavel(); }catch(e){} }
+    }
+  }catch(e){ console.warn('[ciencias boot]', e && e.message); }
   _fsSubscribeRealtime();
   startAutoBackup();
 }
@@ -7497,21 +7504,13 @@ function abrirBaselineDialog() {
   }
 
   function salvarCienciaFirestore(){
+    // [v7.0.0] As ciencias sairam de azuos/shared (que estourou 1 MB e travou TODAS
+    // as gravacoes do sistema) e passaram a viver em por_usuario/{chave}, um
+    // documento por pessoa. Escrever aqui de volta no 'shared' reintroduziria o
+    // problema — cada ciencia acrescentava alguns KB num documento ja no limite.
     try {
-      if (!firebase || !firebase.firestore || !state.sessao || !state.sessao.email) return;
-      var emailUsr = state.sessao.email.toLowerCase().trim();
-      var db = firebase.firestore();
-      var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', emailUsr);
-      var arr = (state.ciencias_por_usuario && state.ciencias_por_usuario[emailUsr]) || [];
-      db.collection('azuos').doc('shared').update(fp, JSON.parse(JSON.stringify(arr)))
-        .then(function(){
-          return db.collection('azuos').doc('shared').update({
-            last_modified_by: emailUsr,
-            last_modified_at: firebase.firestore.FieldValue.serverTimestamp(),
-          });
-        })
-        .catch(function(e){ console.warn('[v5.7.16 salvarCiencia]', e.message); });
-    } catch(e){}
+      if (typeof window._cienciasSalvarMinhas === 'function') window._cienciasSalvarMinhas();
+    } catch(e){ console.warn('[ciencias]', e && e.message); }
   }
   window._salvarCienciaFirestore = salvarCienciaFirestore;
   window._salvarUsuariosFirestore = salvarUsuariosFirestore;

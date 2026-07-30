@@ -1,0 +1,113 @@
+name: Migrar Ciencias (liberar o azuos/shared)
+
+# POR QUE: em 30/07/2026 o documento azuos/shared chegou a 1049 KB, acima do
+# limite de 1 MB do Firestore. Com isso TODA gravacao passou a falhar para todo
+# mundo — chamados de Manutencao, ciencias, edicoes. Ninguem percebia, porque o
+# app grava no navegador antes de sincronizar.
+#
+# As ciencias eram 466 KB desse total. Esta migracao copia cada pessoa para
+# por_usuario/{chave} (colecao que ja existe e ja esta liberada nas regras) e
+# depois REMOVE o campo do shared, devolvendo o documento a ~583 KB.
+#
+# Rode DEPOIS de publicar o cliente que le de por_usuario (v7.0.0), senao as
+# pessoas ficam sem ver as proprias ciencias ate atualizarem a pagina.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Digite MIGRAR para confirmar'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Conferir confirmacao
+        run: |
+          if [ "${{ github.event.inputs.confirmar }}" != "MIGRAR" ]; then
+            echo "Confirmacao ausente. Rode de novo digitando MIGRAR."; exit 1
+          fi
+
+      - name: Preparar credencial
+        env:
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_C: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+        run: |
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"; [ -z "$V" ] && V="$SA_C"
+          [ -z "$V" ] && { echo "ERRO: sem credencial."; exit 1; }
+          printf '%s' "$V" > "$HOME/sa.json"
+
+      - name: Instalar firebase-admin
+        run: |
+          mkdir -p /tmp/mig && cd /tmp/mig
+          npm init -y >/dev/null 2>&1
+          npm i firebase-admin@12 --no-audit --no-fund --loglevel=error
+
+      - name: Migrar
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
+        run: |
+          cat > /tmp/mig/mig.mjs <<'JS'
+          import admin from 'firebase-admin';
+          admin.initializeApp({ credential: admin.credential.applicationDefault(), projectId: 'azuos-paralegal' });
+          const db = admin.firestore();
+
+          const ref = db.collection('azuos').doc('shared');
+          const snap = await ref.get();
+          if (!snap.exists) { console.log('shared nao existe'); process.exit(1); }
+          const dados = snap.data() || {};
+          const antes = Buffer.byteLength(JSON.stringify(dados));
+          console.log('shared ANTES: ' + Math.round(antes/1024) + ' KB');
+
+          const cs = dados.ciencias_por_usuario || {};
+          const chaves = Object.keys(cs);
+          console.log('pessoas com ciencia: ' + chaves.length);
+          if (!chaves.length) { console.log('nada a migrar'); process.exit(0); }
+
+          const docId = (k) => String(k||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').slice(0,120) || 'sem_chave';
+
+          // 1) copia — UNIAO com o que ja existir no destino, para nunca perder ciencia
+          let copiadas = 0;
+          for (const k of chaves) {
+            const lista = Array.isArray(cs[k]) ? cs[k] : [];
+            const dest = db.collection('por_usuario').doc(docId(k));
+            const atual = await dest.get();
+            const jaLa = (atual.exists && Array.isArray((atual.data()||{}).ciencias)) ? atual.data().ciencias : [];
+            const uni = jaLa.slice();
+            lista.forEach(x => { if (!uni.includes(x)) uni.push(x); });
+            await dest.set({ chave: k, ciencias: uni, atualizado_em: new Date().toISOString(), migrado_de: 'azuos/shared' }, { merge: true });
+            console.log('   ' + String(k).padEnd(34) + lista.length + ' -> ' + uni.length + ' no destino');
+            copiadas++;
+          }
+
+          // 2) confere que TUDO chegou antes de apagar a origem
+          let ok = true;
+          for (const k of chaves) {
+            const d = await db.collection('por_usuario').doc(docId(k)).get();
+            const dest = (d.exists && Array.isArray((d.data()||{}).ciencias)) ? d.data().ciencias : [];
+            const orig = Array.isArray(cs[k]) ? cs[k] : [];
+            const faltando = orig.filter(x => !dest.includes(x));
+            if (faltando.length) { console.log('   FALTOU em ' + k + ': ' + faltando.length); ok = false; }
+          }
+          if (!ok) { console.log('ABORTADO: nem tudo chegou ao destino. Nada foi apagado.'); process.exit(1); }
+          console.log('conferido: todas as ciencias estao no destino');
+
+          // 3) so agora remove o campo do shared
+          await ref.update({ ciencias_por_usuario: admin.firestore.FieldValue.delete() });
+          const depois = Buffer.byteLength(JSON.stringify((await ref.get()).data() || {}));
+          console.log('shared DEPOIS: ' + Math.round(depois/1024) + ' KB  (liberou ' + Math.round((antes-depois)/1024) + ' KB)');
+          console.log(depois < 1024*1024 ? 'OK: documento abaixo de 1 MB, gravacoes voltam a funcionar.'
+                                          : 'ATENCAO: ainda acima de 1 MB — falta reduzir mais.');
+          JS
+          cd /tmp/mig && node mig.mjs

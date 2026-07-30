@@ -22,6 +22,54 @@ function _semAnexosPesados(edicoes) {
   return out;
 }
 
+/* [v7.0.0] CIENCIAS EM DOCUMENTO PROPRIO, uma por pessoa.
+   Motivo em _fsCollectFromState: azuos/shared estourou 1 MB e travou todas as
+   gravacoes do sistema. Aqui as ciencias saem de la e passam a viver em
+   por_usuario/{chave}, onde crescem sem derrubar o resto. */
+function _cienciaChaveDoc(id){
+  return String(id||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'_').slice(0,120) || 'sem_chave';
+}
+function _cienciasSalvarMinhas(){
+  try{
+    if(!window.fbDB || !state.sessao) return Promise.resolve(false);
+    var chaves = [state.sessao.email, state.sessao.nome].filter(Boolean);
+    var mapa = state.ciencias_por_usuario || {};
+    var ps = [];
+    chaves.forEach(function(k){
+      var lista = mapa[k];
+      if(!Array.isArray(lista)) return;
+      ps.push(window.fbDB.collection('por_usuario').doc(_cienciaChaveDoc(k)).set({
+        chave: k, ciencias: lista, atualizado_em: new Date().toISOString()
+      }, {merge:true}));
+    });
+    if(!ps.length) return Promise.resolve(false);
+    return Promise.all(ps).then(function(){ return true; })
+      .catch(function(e){ console.warn('[ciencias] salvar:', (e&&e.message)||e); return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+function _cienciasCarregarTodas(){
+  try{
+    if(!window.fbDB) return Promise.resolve(false);
+    return window.fbDB.collection('por_usuario').get().then(function(qs){
+      var mudou = false;
+      state.ciencias_por_usuario = state.ciencias_por_usuario || {};
+      qs.forEach(function(d){
+        var dd = d.data() || {};
+        var k = dd.chave;
+        if(!k || !Array.isArray(dd.ciencias)) return;
+        var atual = state.ciencias_por_usuario[k];
+        // uniao: nunca descarta ciencia que so existe de um lado
+        var uni = Array.isArray(atual) ? atual.slice() : [];
+        dd.ciencias.forEach(function(x){ if(uni.indexOf(x) < 0) uni.push(x); });
+        if(!atual || uni.length !== atual.length){ state.ciencias_por_usuario[k] = uni; mudou = true; }
+      });
+      return mudou;
+    }).catch(function(e){ console.warn('[ciencias] carregar:', (e&&e.message)||e); return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+window._cienciasSalvarMinhas = _cienciasSalvarMinhas;
+window._cienciasCarregarTodas = _cienciasCarregarTodas;
+
 function _fsPushFotosSeNecessario(remoteFotos){
   // v6.3.2 — se este navegador tem foto que a nuvem ainda nao tem, empurra automaticamente.
   try{
@@ -43,7 +91,13 @@ function _coletarFotosUsuarios(){
 }
 function _fsCollectFromState() {
   var out = {
-    ciencias_por_usuario: state.ciencias_por_usuario || {},
+    // [v7.0.0] ciencias_por_usuario SAIU daqui. Em 30/07/2026 o documento
+    // azuos/shared chegou a 1049 KB, acima do limite de 1 MB do Firestore, e
+    // TODA gravacao passou a falhar para todo mundo — foi por isso que nenhum
+    // chamado de Manutencao chegava ao admin, mesmo com permissao em ordem.
+    // As ciencias eram 466 KB desse total e agora moram em por_usuario/{chave},
+    // um documento por pessoa (colecao que ja existia e ja estava liberada nas
+    // regras). Ver _cienciasSalvarMinhas / _cienciasCarregarTodas.
     empresas_manuais: state.empresas_manuais || [],
     manutencao: state.manutencao || [],
     resumo_visto_por_usuario: state.resumo_visto_por_usuario || {},
