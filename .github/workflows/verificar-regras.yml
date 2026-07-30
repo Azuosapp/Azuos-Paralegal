@@ -328,6 +328,29 @@ jobs:
           }
           console.log('');
 
+          // ---- Chamados de Manutencao que chegaram ao banco ----
+          try {
+            const mnt = dados.manutencao || [];
+            console.log('CHAMADOS DE MANUTENCAO no banco: ' + mnt.length);
+            mnt.slice().sort((a,b) => String((b&&b.created_at)||'').localeCompare(String((a&&a.created_at)||'')))
+              .slice(0, 20).forEach(t => {
+                console.log('   [' + String((t&&t.created_at)||'?').slice(0,16) + '] '
+                  + String((t&&t.tipo)||'?').padEnd(9)
+                  + String((t&&t.status)||'?').padEnd(12)
+                  + ' por ' + String((t&&(t.autor_nome||t.autor_email))||'?').padEnd(22)
+                  + ' | ' + String((t&&t.titulo)||'(sem titulo)').slice(0,50)
+                  + (t&&t.arquivado ? '  [ARQUIVADO]' : ''));
+              });
+            if (!mnt.length) {
+              console.log('   >>> NENHUM chamado chegou ao banco.');
+              console.log('   Se alguem preencheu e enviou, o chamado ficou so no navegador da pessoa');
+              console.log('   (falha de permissao, ou o texto foi apagado por re-render antes do envio).');
+            }
+          } catch (e) {
+            console.log('nao consegui ler manutencao:', (e && e.message) || e);
+          }
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
