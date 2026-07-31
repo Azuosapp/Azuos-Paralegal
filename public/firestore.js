@@ -74,6 +74,99 @@ function _cienciasCarregarTodas(){
 window._cienciasSalvarMinhas = _cienciasSalvarMinhas;
 window._cienciasCarregarTodas = _cienciasCarregarTodas;
 
+/* [v7.2.0] EDICOES DE ALVARA EM CHUNKS, fora do azuos/shared.
+   Era o maior campo restante: 505 KB para 1175 alvaras editados, crescendo a cada
+   edicao. Medimos a composicao antes de mexer e nao havia vilao unico (conversas
+   51 KB, empresa 40, _editado_por 30, _editado_em 30, anexos 28...), entao trimar
+   campos so adiaria o estouro de 1 MB — que ja aconteceu uma vez e travou TODAS
+   as gravacoes do sistema.
+   Mesmo padrao ja usado pelos alvaras: azuos/edicoes_meta + azuos/edicoes_N.
+   Para nao perder o tempo real, o 'shared' guarda so um carimbo minusculo
+   (edicoes_ver); quando ele muda, os outros navegadores recarregam os chunks. */
+var _EDIC_PREFIX = 'edicoes_';
+var _EDIC_CH = 800000;   // ~0.8MB por chunk, margem do limite de 1MB
+
+function _mesclarEdicoesAlvaras(remotas){
+  var mudou = false;
+  try{
+    if(!remotas || typeof remotas !== 'object') return false;
+    state.edicoes_alvaras = state.edicoes_alvaras || {};
+    Object.keys(remotas).forEach(function(aid){
+      var r = remotas[aid];
+      var l = state.edicoes_alvaras[aid];
+      if(!l){ state.edicoes_alvaras[aid] = r; mudou = true; return; }
+      // vence o mais RECENTE por alvara (timestamps ISO comparam como string).
+      var tR = (r && r._editado_em) ? r._editado_em : '';
+      var tL = (l && l._editado_em) ? l._editado_em : '';
+      // ao adotar o remoto, preserva o base64 dos anexos que so existem localmente
+      if(tR > tL){ state.edicoes_alvaras[aid] = _mesclarAnexosLocais(r, l); mudou = true; }
+    });
+  }catch(e){ console.warn('[edicoes merge]', (e&&e.message)||e); }
+  return mudou;
+}
+function _edicoesCloudSave(){
+  try{
+    if(!window.fbDB) return Promise.resolve(false);
+    var C = window.fbDB.collection('azuos');
+    var limpo = _semAnexosPesados(state.edicoes_alvaras || {});
+    var json = JSON.stringify(limpo);
+    var chunks = [];
+    for(var i=0;i<json.length;i+=_EDIC_CH) chunks.push(json.slice(i, i+_EDIC_CH));
+    if(!chunks.length) chunks = ['{}'];
+    var ver = Date.now();
+    var ps = [ C.doc(_EDIC_PREFIX+'meta').set({ n: chunks.length, count: Object.keys(limpo).length, ver: ver, ts: ver }) ];
+    for(var j=0;j<chunks.length;j++) ps.push(C.doc(_EDIC_PREFIX+j).set({ d: chunks[j] }));
+    // apaga chunks sobrando de uma versao anterior maior
+    for(var z=chunks.length; z<chunks.length+20; z++) ps.push(C.doc(_EDIC_PREFIX+z).delete().catch(function(){}));
+    return Promise.all(ps).then(function(){
+      window._edicoesVer = ver;
+      console.log('[edicoes] salvas na nuvem:', Object.keys(limpo).length, 'em', chunks.length, 'chunk(s)');
+      return ver;
+    }).catch(function(e){ console.warn('[edicoes save]', (e&&e.message)||e); return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+function _edicoesCloudLoad(){
+  try{
+    if(!window.fbDB) return Promise.resolve(null);
+    var C = window.fbDB.collection('azuos');
+    return C.doc(_EDIC_PREFIX+'meta').get().then(function(meta){
+      if(!meta || !meta.exists) return null;
+      var m = meta.data() || {}; var n = m.n || 0;
+      if(!n) return null;
+      var ps = []; for(var j=0;j<n;j++) ps.push(C.doc(_EDIC_PREFIX+j).get());
+      return Promise.all(ps).then(function(docs){
+        var full=''; for(var k=0;k<docs.length;k++) full += ((docs[k] && docs[k].data()) || {}).d || '';
+        if(!full) return null;
+        try{
+          var obj = JSON.parse(full);
+          window._edicoesVer = m.ver || m.ts || 0;
+          return obj;
+        }catch(e){ console.warn('[edicoes load parse]', e && e.message); return null; }
+      });
+    }).catch(function(e){ console.warn('[edicoes load]', (e&&e.message)||e); return null; });
+  }catch(e){ return Promise.resolve(null); }
+}
+/* Campo legado no 'shared': absorve para os chunks e so entao apaga a origem.
+   Mesmo cuidado da migracao das ciencias — nunca apagar antes de guardar. */
+function _absorverEdicoesLegado(){
+  try{
+    if(window._absorvendoEdicoes) return;
+    window._absorvendoEdicoes = true;
+    _edicoesCloudSave().then(function(ver){
+      if(!ver){ window._absorvendoEdicoes = false; return; }
+      try{
+        _fsDocRef().update({ edicoes_alvaras: firebase.firestore.FieldValue.delete(), edicoes_ver: ver })
+          .then(function(){ console.log('[FS] campo legado edicoes_alvaras removido do shared'); })
+          .catch(function(e){ console.warn('[FS] limpeza edicoes:', (e&&e.message)||e); });
+      }catch(e){}
+      window._absorvendoEdicoes = false;
+    });
+  }catch(e){ window._absorvendoEdicoes = false; }
+}
+window._edicoesCloudSave = _edicoesCloudSave;
+window._edicoesCloudLoad = _edicoesCloudLoad;
+window._mesclarEdicoesAlvaras = _mesclarEdicoesAlvaras;
+
 function _fsPushFotosSeNecessario(remoteFotos){
   // v6.3.2 — se este navegador tem foto que a nuvem ainda nao tem, empurra automaticamente.
   try{
@@ -106,7 +199,10 @@ function _fsCollectFromState() {
     manutencao: state.manutencao || [],
     resumo_visto_por_usuario: state.resumo_visto_por_usuario || {},
     historico: (state.historico || []).slice(0, 500),
-    edicoes_alvaras: _semAnexosPesados(state.edicoes_alvaras || {}),
+    // [v7.2.0] edicoes_alvaras SAIU daqui (eram 505 KB e cresciam a cada edicao).
+    // Agora vivem em azuos/edicoes_meta + azuos/edicoes_N; aqui fica so o carimbo
+    // de versao, que avisa os outros navegadores para recarregarem os chunks.
+    edicoes_ver: (window._edicoesVer || 0),
     edicoes_empresas: state.edicoes_empresas || {},
     usuarios_removidos: state.usuarios_removidos || [],
     fotos_usuarios: _coletarFotosUsuarios(),
@@ -208,20 +304,11 @@ function _fsApplyToState(remote) {
   }
   // [v6.0.2 fix] MERGE inteligente para edicoes_alvaras: mantem o mais RECENTE por alvId
   // Antes sobrescrevia cegamente — bug: snapshot do servidor atropelava edição local recente
+  // [v7.2.0] o merge virou funcao propria: agora e usado tanto pelo campo legado
+  // do 'shared' quanto pelos chunks de edicoes_alvaras.
   if (remote.edicoes_alvaras) {
-    state.edicoes_alvaras = state.edicoes_alvaras || {};
-    Object.keys(remote.edicoes_alvaras).forEach(aid => {
-      const r = remote.edicoes_alvaras[aid];
-      const l = state.edicoes_alvaras[aid];
-      // Sem local: usa remoto
-      if (!l) { state.edicoes_alvaras[aid] = r; changed = true; return; }
-      // Compara _editado_em (timestamps ISO comparam string-wise)
-      const tR = r && r._editado_em ? r._editado_em : '';
-      const tL = l && l._editado_em ? l._editado_em : '';
-      // Se local é mais recente, mantém local. Senão usa remoto.
-      // v6.0.7: ao adotar o remoto, preserva o base64 dos anexos que só existem localmente
-      if (tR > tL) { state.edicoes_alvaras[aid] = _mesclarAnexosLocais(r, l); changed = true; }
-    });
+    if (_mesclarEdicoesAlvaras(remote.edicoes_alvaras)) changed = true;
+    _absorverEdicoesLegado();
   }
   // [v6.0.2 fix] Mesma lógica para edicoes_empresas
   if (remote.edicoes_empresas) {

@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v7.1.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v7.2.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -296,6 +296,19 @@ async function _fsWriteNow() {
   const ref = _fsDocRef();
   if (!ref) return;
   try {
+    // [v7.2.0] As edicoes de alvara vao para os chunks ANTES de gravar o 'shared',
+    // e so quando mudaram de verdade — assim o carimbo edicoes_ver que vai no
+    // payload ja e o novo, e os outros navegadores recarregam na hora certa.
+    // Comparamos por assinatura para nao reescrever ~500 KB a cada saveState.
+    try {
+      if (typeof window._edicoesCloudSave === 'function') {
+        const _assin = JSON.stringify(state.edicoes_alvaras || {}).length + ':' + Object.keys(state.edicoes_alvaras || {}).length;
+        if (_assin !== window._edicoesAssin) {
+          await window._edicoesCloudSave();
+          window._edicoesAssin = _assin;
+        }
+      }
+    } catch(e) { console.warn('[edicoes push]', e && e.message); }
     var _payload = _fsCollectFromState();
     // v6.24.0 — protecao do limite de 1MB do doc 'shared': se o payload estiver
     // grande, NAO reenvia as fotos (base64) neste write. Com merge:true as fotos ja
@@ -396,6 +409,20 @@ function _fsSubscribeRealtime() {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(_estadoParaLocal())); } catch(e) {}
       try { _renderAdiavel(); } catch(e) {}
     }
+    // [v7.2.0] As edicoes nao viajam mais neste documento — so o carimbo de
+    // versao. Quando ele muda, alguem editou: recarregamos os chunks para o
+    // tempo real continuar funcionando como antes.
+    try {
+      const _verR = remote.edicoes_ver || 0;
+      if (_verR && _verR !== (window._edicoesVer || 0) && typeof window._edicoesCloudLoad === 'function') {
+        window._edicoesCloudLoad().then(function(eds){
+          if (eds && typeof window._mesclarEdicoesAlvaras === 'function' && window._mesclarEdicoesAlvaras(eds)) {
+            try { saveState(); } catch(e){}
+            try { _renderAdiavel(); } catch(e){}
+          }
+        });
+      }
+    } catch(e) {}
   }, err => console.error('[FS] Erro no listener:', err.message));
 }
 
@@ -410,6 +437,15 @@ async function bootFirestoreSync() {
       if (_mudou) { try{ saveState(); }catch(e){} try{ _renderAdiavel(); }catch(e){} }
     }
   }catch(e){ console.warn('[ciencias boot]', e && e.message); }
+  // [v7.2.0] edicoes de alvara vivem em chunks (azuos/edicoes_*), fora do shared.
+  try{
+    if (typeof window._edicoesCloudLoad === 'function') {
+      const _eds = await window._edicoesCloudLoad();
+      if (_eds && typeof window._mesclarEdicoesAlvaras === 'function') {
+        if (window._mesclarEdicoesAlvaras(_eds)) { try{ saveState(); }catch(e){} try{ _renderAdiavel(); }catch(e){} }
+      }
+    }
+  }catch(e){ console.warn('[edicoes boot]', e && e.message); }
   _fsSubscribeRealtime();
   startAutoBackup();
 }
