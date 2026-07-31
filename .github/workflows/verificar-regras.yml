@@ -371,6 +371,34 @@ jobs:
           }
           console.log('');
 
+          // ---- O que ocupa espaco DENTRO de edicoes_alvaras ----
+          try {
+            const eds = dados.edicoes_alvaras || {};
+            const ids = Object.keys(eds);
+            const porCampo = {};
+            let comAnexo = 0, comConversa = 0;
+            ids.forEach(id => {
+              const e = eds[id] || {};
+              Object.keys(e).forEach(c => {
+                const kb = JSON.stringify(e[c] === undefined ? null : e[c]).length;
+                porCampo[c] = (porCampo[c] || 0) + kb;
+              });
+              if (Array.isArray(e.anexos) && e.anexos.length) comAnexo++;
+              if (Array.isArray(e.conversas) && e.conversas.length) comConversa++;
+            });
+            console.log('EDICOES_ALVARAS: ' + ids.length + ' alvaras editados');
+            console.log('   com anexo: ' + comAnexo + ' | com conversa: ' + comConversa);
+            console.log('   peso por campo:');
+            Object.keys(porCampo).sort((a,b) => porCampo[b] - porCampo[a]).slice(0, 12).forEach(c => {
+              console.log('     ' + c.padEnd(24) + String(Math.round(porCampo[c]/1024)).padStart(5) + ' KB');
+            });
+            const amostra = eds[ids[0]];
+            if (amostra) console.log('   exemplo de registro: ' + JSON.stringify(amostra).slice(0, 300));
+          } catch (e) {
+            console.log('nao consegui medir edicoes_alvaras:', (e && e.message) || e);
+          }
+          console.log('');
+
           console.log('');
           if (semConta.length) {
             console.log('ATENCAO: sem conta no Firebase Authentication ->', semConta.join(', '));
