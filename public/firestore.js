@@ -235,18 +235,41 @@ function _fsApplyToState(remote) {
       if (tR > tL) { state.edicoes_empresas[eid] = r; changed = true; }
     });
   }
-  // [v6.0.2] Para ciencias_por_usuario: merge por email, união de arrays
+  // [v7.1.0] CAMPO LEGADO, com limpeza que se cura sozinha.
+  // A migracao tirou ciencias_por_usuario do azuos/shared, mas navegadores ainda
+  // na versao antiga regravam o campo a cada sincronizacao — em 24h ele voltou
+  // com 214 KB e o documento subiu de 586 para 789 KB, rumo a estourar 1 MB de
+  // novo e travar TODAS as gravacoes.
+  // Aqui, ao encontrar o campo, o cliente novo ABSORVE (uniao por valor), salva no
+  // lugar certo e so entao APAGA a origem. Cada pessoa que atualizar a pagina
+  // limpa um pouco; nada se perde, porque so apagamos depois de guardar.
   if (remote.ciencias_por_usuario) {
     state.ciencias_por_usuario = state.ciencias_por_usuario || {};
+    var _chaveC = function(x){ return (typeof x === 'string') ? x : JSON.stringify(x); };
     Object.keys(remote.ciencias_por_usuario).forEach(em => {
       const r = remote.ciencias_por_usuario[em];
-      const l = state.ciencias_por_usuario[em];
-      if (!l) { state.ciencias_por_usuario[em] = r; changed = true; }
-      else if (JSON.stringify(l) !== JSON.stringify(r)) {
-        // Se diferente, preserva o local (paralegal acabou de dar ciência)
-        // Servidor pega na próxima sincronização
+      if (!Array.isArray(r)) return;
+      const l = Array.isArray(state.ciencias_por_usuario[em]) ? state.ciencias_por_usuario[em] : [];
+      const vistos = {}; l.forEach(function(x){ vistos[_chaveC(x)] = 1; });
+      const uni = l.slice();
+      r.forEach(function(x){ var c=_chaveC(x); if(!vistos[c]){ vistos[c]=1; uni.push(x); } });
+      if (uni.length !== l.length || !state.ciencias_por_usuario[em]) {
+        state.ciencias_por_usuario[em] = uni; changed = true;
       }
     });
+    try{
+      if (typeof _cienciasSalvarMinhas === 'function') {
+        _cienciasSalvarMinhas().then(function(ok){
+          if (!ok) return;   // so limpa a origem depois de guardar no destino
+          try{
+            _fsDocRef().update({
+              ciencias_por_usuario: firebase.firestore.FieldValue.delete()
+            }).then(function(){ console.log('[FS] campo legado ciencias_por_usuario removido do shared'); })
+              .catch(function(e){ console.warn('[FS] limpeza do legado:', (e&&e.message)||e); });
+          }catch(e){}
+        });
+      }
+    }catch(e){}
   }
   // Overlay de edições nos arrays do SEED
   if (state.edicoes_alvaras) {

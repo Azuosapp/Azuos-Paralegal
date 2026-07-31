@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v7.0.1 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v7.1.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -610,6 +610,9 @@ function _azuosOficialPorEmail(email){
     'ketrin@azuoscontabil.com.br':{nome:'Ketrin',cargo:'Paralegal'},
     'leyla@azuoscontabil.com.br':{nome:'Leyla',cargo:'Paralegal'},
     'luanna@azuoscontabil.com.br':{nome:'Luanna',cargo:'Paralegal'},
+    // [v7.1.0] Luanna trocou de e-mail em 30/07/2026. Alias e ACUMULATIVO: o
+    // endereco antigo continua mapeado para que o historico dela nao se divida.
+    'luannaferreirabatista20@gmail.com':{nome:'Luanna',cargo:'Paralegal'},
     'diogenes@azuoscontabil.com.br':{nome:'Diogenes',cargo:'Paralegal'},
     // [v6.0.44] e-mails PESSOAIS mapeados para o nome oficial (contas criadas com
     // o e-mail pessoal, para quem nao acessa a caixa @azuoscontabil).
@@ -984,7 +987,7 @@ function _resolverEmailLogin(digitado){
     // existe no Firebase Authentication. Num navegador sem state.usuarios em cache
     // (primeiro acesso, cache limpo), a Leyla digitar o nome no login resolvia para
     // o endereco errado e a entrada falhava. O login real e leylabraz1994@outlook.com.
-    var M={ 'azuos admin':'contato@azuoscontabil.com.br','comercial':'comercial@azuoscontabil.com.br','thierry':'thierrymforte@gmail.com','camila':'camila@azuoscontabil.com.br','ketrin':'ketrin@azuoscontabil.com.br','leyla':'leylabraz1994@outlook.com','luanna':'luanna@azuoscontabil.com.br','diogenes':'diogenes@azuoscontabil.com.br' };
+    var M={ 'azuos admin':'contato@azuoscontabil.com.br','comercial':'comercial@azuoscontabil.com.br','thierry':'thierrymforte@gmail.com','camila':'camila@azuoscontabil.com.br','ketrin':'ketrin@azuoscontabil.com.br','leyla':'leylabraz1994@outlook.com','luanna':'luannaferreirabatista20@gmail.com','diogenes':'diogenes@azuoscontabil.com.br' };
     if(M[alvo]) return M[alvo];
     var p1=alvo.split(/\s+/)[0];
     if(M[p1]) return M[p1];
