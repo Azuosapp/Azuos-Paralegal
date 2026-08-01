@@ -1,0 +1,53 @@
+name: Redefinir senha de admin (manual)
+
+# Uso: Actions -> "Redefinir senha de admin (manual)" -> Run workflow -> informe o e-mail.
+# A nova senha aparece no LOG do run. Copie e APAGUE o run em seguida.
+#
+# Excecao deliberada: o motor normal (gerenciar-acessos.yml) recusa mexer em admin
+# de proposito. Este existe para o caso do dono ficar sem acesso — ver o cabecalho
+# de scripts/ci/redefinir-senha-admin.mjs.
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'E-mail do administrador (precisa ja existir no Firebase Auth)'
+        required: true
+        default: 'contato@azuoscontabil.com.br'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redefinir-senha-admin
+  cancel-in-progress: false
+
+jobs:
+  redefinir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # o segredo tem um typo historico (ACC0UNT, com zero) — tenta os dois nomes
+      - name: Preparar credencial do Firebase (segredo)
+        env:
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+        run: |
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"
+          if [ -z "$V" ]; then echo "ERRO: segredo do Firebase vazio."; exit 1; fi
+          printf '%s' "$V" > service-account.json
+          node -e "JSON.parse(require('fs').readFileSync('service-account.json','utf8'))" \
+            || { echo 'ERRO: segredo do Firebase nao e JSON valido.'; exit 1; }
+
+      - name: Instalar firebase-admin
+        run: npm install firebase-admin@13 --no-audit --no-fund --loglevel=error
+
+      - name: Redefinir a senha
+        env:
+          EMAIL_ALVO: ${{ inputs.email }}
+        run: node scripts/ci/redefinir-senha-admin.mjs
