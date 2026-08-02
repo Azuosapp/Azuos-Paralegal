@@ -47,6 +47,35 @@ function _cienciasSalvarMinhas(){
       .catch(function(e){ console.warn('[ciencias] salvar:', (e&&e.message)||e); return false; });
   }catch(e){ return Promise.resolve(false); }
 }
+/* [v7.3.0] Salva as ciencias de TODAS as pessoas presentes no mapa, nao so as do
+   usuario logado. Isto e pre-requisito para apagar o campo legado do 'shared':
+   aquele campo carrega as ciencias da equipe inteira, e _cienciasSalvarMinhas
+   grava apenas as chaves de quem esta logado. Apagar depois dela destruiria as
+   ciencias de quem ainda nao abriu o sistema — cenario real, porque navegadores
+   antigos regravam o campo com dados que podem nao estar no destino. */
+function _cienciasSalvarMapa(mapa){
+  try{
+    if(!window.fbDB || !mapa || typeof mapa !== 'object') return Promise.resolve(false);
+    var chaves = Object.keys(mapa).filter(function(k){ return Array.isArray(mapa[k]); });
+    if(!chaves.length) return Promise.resolve(false);
+    var chaveItem = function(x){ return (typeof x === 'string') ? x : JSON.stringify(x); };
+    // uniao com o destino, para nunca reduzir o que ja esta la
+    var ps = chaves.map(function(k){
+      var ref = window.fbDB.collection('por_usuario').doc(_cienciaChaveDoc(k));
+      return ref.get().then(function(d){
+        var jaLa = (d.exists && Array.isArray((d.data()||{}).ciencias)) ? d.data().ciencias : [];
+        var vistos = {}; jaLa.forEach(function(x){ vistos[chaveItem(x)] = 1; });
+        var uni = jaLa.slice();
+        mapa[k].forEach(function(x){ var c = chaveItem(x); if(!vistos[c]){ vistos[c]=1; uni.push(x); } });
+        if(uni.length === jaLa.length) return true;   // nada novo, nao grava a toa
+        return ref.set({ chave:k, ciencias:uni, atualizado_em:new Date().toISOString() }, {merge:true}).then(function(){ return true; });
+      });
+    });
+    return Promise.all(ps).then(function(rs){ return rs.every(Boolean); })
+      .catch(function(e){ console.warn('[ciencias mapa]', (e&&e.message)||e); return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+window._cienciasSalvarMapa = _cienciasSalvarMapa;
 function _cienciasCarregarTodas(){
   try{
     if(!window.fbDB) return Promise.resolve(false);
@@ -344,10 +373,13 @@ function _fsApplyToState(remote) {
         state.ciencias_por_usuario[em] = uni; changed = true;
       }
     });
+    // [v7.3.0] Salva o mapa INTEIRO (todas as pessoas), nao so as chaves de quem
+    // esta logado — o campo legado carrega as ciencias da equipe toda, e apagar
+    // depois de salvar so as minhas destruiria as dos outros.
     try{
-      if (typeof _cienciasSalvarMinhas === 'function') {
-        _cienciasSalvarMinhas().then(function(ok){
-          if (!ok) return;   // so limpa a origem depois de guardar no destino
+      if (typeof _cienciasSalvarMapa === 'function') {
+        _cienciasSalvarMapa(remote.ciencias_por_usuario).then(function(ok){
+          if (!ok) { console.warn('[FS] legado NAO removido: nem todas as ciencias foram gravadas no destino'); return; }
           try{
             _fsDocRef().update({
               ciencias_por_usuario: firebase.firestore.FieldValue.delete()
