@@ -1,0 +1,45 @@
+rules_version = '2';
+
+// Regras do Firebase Storage — Azuos Paralegal
+//
+// [02/08/2026] ANTES bastava `request.auth != null`: QUALQUER conta autenticada
+// do projeto — inclusive uma criada por um estranho pela API publica de cadastro,
+// sem estar em lista nenhuma — lia, sobrescrevia e apagava TODOS os anexos
+// (alvaras, documentos de clientes, prints). A autorizacao do Firestore nao valia
+// aqui, e essa porta passou despercebida quando a do banco foi fechada.
+// Agora o Storage usa a MESMA lista branca do firestore.rules.
+//
+// Ao mexer aqui, mexa tambem em firestore.rules — as duas listas precisam
+// concordar. Ver COMO-PUBLICAR-REGRAS-FIREBASE.md.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function autorizado() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+          'contato@azuoscontabil.com.br',
+          'thierrymforte@gmail.com',
+          'comercial@azuoscontabil.com.br',
+          'camila@azuoscontabil.com.br',
+          'ketrin@azuoscontabil.com.br',
+          'luannaferreirabatista20@gmail.com',
+          'diogenes@azuoscontabil.com.br',
+          'leylabraz1994@outlook.com',
+          'paralegal10@gmail.com',
+          'integracao.grupoazuos@gmail.com',
+          'grupob2bbrasil@icloud.com'
+        ];
+    }
+
+    match /anexos/{allPaths=**} {
+      allow read, write: if autorizado();
+    }
+
+    // Qualquer outro caminho fica bloqueado por padrão.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

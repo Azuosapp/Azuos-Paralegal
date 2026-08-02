@@ -38,7 +38,6 @@ service cloud.firestore {
           'comercial@azuoscontabil.com.br',
           'camila@azuoscontabil.com.br',
           'ketrin@azuoscontabil.com.br',
-          'luanna@azuoscontabil.com.br',        // conta antiga, ja removida do Auth
           'luannaferreirabatista20@gmail.com',  // Luanna — e ESTE o login dela desde 30/07/2026
           'diogenes@azuoscontabil.com.br',
           'leylabraz1994@outlook.com',         // Leyla — e ESTE o login dela

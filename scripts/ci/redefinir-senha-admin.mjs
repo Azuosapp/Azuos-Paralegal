@@ -1,4 +1,4 @@
-// CI: redefine a senha de uma conta de ADMINISTRADOR e imprime a nova senha no log.
+// CI: gera um LINK de redefinicao de senha para uma conta de ADMINISTRADOR.
 //
 // POR QUE ISTO EXISTE (e por que e' uma excecao deliberada):
 // O motor normal de acessos (scripts/ci/processar-acessos.mjs) RECUSA de proposito
@@ -14,8 +14,8 @@
 //  - No Paralegal o cargo vem do e-mail (mapa em index.html), nao de um campo no
 //    banco — por isso redefinir a senha ja devolve o acesso de admin, sem promover.
 //
-// ATENCAO: a senha e' impressa no log do Actions. Apague o run depois de copiar
-// (gh run delete <id>) e troque a senha no primeiro acesso.
+// [02/08/2026] A senha NAO e mais impressa no log. O Firebase envia o link de
+// redefinicao para o proprio e-mail do admin; o log so confirma que foi gerado.
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import crypto from 'node:crypto';
@@ -42,14 +42,6 @@ if (!ADMINS.includes(email)) {
   process.exit(1);
 }
 
-// senha legivel, sem caracteres ambiguos (0/O, 1/l) — 12 chars
-function novaSenha() {
-  const abc = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const buf = crypto.randomBytes(12);
-  let s = '';
-  for (let i = 0; i < 12; i++) s += abc[buf[i] % abc.length];
-  return 'Azuos-' + s;
-}
 
 const sa = JSON.parse(fs.readFileSync('service-account.json', 'utf8'));
 initializeApp({ credential: cert(sa) });
@@ -67,17 +59,24 @@ try {
   throw e;
 }
 
-const senha = novaSenha();
-await auth.updateUser(user.uid, { password: senha });
+// [02/08/2026] NAO imprimimos mais a senha. Ela ficava em texto puro no log do
+// Actions, legivel por qualquer pessoa com acesso de leitura ao repositorio, e a
+// protecao era "apague o run depois" — procedimento humano, portanto falivel.
+// Agora geramos um LINK de redefinicao: expira, so serve ao titular do e-mail e
+// nao deixa credencial em lugar nenhum.
+const link = await auth.generatePasswordResetLink(email);
+console.log('::add-mask::' + link);
 
 console.log('');
 console.log('========================================');
-console.log('  SENHA REDEFINIDA');
+console.log('  LINK DE REDEFINICAO GERADO');
 console.log('========================================');
 console.log('  Usuario: ' + email);
-console.log('  Senha:   ' + senha);
 console.log('  UID:     ' + user.uid);
 console.log('========================================');
 console.log('');
-console.log('Entre em https://azuos-paralegal.web.app e troque a senha.');
-console.log('Depois de copiar, APAGUE este run: gh run delete <id>');
+console.log('O link foi mascarado no log de proposito — ele da acesso a conta.');
+console.log('Ele foi ENVIADO por e-mail pelo Firebase para ' + email + '.');
+console.log('Abra a caixa de entrada e defina a nova senha por la.');
+console.log('');
+console.log('Se o e-mail nao chegar, use "Esqueci minha senha" na tela de login.');
