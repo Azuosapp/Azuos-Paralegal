@@ -204,10 +204,17 @@
             _o[k] = (val === undefined || val === null) ? '' : val;
           }
         });
-        var _patch = {}; _patch['edicoes_alvaras.' + alvaraId] = _o;
-        firebase.firestore().collection('azuos').doc('shared').update(_patch)
-          .then(function(){ console.log('[intel] próx. atualização do alvará ' + alvaraId + ' salva no Firestore'); })
-          .catch(function(err){ console.error('[intel] erro Firestore:', err.message); alert('Aviso: salvo localmente mas FALHOU no servidor.\n\n' + err.message); });
+        // [02/08/2026] As edicoes NAO voltam para o azuos/shared: gravar por campo
+        // aqui era um dos cinco pontos que recolocavam ~500 KB no documento e o
+        // levavam de volta ao limite de 1 MB, travando as gravacoes de todo mundo.
+        // Destino agora e o mesmo dos chunks (azuos/edicoes_*).
+        if (typeof window._edicoesCloudSave === 'function') {
+          window._edicoesCloudSave()
+            .then(function(ver){
+              if (ver) console.log('[intel] prox. atualizacao do alvara ' + alvaraId + ' salva na nuvem');
+              else alert('Aviso: salvo localmente, mas FALHOU no servidor. Tente de novo em instantes.');
+            });
+        }
       }
     } catch(e){ console.warn('[intel] firestore', e); }
 
