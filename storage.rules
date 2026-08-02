@@ -2,12 +2,22 @@ rules_version = '2';
 
 // Regras do Firebase Storage — Azuos Paralegal
 //
-// [02/08/2026] ANTES bastava `request.auth != null`: QUALQUER conta autenticada
-// do projeto — inclusive uma criada por um estranho pela API publica de cadastro,
-// sem estar em lista nenhuma — lia, sobrescrevia e apagava TODOS os anexos
-// (alvaras, documentos de clientes, prints). A autorizacao do Firestore nao valia
-// aqui, e essa porta passou despercebida quando a do banco foi fechada.
-// Agora o Storage usa a MESMA lista branca do firestore.rules.
+// [02/08/2026] ARQUIVO PREVENTIVO — o Storage NAO esta em uso hoje.
+// Conferido: index.html:110 inicializa firebase.storage(), mas nao ha um unico
+// upload, download ou ref no codigo. Os anexos moram no FIRESTORE, em azuos/anx_*
+// (ver public/firestore.js), ja cobertos por match /azuos/{doc=**}. E a API
+// firebasestorage.googleapis.com nem esta habilitada no projeto.
+//
+// Ainda assim, este arquivo estava com `allow read, write: if request.auth != null`,
+// que no dia em que o Storage fosse ativado deixaria QUALQUER conta autenticada —
+// inclusive uma criada por um estranho pela API publica — ler e apagar todos os
+// anexos. Endurecido agora, com a MESMA lista branca do firestore.rules, para a
+// porta ja nascer fechada.
+//
+// PARA ATIVAR: habilite a API no Console, devolva a secao "storage" ao
+// firebase.json e volte a incluir 'storage' no deploy-firestore-rules.yml.
+// Incluir antes disso quebra o deploy INTEIRO e impede ate as regras do Firestore
+// de serem publicadas — foi o que aconteceu na primeira tentativa.
 //
 // Ao mexer aqui, mexa tambem em firestore.rules — as duas listas precisam
 // concordar. Ver COMO-PUBLICAR-REGRAS-FIREBASE.md.

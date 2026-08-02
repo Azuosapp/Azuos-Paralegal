@@ -80,7 +80,15 @@ jobs:
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
         run: |
+          # [02/08/2026] SO firestore:rules. Incluir 'storage' quebrou o deploy INTEIRO:
+          # a API firebasestorage.googleapis.com nao esta habilitada no projeto e a
+          # conta de servico nao pode habilita-la, entao o comando abortava ANTES de
+          # publicar as regras do Firestore — deixando de fora uma correcao de
+          # seguranca. O app inicializa o Storage mas nunca o usa: os anexos moram no
+          # Firestore (azuos/anx_*). O storage.rules fica versionado e endurecido para
+          # o dia em que o Storage for realmente ativado; neste dia, habilite a API no
+          # Console e volte a incluir 'storage' aqui.
           npx --yes firebase-tools@13 deploy \
-            --only firestore:rules,storage \
+            --only firestore:rules \
             --project azuos-paralegal \
             --non-interactive --force
