@@ -1,4 +1,4 @@
-name: Deploy Firestore Rules
+name: Deploy Regras (Firestore + Storage)
 
 # Publica firestore.rules no projeto.
 #
@@ -18,6 +18,7 @@ on:
     branches: [main]
     paths:
       - 'firestore.rules'
+      - 'storage.rules'
       - 'firebase.json'
       - '.github/workflows/deploy-firestore-rules.yml'
   workflow_dispatch:
@@ -63,14 +64,23 @@ jobs:
 
       - name: Mostrar quem sera autorizado (conferencia no log)
         run: |
-          echo "E-mails que ficarao com permissao de escrita:"
+          echo "Firestore:"
           grep -oE "'[^']+@[^']+'" firestore.rules | tr -d "'" | sed 's/^/  - /'
+          echo "Storage:"
+          grep -oE "'[^']+@[^']+'" storage.rules | tr -d "'" | sed 's/^/  - /'
+          # As duas listas TEM de concordar: o Storage guarda os anexos dos alvaras
+          # e ficou meses aceitando qualquer conta autenticada por estarem separadas.
+          if ! diff -q <(grep -oE "'[^']+@[^']+'" firestore.rules | sort -u) \
+                       <(grep -oE "'[^']+@[^']+'" storage.rules | sort -u) >/dev/null; then
+            echo "ERRO: as listas de firestore.rules e storage.rules divergem."; exit 1
+          fi
+          echo "OK: as duas listas sao identicas."
 
       - name: Publicar as regras
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
         run: |
           npx --yes firebase-tools@13 deploy \
-            --only firestore:rules \
+            --only firestore:rules,storage \
             --project azuos-paralegal \
             --non-interactive --force
