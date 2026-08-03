@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>AZUOS Paralegal - Sistema v7.4.0 (Manutenção)</title>
+<title>AZUOS Paralegal - Sistema v7.5.0 (Manutenção)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://unpkg.com/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
@@ -443,7 +443,9 @@ async function bootFirestoreSync() {
     if (typeof window._edicoesCloudLoad === 'function') {
       const _eds = await window._edicoesCloudLoad();
       if (_eds && typeof window._mesclarEdicoesAlvaras === 'function') {
+        // _mesclarEdicoesAlvaras ja reaplica a sobreposicao nos alvaras
         if (window._mesclarEdicoesAlvaras(_eds)) { try{ saveState(); }catch(e){} try{ _renderAdiavel(); }catch(e){} }
+        else { try{ window._aplicarEdicoesNosArrays(); }catch(e){} }
       }
     }
   }catch(e){ console.warn('[edicoes boot]', e && e.message); }
@@ -2551,6 +2553,12 @@ async function handleSyncDriveAuto() {
       }
     });
     sanearTipos();
+    // [03/08/2026] REAPLICA as edicoes da equipe por cima da base recem-trocada.
+    // Sem isto, a cada sync (boot e de 10 em 10 minutos) os alvaras voltavam a
+    // exibir o valor da BASE — que veio da planilha —, dando a impressao de que o
+    // sistema "continua atualizando o alvara conforme a planilha". A edicao nunca
+    // era perdida no banco: sumia so da tela, ate alguem reabrir o alvara.
+    try{ if (typeof window._aplicarEdicoesNosArrays === 'function') window._aplicarEdicoesNosArrays(); }catch(e){}
     // [v6.1.10] reinjetarEmpresasManuais() ja rodou ANTES do calculo de idsAtivo.
     console.log('[Sync] Filtrado:', state.empresas.length, 'ATIVO de', todasEmpresas.length, 'total empresas |', state.alvaras.length, 'alvarás de ATIVO |', restaurados, 'com dados do usuário preservados');
     // DIAGNÓSTICO v5.2: mostra amostra dos alvarás recebidos
@@ -2753,6 +2761,12 @@ async function handleSyncDrive() {
       }
     });
     sanearTipos();
+    // [03/08/2026] REAPLICA as edicoes da equipe por cima da base recem-trocada.
+    // Sem isto, a cada sync (boot e de 10 em 10 minutos) os alvaras voltavam a
+    // exibir o valor da BASE — que veio da planilha —, dando a impressao de que o
+    // sistema "continua atualizando o alvara conforme a planilha". A edicao nunca
+    // era perdida no banco: sumia so da tela, ate alguem reabrir o alvara.
+    try{ if (typeof window._aplicarEdicoesNosArrays === 'function') window._aplicarEdicoesNosArrays(); }catch(e){}
     // [v6.1.10] reinjetarEmpresasManuais() ja rodou ANTES do calculo de idsAtivo.
     console.log('[Sync] Filtrado:', state.empresas.length, 'ATIVO de', todasEmpresas.length, 'total empresas |', state.alvaras.length, 'alvarás de ATIVO |', restaurados, 'com dados do usuário preservados');
     // DIAGNÓSTICO v5.2: mostra amostra dos alvarás recebidos

@@ -131,6 +131,9 @@ function _mesclarEdicoesAlvaras(remotas){
       if(tR > tL){ state.edicoes_alvaras[aid] = _mesclarAnexosLocais(r, l); mudou = true; }
     });
   }catch(e){ console.warn('[edicoes merge]', (e&&e.message)||e); }
+  // reaplica por cima dos alvaras: sem isto a edicao existe no estado mas a TELA
+  // continua mostrando o valor da base (que veio da planilha).
+  if (mudou) { try{ _aplicarEdicoesNosArrays(); }catch(e){} }
   return mudou;
 }
 function _edicoesCloudSave(){
@@ -391,20 +394,41 @@ function _fsApplyToState(remote) {
     }catch(e){}
   }
   // Overlay de edições nos arrays do SEED
-  if (state.edicoes_alvaras) {
-    Object.keys(state.edicoes_alvaras).forEach(aid => {
-      const alv = (state.alvaras || []).find(a => a.id == aid);
-      if (alv) Object.assign(alv, state.edicoes_alvaras[aid]);
-    });
-  }
-  if (state.edicoes_empresas) {
-    Object.keys(state.edicoes_empresas).forEach(eid => {
-      const emp = (state.empresas || []).find(e => e.id == eid);
-      if (emp) Object.assign(emp, state.edicoes_empresas[eid]);
-    });
-  }
+  _aplicarEdicoesNosArrays();
   return changed;
 }
+
+/* [03/08/2026] A SOBREPOSICAO virou funcao propria e passou a ser chamada em TODO
+   ponto que troca state.alvaras ou traz edicoes novas.
+   Antes ela existia so aqui dentro, e isso produzia o sintoma relatado: "o sistema
+   continua atualizando o alvara conforme a planilha". Nao era a planilha gravando
+   — era a EDICAO DA EQUIPE sumindo da tela. Dois caminhos:
+     - o sync (a cada 10 min) substitui state.alvaras pela base da nuvem e nao
+       reaplicava as edicoes por cima;
+     - no boot, as edicoes chegam dos chunks DEPOIS do _fsApplyToState, entao a
+       sobreposicao rodava sobre um mapa ainda vazio.
+   Em ambos, o alvara voltava a exibir o valor da base — que veio da planilha. */
+function _aplicarEdicoesNosArrays(){
+  try{
+    if (state.edicoes_alvaras) {
+      var porId = {};
+      (state.alvaras || []).forEach(function(a){ if(a && a.id != null) porId[String(a.id)] = a; });
+      Object.keys(state.edicoes_alvaras).forEach(function(aid){
+        var alv = porId[String(aid)];
+        if (alv) Object.assign(alv, state.edicoes_alvaras[aid]);
+      });
+    }
+    if (state.edicoes_empresas) {
+      var empPorId = {};
+      (state.empresas || []).forEach(function(e){ if(e && e.id != null) empPorId[String(e.id)] = e; });
+      Object.keys(state.edicoes_empresas).forEach(function(eid){
+        var emp = empPorId[String(eid)];
+        if (emp) Object.assign(emp, state.edicoes_empresas[eid]);
+      });
+    }
+  }catch(e){ console.warn('[overlay]', (e&&e.message)||e); }
+}
+window._aplicarEdicoesNosArrays = _aplicarEdicoesNosArrays;
 
 /* ============================================================
    v6.18.0 — Sincronizacao de ARQUIVO dos anexos entre dispositivos.
