@@ -7489,8 +7489,16 @@ function abrirBaselineDialog() {
         Object.keys(v).forEach(function(k){ o[k] = sanitize(v[k]); });
         return o;
       }
+      // [04/08/2026] ciencias_por_usuario SAIU deste patch.
+      // As ciencias mudaram de casa na v7.0.0: vivem em por_usuario/{chave}, fora do
+      // azuos/shared, porque o shared estourou 1 MB e travou TODAS as gravacoes do
+      // sistema. Esta funcao continuava regravando o campo legado dentro do shared, a
+      // cada 5 minutos, em TODO navegador logado — desfazendo a migracao sem parar.
+      // Do outro lado, _absorverCienciasLegado apagava o campo a cada chegada. Um
+      // gravava, outro apagava, e cada volta gerava snapshot para todo mundo: o
+      // shared voltava a crescer e a tela repintava sozinha. Era o mesmo defeito do
+      // detector de 20s dos alvaras, na versao das ciencias.
       var patch = {
-        ciencias_por_usuario: sanitize(state.ciencias_por_usuario || {}),
         empresas_manuais: sanitize(state.empresas_manuais || []),
         resumo_visto_por_usuario: sanitize(state.resumo_visto_por_usuario || {}),
         last_modified_by: (state.sessao && state.sessao.nome) || 'desconhecido',
@@ -10062,23 +10070,44 @@ try{
       } catch(e) { console.warn('[v6.fase1] ciências subcol erro:', e.message); }
 
       // ===== Leitura: edições de alvarás da subcoleção =====
+      // [04/08/2026] Este bloco fazia `state.edicoes_alvaras[alvId] = dados` — a
+      // ÚNICA adoção de edição remota no sistema inteiro que não comparava
+      // _editado_em. Rodava 6s após o boot, logo depois de os chunks trazerem as
+      // edições boas, e as sobrescrevia.
+      //
+      // E a cópia que ele impunha era PARCIAL: a subcoleção só é alimentada pelo
+      // hook do modal. O detector de 20s, o Centro de Inteligência e as filas de
+      // reenvio nunca escreveram aqui. Então uma cópia velha e incompleta vencia a
+      // atual — é o "minha edição sumiu" e o "voltou o valor da planilha". Também
+      // explica a Inteligência: a pessoa atualizava, o número caía, e no próximo
+      // acesso de alguém a atualização era desfeita e o total voltava a subir.
+      //
+      // Agora passa pelo MESMO merge das outras origens, que compara _editado_em e
+      // faz união dos anexos. E roda uma vez por navegador: a leitura varre a
+      // subcoleção inteira a cada boot, o que custa uma leitura por documento — foi
+      // assim que a cota diária do projeto foi estourada em 04/08.
       try {
-        const eSnap = await db.collection('azuos').doc('edicoes').collection('alvaras').get();
-        if (!eSnap.empty) {
-          state.edicoes_alvaras = state.edicoes_alvaras || {};
-          let aplicadas = 0;
-          eSnap.forEach(doc => {
-            const dados = doc.data();
-            if (!dados) return;
-            const alvId = doc.id;
-            // Subcoleção tem prioridade
-            state.edicoes_alvaras[alvId] = dados;
-            // Aplicar no overlay state.alvaras
-            const alv = (state.alvaras || []).find(a => String(a.id) === alvId);
-            if (alv) Object.assign(alv, dados);
-            aplicadas++;
-          });
-          console.log('[v6.fase1] ' + aplicadas + ' edições aplicadas da subcoleção');
+        const _jaAbsorveu = (function(){ try{ return localStorage.getItem('azuos_fase1_absorvida') === '1'; }catch(e){ return false; } })();
+        if (_jaAbsorveu) {
+          console.log('[v6.fase1] subcoleção de edições já absorvida neste navegador — não relendo');
+        } else {
+          const eSnap = await db.collection('azuos').doc('edicoes').collection('alvaras').get();
+          if (!eSnap.empty) {
+            const remotas = {};
+            eSnap.forEach(doc => { const d = doc.data(); if (d) remotas[doc.id] = d; });
+            let mudou = false;
+            if (typeof window._mesclarEdicoesAlvaras === 'function') {
+              mudou = window._mesclarEdicoesAlvaras(remotas);
+            }
+            console.log('[v6.fase1] subcoleção lida: ' + Object.keys(remotas).length
+              + ' edições, ' + (mudou ? 'algo novo foi absorvido' : 'nada novo'));
+            // O que era exclusivo da subcoleção agora vive nos chunks, que são o
+            // destino oficial desde a v7.2.0.
+            if (mudou && typeof window._edicoesCloudSave === 'function') {
+              try { await window._edicoesCloudSave(); } catch(e) { console.warn('[v6.fase1] publicar:', e && e.message); }
+            }
+          }
+          try{ localStorage.setItem('azuos_fase1_absorvida','1'); }catch(e){}
         }
       } catch(e) { console.warn('[v6.fase1] edições subcol erro:', e.message); }
 
