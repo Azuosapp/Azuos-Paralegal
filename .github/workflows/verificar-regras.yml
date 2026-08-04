@@ -415,6 +415,59 @@ jobs:
               const q = m.ver ? new Date(m.ver).toISOString().slice(0, 16).replace('T', ' ') : 'sem data';
               console.log('EDICOES (chunks): ' + (m.count || 0) + ' alvaras editados, ' + (m.n || 0) + ' pedaco(s), ultima gravacao ' + q);
             }
+            // ---- A SOBREPOSICAO ESTA CASANDO? ----
+            // [04/08/2026] Relato: "na Inteligencia os totalizadores so aumentam e
+            // nunca diminuem, mesmo o pessoal atualizando". A sobreposicao das edicoes
+            // sobre os alvaras casa por ID. Se os ids da BASE nao forem os mesmos das
+            // CHAVES das edicoes, nenhuma atualizacao aparece na tela: o alvara segue
+            // exibindo o valor da base, as auditorias continuam apontando o mesmo
+            // problema, e o total so cresce com o tempo. Aqui medimos a intersecao
+            // real, em vez de supor.
+            const mAlv = await admin.firestore().doc('azuos/alvaras_meta').get();
+            if (!mAlv.exists) {
+              console.log('BASE DE ALVARAS: azuos/alvaras_meta nao existe.');
+            } else {
+              const nA = (mAlv.data() || {}).n || 0;
+              let bruto = '';
+              for (let i = 0; i < nA; i++) {
+                const d = await admin.firestore().doc('azuos/alvaras_' + i).get();
+                bruto += ((d.exists && d.data()) || {}).d || '';
+              }
+              const base = JSON.parse(bruto || '[]');
+              const idsBase = new Set(base.map(a => String(a && a.id)));
+
+              const mEd = await admin.firestore().doc('azuos/edicoes_meta').get();
+              let brutoE = '';
+              const nE = (mEd.exists && mEd.data().n) || 0;
+              for (let i = 0; i < nE; i++) {
+                const d = await admin.firestore().doc('azuos/edicoes_' + i).get();
+                brutoE += ((d.exists && d.data()) || {}).d || '';
+              }
+              const eds = JSON.parse(brutoE || '{}');
+              const chavesEd = Object.keys(eds);
+              const casam = chavesEd.filter(k => idsBase.has(String(k)));
+
+              console.log('SOBREPOSICAO EDICOES x BASE:');
+              console.log('   alvaras na base ................ ' + base.length);
+              console.log('   alvaras com edicao da equipe ... ' + chavesEd.length);
+              console.log('   edicoes que CASAM com a base ... ' + casam.length
+                + (chavesEd.length ? '  (' + Math.round(100 * casam.length / chavesEd.length) + '%)' : ''));
+              const orfas = chavesEd.length - casam.length;
+              if (orfas > 0) {
+                console.log('   >>> ' + orfas + ' edicoes ORFAS: apontam para um id que nao existe mais na base.');
+                console.log('   >>> Essas atualizacoes NAO aparecem na tela e as auditorias seguem contando o problema.');
+                console.log('   exemplos de chave orfa: ' + chavesEd.filter(k => !idsBase.has(String(k))).slice(0, 8).join(', '));
+              } else {
+                console.log('   OK: toda edicao casa com um alvara da base.');
+              }
+
+              // Quantos alvarás a equipe ja atualizou de fato (proxima_atualizacao preenchida)
+              let comProxEd = 0;
+              casam.forEach(k => { const e = eds[k] || {}; if (e.proxima_atualizacao && String(e.proxima_atualizacao).trim()) comProxEd++; });
+              let comProxBase = 0;
+              base.forEach(a => { if (a && a.proxima_atualizacao && String(a.proxima_atualizacao).trim()) comProxBase++; });
+              console.log('   proxima_atualizacao preenchida: ' + comProxBase + ' na base, ' + comProxEd + ' vindas de edicao da equipe');
+            }
           } catch (e) {
             console.log('nao consegui ler edicoes_meta:', (e && e.message) || e);
           }
