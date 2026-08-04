@@ -96,6 +96,16 @@ try {
     messagingSenderId: "52437045936",
     appId: "1:52437045936:web:5762127abd93c8d7996175"
   };
+  // [04/08/2026] Storage dos anexos no Supabase (o mesmo do Trilha, plano Pro).
+  // ENQUANTO ESTIVER VAZIO, nada muda: os anexos continuam indo e vindo do
+  // Firestore, exatamente como hoje. Preencher isto ativa o caminho novo.
+  // A chave `anon` e publica por natureza — ela ja viaja no pacote do site do
+  // Trilha. A chave de SERVICO nunca entra aqui: ela mora so no ambiente da Edge
+  // Function, porque da acesso total ao banco compartilhado com o Trilha.
+  // Instrucoes de publicacao em supabase/README.md.
+  window._SB_CFG = null;
+  // window._SB_CFG = { url: 'https://<REF>.supabase.co', anon: '<ANON KEY>', funcao: 'anexos' };
+
   firebase.initializeApp(firebaseConfig);
   window.fbAuth = firebase.auth();
   // [v6.0.42] SEGURANCA (PCs compartilhados): persistencia de SESSAO — ao FECHAR o

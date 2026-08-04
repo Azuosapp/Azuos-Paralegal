@@ -612,12 +612,129 @@ var _anexoCloudCache = {};        // chave -> base64 (cache de sessao)
 var _anexoPushFeito = {};         // chave -> true (evita repush)
 function _anexoDoc(id){ return window.fbDB.collection('azuos').doc(id); }
 
+/* ============================================================
+   [04/08/2026] ANEXOS SAINDO DO BANCO PARA O STORAGE DO SUPABASE.
+
+   POR QUE. Hoje o arquivo vira texto (base64) e mora DENTRO do Firestore: sao
+   13.219 documentos de anexo. O Firestore cobra caro por espaco — o plano do
+   projeto da 1 GiB e a estimativa passa de 2 GB — e cada abertura de anexo gasta
+   cota de LEITURA do banco, a mesma cota que, esgotada, aparece para a equipe como
+   "nao consigo salvar". Arquivo pertence a um servico de arquivo.
+
+   DECISAO QUE TORNA A MIGRACAO QUASE SEM RISCO: o ponteiro NAO muda. O alvara
+   continua guardando a mesma chave `_idb`; muda so ONDE os bytes estao. Entao a
+   migracao nunca toca em alvara nenhum — ela copia bytes e apaga o documento
+   antigo. E a leitura tenta os dois lugares, o que torna a troca invisivel para
+   quem usa: anexo migrado abre do Supabase, anexo ainda nao migrado abre do
+   Firestore, e ninguem percebe a diferenca.
+
+   POR QUE PASSA POR UMA FUNCAO E NAO DIRETO. O Paralegal e uma pagina estatica,
+   sem servidor. A chave de administracao do Supabase da acesso total ao banco do
+   Trilha (alunos, feed, tudo); colocar isso na pagina entrega o sistema inteiro a
+   quem abrir o inspecionar do navegador. Entao a pagina pede uma AUTORIZACAO
+   TEMPORARIA a uma funcao, que confere quem e a pessoa e devolve um endereco
+   assinado com validade curta. O arquivo sobe direto da pagina para o Supabase — a
+   funcao so autoriza, nao carrega o arquivo.
+
+   ENQUANTO NAO ESTIVER CONFIGURADO, nada muda: sem _SB_CFG preenchido, todas as
+   funcoes abaixo devolvem null na hora e o caminho antigo (Firestore) continua
+   valendo integralmente. */
+function _sbCfg(){
+  var c = (typeof window !== 'undefined') ? window._SB_CFG : null;
+  if (!c || !c.url || !c.anon || !c.funcao) return null;
+  return c;
+}
+
+/* Pede a autorizacao temporaria. `acao` e 'upload' ou 'download'. */
+function _sbAutorizar(acao, chave, meta){
+  var cfg = _sbCfg();
+  if (!cfg) return Promise.resolve(null);
+  var u = (window.fbAuth && window.fbAuth.currentUser) ? window.fbAuth.currentUser : null;
+  if (!u) return Promise.resolve(null);
+  return u.getIdToken().then(function(tok){
+    return fetch(cfg.url.replace(/\/$/, '') + '/functions/v1/' + cfg.funcao, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': cfg.anon,
+        'Authorization': 'Bearer ' + tok   // token do FIREBASE; a funcao o valida
+      },
+      body: JSON.stringify({ acao: acao, chave: String(chave), nome: (meta&&meta.nome)||'', tipo: (meta&&meta.tipo)||'' })
+    }).then(function(r){
+      if (!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+t.slice(0,120)); });
+      return r.json();
+    });
+  }).catch(function(e){ console.warn('[anexo supabase autorizar]', (e&&e.message)||e); return null; });
+}
+
+/* Sobe o arquivo direto para o Supabase. Devolve true so quando o envio confirma. */
+function _anexoSupabasePush(chave, dataUrl, meta){
+  try{
+    if (!_sbCfg()) return Promise.resolve(false);
+    return _sbAutorizar('upload', chave, meta).then(function(aut){
+      if (!aut || !aut.url) return false;
+      // data URL -> binario, sem inflar a memoria com uma copia em texto
+      var virgula = dataUrl.indexOf(',');
+      var tipo = (dataUrl.slice(5, virgula).split(';')[0]) || 'application/octet-stream';
+      var bin = atob(dataUrl.slice(virgula + 1));
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return fetch(aut.url, {
+        method: 'PUT',
+        headers: { 'Content-Type': tipo },
+        body: bytes
+      }).then(function(r){ return !!r.ok; });
+    }).catch(function(e){ console.warn('[anexo supabase push]', (e&&e.message)||e); return false; });
+  }catch(e){ return Promise.resolve(false); }
+}
+
+/* Busca o arquivo no Supabase e devolve como data URL, o formato que a tela ja usa. */
+function _anexoSupabaseFetch(chave){
+  try{
+    if (!_sbCfg()) return Promise.resolve(null);
+    return _sbAutorizar('download', chave, null).then(function(aut){
+      if (!aut || !aut.url) return null;
+      return fetch(aut.url).then(function(r){
+        if (!r.ok) return null;
+        return r.blob().then(function(b){
+          return new Promise(function(res){
+            var fr = new FileReader();
+            fr.onload = function(){ res(fr.result); };
+            fr.onerror = function(){ res(null); };
+            fr.readAsDataURL(b);
+          });
+        });
+      });
+    }).catch(function(e){ console.warn('[anexo supabase fetch]', (e&&e.message)||e); return null; });
+  }catch(e){ return Promise.resolve(null); }
+}
+
 function _anexoCloudPush(chave, dados, meta){
   // v6.19.0 — grava DIRETO (sem leitura previa que travava quando offline).
   // Marca como concluido SO apos o write completar, entao falhas permitem nova tentativa.
   try{
     if(!chave || !dados || typeof dados!=='string' || dados.indexOf('data:')!==0) return Promise.resolve(false);
     if(_anexoPushFeito[chave]) return Promise.resolve(true);
+    // [04/08/2026] Storage primeiro; o Firestore vira rede de seguranca.
+    // Se o Supabase estiver configurado e aceitar, o arquivo NAO entra no banco.
+    // Se falhar por qualquer motivo — funcao fora do ar, rede, autorizacao — caimos
+    // no caminho antigo, que funciona hoje. O usuario nao pode perder anexo porque
+    // uma peca nova nao respondeu.
+    if(_sbCfg()){
+      return _anexoSupabasePush(chave, dados, meta).then(function(ok){
+        if(ok){ _anexoPushFeito[chave]=true; return true; }
+        console.warn('[anexo] Supabase recusou; gravando no Firestore como antes');
+        return _anexoCloudPushFirestore(chave, dados, meta);
+      });
+    }
+    return _anexoCloudPushFirestore(chave, dados, meta);
+  }catch(e){ return Promise.resolve(false); }
+}
+
+/* Caminho antigo, preservado inteiro: o anexo em pedacos dentro do Firestore.
+   Continua sendo usado como rede de seguranca e para ler o que ainda nao migrou. */
+function _anexoCloudPushFirestore(chave, dados, meta){
+  try{
     if(!window.fbDB) return Promise.resolve(false);
     var chunks=[]; for(var i=0;i<dados.length;i+=_ANEXO_CH){ chunks.push(dados.slice(i,i+_ANEXO_CH)); }
     var head = { n: chunks.length, nome:(meta&&meta.nome)||'', tipo:(meta&&meta.tipo)||'', ts: Date.now() };
@@ -633,6 +750,21 @@ function _anexoCloudFetch(chave){
   try{
     if(!chave) return Promise.resolve(null);
     if(_anexoCloudCache[chave]) return Promise.resolve(_anexoCloudCache[chave]);
+    // [04/08/2026] Tenta o Storage e, se nao achar, o Firestore. E isto que torna a
+    // migracao invisivel: anexo ja movido abre de um lado, anexo ainda nao movido
+    // abre do outro, e quem usa nao percebe diferenca nenhuma.
+    if(_sbCfg()){
+      return _anexoSupabaseFetch(chave).then(function(b64){
+        if(b64){ _anexoCloudCache[chave]=b64; return b64; }
+        return _anexoCloudFetchFirestore(chave);
+      });
+    }
+    return _anexoCloudFetchFirestore(chave);
+  }catch(e){ return Promise.resolve(null); }
+}
+
+function _anexoCloudFetchFirestore(chave){
+  try{
     if(!window.fbDB) return Promise.resolve(null);
     return _anexoDoc(_ANEXO_PREFIX + chave).get().then(function(doc){
       if(!doc || !doc.exists) return null;
