@@ -370,7 +370,56 @@ jobs:
           }
           console.log('');
 
-          // ---- O que ocupa espaco DENTRO de edicoes_alvaras ----
+          // ---- ANEXOS: estao mesmo chegando na nuvem? ----
+          // [04/08/2026] Relato "nao esta permitindo salvar arquivos". O anexo vai para
+          // azuos/anx_<id> (mais anx_<id>__N quando fatiado). Se a gravacao estivesse
+          // falhando, nao apareceria doc novo aqui. Sem esta medicao, "o anexo nao salva"
+          // fica sendo palavra contra palavra.
+          try {
+            const snap = await admin.firestore().collection('azuos').get();
+            const anx = [], chunks = [];
+            let maior = 0, maiorId = '';
+            snap.forEach(d => {
+              if (!d.id.startsWith('anx_')) return;
+              const v = d.data() || {};
+              const bytes = Buffer.byteLength(JSON.stringify(v), 'utf8');
+              if (bytes > maior) { maior = bytes; maiorId = d.id; }
+              if (d.id.includes('__')) chunks.push(d.id);
+              else anx.push({ id: d.id, ts: v.ts || 0, nome: v.nome || '', n: v.n || 1, bytes });
+            });
+            anx.sort((a, b) => b.ts - a.ts);
+            console.log('ANEXOS NA NUVEM: ' + anx.length + ' arquivos (' + chunks.length + ' pedacos extras)');
+            console.log('   maior documento: ' + Math.round(maior / 1024) + ' KB de 1024 KB' + (maior > 1000000 ? '  <<< NO LIMITE' : '') + (maiorId ? '  (' + maiorId + ')' : ''));
+            console.log('   os 10 mais recentes:');
+            anx.slice(0, 10).forEach(a => {
+              const q = a.ts ? new Date(a.ts).toISOString().slice(0, 16).replace('T', ' ') : 'sem data';
+              console.log('     ' + q + '  ' + String(Math.round(a.bytes / 1024)).padStart(4) + ' KB  ' + (a.nome || a.id).slice(0, 50));
+            });
+            if (!anx.length) console.log('   >>> NENHUM anexo na nuvem: a gravacao de arquivo nao esta funcionando.');
+          } catch (e) {
+            console.log('nao consegui medir os anexos:', (e && e.message) || e);
+          }
+          console.log('');
+
+          // ---- EDICOES: agora moram em chunks, nao no shared ----
+          // [04/08/2026] Esta secao lia dados.edicoes_alvaras, campo que saiu do shared
+          // na v7.2.0 — entao vinha reportando ZERO edicoes desde entao, escondendo
+          // exatamente o dado que precisavamos olhar.
+          try {
+            const meta = await admin.firestore().doc('azuos/edicoes_meta').get();
+            if (!meta.exists) {
+              console.log('EDICOES: azuos/edicoes_meta nao existe — nada foi salvo pelos chunks ainda.');
+            } else {
+              const m = meta.data() || {};
+              const q = m.ver ? new Date(m.ver).toISOString().slice(0, 16).replace('T', ' ') : 'sem data';
+              console.log('EDICOES (chunks): ' + (m.count || 0) + ' alvaras editados, ' + (m.n || 0) + ' pedaco(s), ultima gravacao ' + q);
+            }
+          } catch (e) {
+            console.log('nao consegui ler edicoes_meta:', (e && e.message) || e);
+          }
+          console.log('');
+
+          // ---- Legado: o que ainda restou de edicoes dentro do shared ----
           try {
             const eds = dados.edicoes_alvaras || {};
             const ids = Object.keys(eds);
