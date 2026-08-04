@@ -75,3 +75,33 @@ function _idEmpresaDeterministico(nome, cnpj){
   return 1000000 + ((h >>> 0) % 900000000);
 }
 if (typeof window !== 'undefined') window._idEmpresaDeterministico = _idEmpresaDeterministico;
+
+/* [04/08/2026] ASSINATURA DO DOCUMENTO COMPARTILHADO, para pular gravacao inutil.
+
+   O azuos/shared tem um onSnapshot por pessoa conectada. Cada gravacao vira uma
+   leitura para CADA navegador aberto: com 15 pessoas, um write sem mudanca custa 15
+   leituras. O saveState e chamado por temporizadores, por render e pelo sync, muitas
+   vezes sem nenhuma mudanca real — era isso que consumia o teto diario do projeto, e
+   cota esgotada chega na equipe como "nao consigo salvar".
+
+   CAMPOS VOLATEIS FICAM DE FORA. last_modified_at e um serverTimestamp: muda em toda
+   coleta e faria a comparacao nunca casar. Seria o mesmo defeito do carimbo
+   edicoes_ver, que comparava valores de origens diferentes e por isso ficava
+   permanentemente desigual, fazendo todo snapshot recarregar tudo.
+
+   Devolve null quando nao consegue serializar — quem chama deve GRAVAR nesse caso,
+   nunca pular: na duvida, gravar e o lado seguro. */
+var _CAMPOS_VOLATEIS = ['last_modified_at'];
+function _assinaturaDocumento(payload){
+  try{
+    if (!payload || typeof payload !== 'object') return null;
+    var limpo = {};
+    Object.keys(payload).sort().forEach(function(k){
+      if (_CAMPOS_VOLATEIS.indexOf(k) >= 0) return;
+      limpo[k] = payload[k];
+    });
+    var s = JSON.stringify(limpo);
+    return (typeof s === 'string') ? s : null;
+  }catch(e){ return null; }
+}
+if (typeof window !== 'undefined') window._assinaturaDocumento = _assinaturaDocumento;

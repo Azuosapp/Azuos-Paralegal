@@ -325,8 +325,31 @@ async function _fsWriteNow() {
         }
       }
     } catch(_){}
+    // [04/08/2026] NAO grava quando nada mudou.
+    //
+    // Este write era incondicional: todo saveState mandava o documento inteiro, e o
+    // saveState e chamado por temporizadores, por render, por sync — muitas vezes
+    // sem nenhuma mudanca real. O custo nao e so a gravacao: o azuos/shared tem um
+    // onSnapshot por pessoa conectada, entao CADA gravacao vira uma leitura para
+    // cada navegador aberto. Com 15 pessoas, um write inutil custa 15 leituras.
+    // Multiplicado pelo dia, e o que consome o teto diario do projeto — e cota
+    // esgotada aparece para a equipe como "nao consigo salvar".
+    //
+    // last_modified_at fica FORA da assinatura: e um serverTimestamp, muda sempre e
+    // faria a comparacao nunca casar, que e o mesmo defeito do carimbo edicoes_ver.
+    // A assinatura mora em public/lib.js para poder ser testada — a exclusao do
+    // campo volatil e a parte que, se alguem tirar, quebra a economia em silencio.
+    var _assinDoc = (typeof window._assinaturaDocumento === 'function')
+      ? window._assinaturaDocumento(_payload) : null;
+    if (_assinDoc !== null && _assinDoc === window._fsAssinDoc) {
+      console.log('[FS] nada mudou — write pulado (economiza 1 leitura por pessoa conectada)');
+      return true;
+    }
+
     window._fsIgnoreNext = true;
     await ref.set(_payload, {merge: true});
+    // So memoriza DEPOIS do sucesso: se a gravacao falhar, a proxima precisa tentar.
+    if (_assinDoc !== null) window._fsAssinDoc = _assinDoc;
     console.log('[FS] State sincronizado para nuvem');
     return true;   // [v6.9.0] quem chama precisa saber se CHEGOU mesmo
   } catch(e) {

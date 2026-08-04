@@ -121,3 +121,48 @@ test('salvarEdicaoDeAlvara recusa chamada sem id, sem gravar nada', async () => 
   assert.equal(r, false);
   assert.deepEqual(escritas, []);
 });
+
+/* ---- assinatura do documento compartilhado ----
+ * O azuos/shared tem um onSnapshot por pessoa conectada: cada gravação vira uma
+ * leitura para cada navegador aberto. Pular gravação sem mudança é o que segura o
+ * consumo diário. A parte frágil é excluir o campo volátil — sem isso a comparação
+ * nunca casa e a economia some em silêncio, que é exatamente o defeito que o
+ * carimbo edicoes_ver teve. */
+function carregarLibDoc() {
+  const src = readFileSync('public/lib.js', 'utf-8');
+  const ctx = { window: {}, console, Math, String, Number, Date, JSON, Object, Array, isNaN, parseInt, parseFloat };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx, { filename: 'public/lib.js' });
+  return ctx;
+}
+
+test('mesmo conteúdo com carimbo de tempo diferente dá a MESMA assinatura', () => {
+  const c = carregarLibDoc();
+  const a = c._assinaturaDocumento({ manutencao: [1, 2], last_modified_at: 'AAA' });
+  const b = c._assinaturaDocumento({ manutencao: [1, 2], last_modified_at: 'ZZZ' });
+  assert.equal(a, b, 'o campo volátil entrou na conta — a economia de leitura não funcionaria');
+});
+
+test('mudança de verdade muda a assinatura', () => {
+  const c = carregarLibDoc();
+  const a = c._assinaturaDocumento({ manutencao: [1, 2] });
+  const b = c._assinaturaDocumento({ manutencao: [1, 2, 3] });
+  assert.notEqual(a, b, 'mudança real precisa gerar gravação');
+});
+
+test('ordem das chaves não altera a assinatura', () => {
+  const c = carregarLibDoc();
+  const a = c._assinaturaDocumento({ x: 1, y: 2 });
+  const b = c._assinaturaDocumento({ y: 2, x: 1 });
+  assert.equal(a, b, 'o Firestore pode devolver as chaves em outra ordem');
+});
+
+test('devolve null quando não dá para serializar — quem chama deve gravar', () => {
+  const c = carregarLibDoc();
+  const circular = { a: 1 };
+  circular.eu = circular;
+  assert.equal(c._assinaturaDocumento(circular), null);
+  assert.equal(c._assinaturaDocumento(null), null);
+  assert.equal(c._assinaturaDocumento('texto'), null);
+});
