@@ -168,6 +168,21 @@ function _mesclarEdicoesAlvaras(remotas){
    Agora relemos a nuvem e unimos antes de publicar. A janela de corrida encolhe
    para o intervalo entre a leitura e a escrita; nao vai a zero — a solucao
    definitiva e um documento por alvara, que fica anotado como proximo passo. */
+/* [04/08/2026, mesmo dia] AFINADO PARA NAO QUEIMAR COTA.
+   A primeira versao desta correcao relia os chunks INTEIROS antes de toda
+   gravacao. Corrigia a perda de dado e, de quebra, multiplicava as leituras: cada
+   salvamento passava a custar 1 + n leituras, vezes 15 pessoas, o dia todo. O
+   projeto tem teto diario de leitura, e leitura demais derruba o sistema para todo
+   mundo — o mesmo sintoma que estavamos tentando consertar.
+
+   Agora a releitura e CONDICIONAL, e a condicao e barata: lemos so o documento de
+   meta (1 leitura) e comparamos o carimbo 'ver' com o que ja conhecemos. Se ninguem
+   publicou desde a nossa ultima leitura, nao ha o que mesclar — publicamos direto.
+   Se alguem publicou, ai sim baixamos os chunks e unimos.
+
+   Custo no caso comum: 1 leitura por gravacao, em vez de 1 + n. A protecao contra
+   perda continua inteira: o unico caso em que pulamos a mesclagem e aquele em que
+   o remoto comprovadamente nao mudou. */
 function _edicoesCloudSave(){
   try{
     if(!window.fbDB) return Promise.resolve(false);
@@ -175,9 +190,30 @@ function _edicoesCloudSave(){
     // remoto e a segunda desfaz a uniao da primeira.
     var anterior = window._edicoesSalvandoP || Promise.resolve();
     var p = anterior.catch(function(){}).then(function(){
-      return _edicoesCloudLoad().catch(function(){ return null; }).then(function(remotas){
-        if(remotas) { try{ _mesclarEdicoesAlvaras(remotas); }catch(e){} }
-        return _edicoesCloudPublicar();
+      var C = window.fbDB.collection('azuos');
+      return C.doc(_EDIC_PREFIX+'meta').get().then(function(meta){
+        var verRemoto = (meta && meta.exists) ? ((meta.data()||{}).ver || 0) : 0;
+        var verNosso = window._edicoesVer || 0;
+        // Sem meta na nuvem (primeira publicacao) tambem nao ha o que mesclar.
+        if (!verRemoto || verRemoto === verNosso) return _edicoesCloudPublicar();
+        return _edicoesCloudLoad().catch(function(){ return null; }).then(function(remotas){
+          if(remotas) { try{ _mesclarEdicoesAlvaras(remotas); }catch(e){} }
+          return _edicoesCloudPublicar();
+        });
+      }).catch(function(e){
+        // Falhou ao ler o carimbo. Nao adianta tentar baixar os chunks: eles sao
+        // localizados pelo MESMO documento de meta que acabou de falhar.
+        //
+        // Sobra escolher entre publicar as cegas ou nao publicar. Publicar as cegas
+        // e exatamente o que apagou o trabalho da equipe hoje — o mapa local pode
+        // estar velho (inclusive porque o boot tambem pode ter falhado em ler), e
+        // um .set() por cima leva junto o que os outros gravaram.
+        //
+        // Entao NAO publicamos. O dado continua no estado e no navegador, e a
+        // proxima gravacao tenta de novo. Perder uma tentativa de envio se recupera
+        // sozinho; sobrescrever o trabalho de outra pessoa, nao.
+        console.warn('[edicoes] nao publiquei: nao consegui ler o carimbo —', (e&&e.message)||e);
+        return false;
       });
     });
     window._edicoesSalvandoP = p.catch(function(){});
