@@ -376,27 +376,33 @@ jobs:
           // falhando, nao apareceria doc novo aqui. Sem esta medicao, "o anexo nao salva"
           // fica sendo palavra contra palavra.
           try {
-            // select() e obrigatorio aqui: sem ele o .get() baixa o base64 de TODOS os
-            // anexos (dezenas de MB) so para contar quantos sao, e o passo trava.
-            const snap = await admin.firestore().collection('azuos').select('ts', 'nome', 'n').get();
+            // [04/08/2026] NAO varra a colecao 'azuos' inteira.
+            //
+            // A versao anterior fazia collection('azuos').get() para contar anexos. A
+            // colecao tem 13.219 documentos de anexo, entao CADA execucao custava ~13
+            // mil leituras. Tres execucoes no mesmo dia estouraram a cota diaria de
+            // leitura do projeto (RESOURCE_EXHAUSTED), e com a cota estourada o sistema
+            // para de funcionar para a equipe inteira ate a virada do dia. Um
+            // diagnostico nao pode derrubar o que ele veio diagnosticar.
+            //
+            // Agora so os 20 anexos mais recentes, por consulta ordenada com limite:
+            // custa 20 leituras em vez de 13 mil, e responde a mesma pergunta ("esta
+            // chegando anexo novo?"). O total exato de anexos deixou de ser medido de
+            // proposito — nao vale 13 mil leituras por dia.
+            const q = await admin.firestore().collection('azuos')
+              .orderBy('ts', 'desc').limit(20).select('ts', 'nome', 'n').get();
             const anx = [];
-            let pedacos = 0;
-            snap.forEach(d => {
-              if (!d.id.startsWith('anx_')) return;
-              if (d.id.includes('__')) { pedacos++; return; }
+            q.forEach(d => {
+              if (!d.id.startsWith('anx_') || d.id.includes('__')) return;
               const v = d.data() || {};
               anx.push({ id: d.id, ts: v.ts || 0, nome: v.nome || '', n: v.n || 1 });
             });
-            anx.sort((a, b) => b.ts - a.ts);
-            console.log('ANEXOS NA NUVEM: ' + anx.length + ' arquivos (' + pedacos + ' pedacos extras)');
-            const fatiados = anx.filter(a => a.n > 1).length;
-            console.log('   fatiados em mais de um pedaco (arquivo > 0,8 MB): ' + fatiados);
-            console.log('   os 10 mais recentes:');
-            anx.slice(0, 10).forEach(a => {
-              const q = a.ts ? new Date(a.ts).toISOString().slice(0, 16).replace('T', ' ') : 'sem data';
-              console.log('     ' + q + '  ' + String(a.n).padStart(2) + ' pedaco(s)  ' + (a.nome || a.id).slice(0, 50));
+            console.log('ANEXOS — os ' + anx.length + ' mais recentes (custo: 20 leituras):');
+            anx.forEach(a => {
+              const qd = a.ts ? new Date(a.ts).toISOString().slice(0, 16).replace('T', ' ') : 'sem data';
+              console.log('     ' + qd + '  ' + String(a.n).padStart(2) + ' pedaco(s)  ' + (a.nome || a.id).slice(0, 50));
             });
-            if (!anx.length) console.log('   >>> NENHUM anexo na nuvem: a gravacao de arquivo nao esta funcionando.');
+            if (!anx.length) console.log('   >>> nenhum anexo recente: verifique a gravacao de arquivo.');
           } catch (e) {
             console.log('nao consegui medir os anexos:', (e && e.message) || e);
           }
