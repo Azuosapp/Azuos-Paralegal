@@ -627,6 +627,55 @@ function log(acao, alvo, det=''){
 // ============ Utils ============
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+/* [04/08/2026] escJs — escape para dado que cai DENTRO de um atributo de evento
+   (onclick="fn('AQUI')"). NAO use esc() para isso.
+
+   Por que esc() nao serve, e por que isso engana: esc() troca ' por &#39;, o que
+   esta certo em contexto de TEXTO. Mas dentro de um atributo, o parser HTML
+   decodifica &#39; de volta para ' ANTES de o JavaScript ser compilado. O escape se
+   desfaz no meio do caminho, e o payload '-alert(1)-' executa. Comprovado:
+
+     gerado:    onclick="_abrirDrill('&#39;-alert(document.domain)-&#39;')"
+     executado: onclick="_abrirDrill(''-alert(document.domain)-'')"
+
+   escJs usa escapes de BARRA INVERTIDA (\x27), que o parser HTML nao mexe e o
+   compilador de JavaScript entende como caractere literal.
+
+   Armadilha que ja existia em dois lugares: chamar esc() e SO ENTAO tentar
+   escapar a aspa com um replace.
+   O esc() ja converteu toda aspa em &#39;, entao o replace nao acha nada — parece
+   protecao e e no-op. Se voce ver esse padrao, e bug. */
+function escJs(s){
+  return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, '\\x27')
+    .replace(/"/g, '\\x22')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
+    .replace(/&/g, '\\x26')
+    .replace(/[\r\n\u2028\u2029]/g, '');
+}
+
+/* [04/08/2026] escUrl — para dado que cai em src="..." ou href="...".
+   Escapar nao basta aqui: href="javascript:..." executa mesmo com as aspas
+   intactas. Entao validamos o ESQUEMA primeiro e so depois escapamos.
+   Permitidos: data: (as fotos e anexos sao data URL gerados pelo proprio app),
+   blob:, https: e caminho relativo. Qualquer outra coisa vira string vazia. */
+function escUrl(s){
+  var v = String(s == null ? '' : s).trim();
+  if (!v) return '';
+  // remove caracteres de controle que serviriam para disfarcar o esquema
+  v = v.replace(/[\x00-\x20\u2028\u2029]/g, '');
+  var ok = /^data:(image\/|application\/pdf)/i.test(v)
+        || /^blob:/i.test(v)
+        || /^https:\/\//i.test(v)
+        || /^\/[^/]/.test(v)
+        || /^[a-z0-9._-]+\.(png|jpe?g|svg|webp|gif|ico)$/i.test(v);
+  if (!ok) return '';
+  return esc(v);
+}
+if (typeof window !== 'undefined') { window.escJs = escJs; window.escUrl = escUrl; }
+
 
 
 
@@ -1258,12 +1307,12 @@ function renderLayout(content){
         ${(!_recolhida && typeof window.zuzu==='function') ? `<div id="zuzu-sidebar-wrap" class="flex justify-center -mb-1 pointer-events-none" title="Zuzu">${window.zuzu({pose:'debrucado', anim:'sway', size:86, alt:'Zuzu'})}</div>` : ''}
         <div class="${_recolhida?'p-2':'p-4'} border-t border-white/10">
           ${_recolhida ? `
-            <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm" title="${esc(state.sessao.nome)}">${_fotoSes?'<img src="'+_fotoSes+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
+            <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm" title="${esc(state.sessao.nome)}">${_fotoSes?'<img src="'+escUrl(_fotoSes)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
             ${ehAdmin ? `<button onclick="setState({page:'gestao', empresaAtiva:null})" class="w-full mb-1.5 py-2 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 text-slate-900 flex items-center justify-center" title="Painel de Gestão">🛡️</button>` : ''}
             <button id="logout-btn" class="w-full py-2 rounded-lg bg-white/10 hover:bg-red-500 text-white flex items-center justify-center" title="Sair">⏻</button>
           ` : `
           <div class="flex items-center gap-3 mb-3 px-2">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0">${_fotoSes?'<img src="'+_fotoSes+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 text-white flex items-center justify-center font-bold text-sm shrink-0">${_fotoSes?'<img src="'+escUrl(_fotoSes)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>':esc(initialsUser)}</div>
             <div class="flex-1 min-w-0">
               <div class="text-sm font-semibold text-white truncate">${esc(state.sessao.nome)}</div>
               <div class="text-[10px] text-blue-300 uppercase tracking-wider">${esc(state.sessao.cargo)}</div>
@@ -1651,10 +1700,10 @@ function _gamAbrirDetalhe(chave, mes, nome){
                     : '<span class="px-2 py-0.5 rounded-full text-[11px] bg-red-100 text-red-600 font-bold">✗ sem anexo</span>');
     var acoes='';
     if(!r.validado){
-      if(r.temAnexo) acoes+='<button onclick="_gamValidarAlvaraIA(\''+r.aid+'\',\''+r.mesConc+'\')" class="px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 mr-1">🤖 Validar</button>';
-      if(ehAdmin) acoes+='<button onclick="_gamConfirmarAnexoManual(\''+r.aid+'\',\''+r.mesConc+'\')" class="px-2 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700" title="Confirmar manualmente (admin)">✔</button>';
+      if(r.temAnexo) acoes+='<button onclick="_gamValidarAlvaraIA(\''+escJs(r.aid)+'\',\''+escJs(r.mesConc)+'\')" class="px-2 py-1 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 mr-1">🤖 Validar</button>';
+      if(ehAdmin) acoes+='<button onclick="_gamConfirmarAnexoManual(\''+escJs(r.aid)+'\',\''+escJs(r.mesConc)+'\')" class="px-2 py-1 text-[11px] bg-emerald-600 text-white rounded hover:bg-emerald-700" title="Confirmar manualmente (admin)">✔</button>';
     }
-    return '<tr class="border-b border-slate-50 '+(r.validado?'':'bg-amber-50/40')+'"><td class="py-2 pr-2">'+(r.empresa_id?('<button onclick="_gamIrEmpresa('+r.empresa_id+')" class="text-left font-medium text-blue-600 hover:underline" title="Abrir a empresa (alvarás, anexos e histórico)">'+esc(r.empresa)+'</button>'):('<span class="font-medium text-slate-700">'+esc(r.empresa)+'</span>'))+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2">'+badge+'</td><td class="text-right text-slate-400 text-xs whitespace-nowrap pr-2">'+ds+'</td><td class="text-right whitespace-nowrap">'+acoes+'</td></tr>';
+    return '<tr class="border-b border-slate-50 '+(r.validado?'':'bg-amber-50/40')+'"><td class="py-2 pr-2">'+(r.empresa_id?('<button onclick="_gamIrEmpresa('+(Number(r.empresa_id)||0)+')" class="text-left font-medium text-blue-600 hover:underline" title="Abrir a empresa (alvarás, anexos e histórico)">'+esc(r.empresa)+'</button>'):('<span class="font-medium text-slate-700">'+esc(r.empresa)+'</span>'))+'</td><td class="pr-2 text-slate-500">'+esc(r.tipo)+'</td><td class="pr-2">'+badge+'</td><td class="text-right text-slate-400 text-xs whitespace-nowrap pr-2">'+ds+'</td><td class="text-right whitespace-nowrap">'+acoes+'</td></tr>';
   }).join('');
   var corpo = lista.length
     ? '<table class="w-full text-sm"><thead><tr class="text-left text-[11px] uppercase text-slate-500 border-b border-slate-100"><th class="py-2">Empresa</th><th>Tipo</th><th>Anexo</th><th class="text-right pr-2">Concluído</th><th></th></tr></thead><tbody>'+linhas+'</tbody></table>'
@@ -1855,8 +1904,8 @@ function renderPremiacao(){
     ${rank.length===0 ? `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-500">Nenhum alvara concluido em ${_lblPeriodo} ainda.</div>` : `
     <div class="grid grid-cols-3 gap-3 mb-5 items-end">
       ${[1,0,2].map(function(pos){ var r=top3[pos]; if(!r) return '<div></div>'; var medal=pos===0?'🥇':(pos===1?'🥈':'🥉'); var h=pos===0?'h-24':(pos===1?'h-20':'h-16'); var podeVer=ehAdmin||_gamSouEu(r); return `
-        <div onclick="_gamAbrirDetalhe('${esc(r.chave)}','${esc(mesSel)}','${esc((r.nome||'').replace(/'/g,''))}')" class="text-center cursor-pointer">
-          <div class="mx-auto mb-2 w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
+        <div onclick="_gamAbrirDetalhe('${escJs(r.chave)}','${escJs(mesSel)}','${escJs(r.nome||'')}')" class="text-center cursor-pointer">
+          <div class="mx-auto mb-2 w-14 h-14 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-lg shadow-lg" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${escUrl(r.foto)}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
           <div class="rounded-t-xl ${h} flex items-end justify-center pb-1 text-3xl" style="background:linear-gradient(180deg,rgba(245,158,11,0.15),rgba(245,158,11,0.55));">${medal}</div>
           <div class="bg-white rounded-b-xl border border-slate-200 p-2">
             <div class="font-bold text-slate-800 text-sm truncate">${esc(r.nome)}${_gamSouEu(r)?' (voce)':''}${_gamEhGestor(r.cargo)?' <span class="text-[10px] text-slate-500 font-semibold">· gestão</span>':''}</div>
@@ -1872,9 +1921,9 @@ function renderPremiacao(){
       </div>
       <div class="divide-y divide-slate-100">
         ${rank.map(function(r,i){ var podeVer=ehAdmin||_gamSouEu(r); var eu=_gamSouEu(r); var pct=maxQtd?Math.round(100*r.qtd/maxQtd):0; return `
-          <div onclick="_gamAbrirDetalhe('${esc(r.chave)}','${esc(mesSel)}','${esc((r.nome||'').replace(/'/g,''))}')" class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 ${eu?'bg-amber-50':''}">
+          <div onclick="_gamAbrirDetalhe('${escJs(r.chave)}','${escJs(mesSel)}','${escJs(r.nome||'')}')" class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 ${eu?'bg-amber-50':''}">
             <div class="w-7 text-center font-bold ${i<3?'text-amber-700':'text-slate-500'}">${i+1}º</div>
-            <div class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${r.foto}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
+            <div class="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-white font-bold text-xs shrink-0" style="background:${_gamCor(r.nome)}">${r.foto?`<img src="${escUrl(r.foto)}" class="w-full h-full" style="object-fit:cover">`:_gamIniciais(r.nome)}</div>
             <div class="flex-1 min-w-0">
               <div class="font-semibold text-slate-800 text-sm truncate">${esc(r.nome)}${eu?' <span class="text-[10px] text-amber-700 font-bold">(voce)</span>':''}${_gamEhGestor(r.cargo)?' <span class="text-[10px] text-slate-500 font-semibold">· gestão</span>':''}</div>
               <div class="h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${_gamCor(r.nome)}"></div></div>
@@ -3482,7 +3531,7 @@ function openModalAlvara(alvara, empresaId, tipoSugerido){
             <div class="flex items-center justify-between bg-slate-50 rounded p-2 text-xs">
               <div class="flex items-center gap-2 min-w-0 flex-1">
                 <span>📄</span>
-                ${an.dados ? `<a href="${an.dados}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : (an._idb ? `<a href="#" data-idb="${esc(an._idb)}" data-nome="${esc(an.nome)}" onclick="return _baixarAnexoIDB(this)" class="font-medium text-blue-600 hover:underline truncate" title="Baixar ${esc(an.nome)}">\u2b07\ufe0f ${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`)}
+                ${an.dados ? `<a href="${escUrl(an.dados)}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : (an._idb ? `<a href="#" data-idb="${esc(an._idb)}" data-nome="${esc(an.nome)}" onclick="return _baixarAnexoIDB(this)" class="font-medium text-blue-600 hover:underline truncate" title="Baixar ${esc(an.nome)}">\u2b07\ufe0f ${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`)}
                 <span class="text-slate-400 text-[10px] shrink-0">${esc(an.tamanho||'')} · ${esc(an.dataUpload||'')}</span>
               </div>
               <button onclick="excluirAnexo(${i})" class="text-red-500 hover:bg-red-50 px-1 rounded" title="Remover">×</button>
@@ -3985,7 +4034,7 @@ async function iaLerDocumento(dataUrl, nomeArq, tipoArq, idbId) {
     t.innerHTML = `
       <div style="font-weight:bold;color:#1B3A8C;margin-bottom:6px;">🤖 IA leu ${esc(nomeArq)}</div>
       <div style="margin-bottom:8px;line-height:1.5">${msg.join('<br>')}</div>
-      ${_vencAntes !== null ? `<button type="button" onclick="_iaDesfazerPreenchimento(${JSON.stringify(_vencAntes)},${JSON.stringify(_proxAntes)}); this.parentElement.remove();" style="background:#e2e8f0;color:#475569;border:none;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-right:4px;">↩ Desfazer</button>` : ''}
+      ${_vencAntes !== null ? `<button type="button" onclick="_iaDesfazerPreenchimento('${escJs(_vencAntes==null?'':_vencAntes)}','${escJs(_proxAntes==null?'':_proxAntes)}'); this.parentElement.remove();" style="background:#e2e8f0;color:#475569;border:none;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-right:4px;">↩ Desfazer</button>` : ''}
       <button type="button" onclick="this.parentElement.remove()" style="background:#1B3A8C;color:white;border:none;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">OK</button>
     `;
     document.body.appendChild(t);
@@ -4020,7 +4069,7 @@ function renderAnexosLista(anexos) {
     <div class="flex items-center justify-between bg-slate-50 rounded p-2 text-xs">
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <span>📄</span>
-        ${an.dados ? `<a href="${an.dados}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : (an._idb ? `<a href="#" data-idb="${esc(an._idb)}" data-nome="${esc(an.nome)}" onclick="return _baixarAnexoIDB(this)" class="font-medium text-blue-600 hover:underline truncate" title="Baixar ${esc(an.nome)}">\u2b07\ufe0f ${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`)}
+        ${an.dados ? `<a href="${escUrl(an.dados)}" download="${esc(an.nome)}" class="font-medium text-blue-600 hover:underline truncate" title="${esc(an.nome)}">${esc(an.nome)}</a>` : (an._idb ? `<a href="#" data-idb="${esc(an._idb)}" data-nome="${esc(an.nome)}" onclick="return _baixarAnexoIDB(this)" class="font-medium text-blue-600 hover:underline truncate" title="Baixar ${esc(an.nome)}">\u2b07\ufe0f ${esc(an.nome)}</a>` : `<span class="font-medium text-slate-700 truncate">${esc(an.nome)}</span>`)}
         <span class="text-slate-400 text-[10px] shrink-0">${esc(an.tamanho||'')} · ${esc(an.dataUpload||'')}</span>
       </div>
       <button onclick="excluirAnexo(${i})" class="text-red-500 hover:bg-red-50 px-1 rounded">×</button>
@@ -4278,7 +4327,7 @@ function renderDashboard(){
           return ordered.map(([status, qtd]) => {
             const cor = SC[status] || 'slate';
             const ativo = _dashAlvStatus === status;
-            return `<button onclick="toggleDashAlvStatus('${esc(status).replace(/'/g,"\\'")}')" class="text-left bg-white px-2 py-2 rounded-md shadow-sm border-l-2 border-${cor}-500 hover:shadow-md transition ${ativo?'ring-2 ring-blue-400 bg-blue-50':''}">
+            return `<button onclick="toggleDashAlvStatus('${escJs(status)}')" class="text-left bg-white px-2 py-2 rounded-md shadow-sm border-l-2 border-${cor}-500 hover:shadow-md transition ${ativo?'ring-2 ring-blue-400 bg-blue-50':''}">
               <div class="text-[10px] font-semibold text-slate-600 uppercase truncate leading-tight" title="${esc(status)}">${esc(status)}</div>
               <div class="text-lg font-bold text-slate-800 leading-tight">${qtd}</div>
             </button>`;
@@ -4700,7 +4749,7 @@ function _manutSou(t){ var me=state.sessao||{}; return !!((t.autor_email&&t.auto
 function _manutData(iso){ try{ var d=new Date(iso); return isNaN(d)?'':d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString('pt-BR').slice(0,5); }catch(e){ return ''; } }
 function _manutSetTipo(t){ window._manutTipo=t; var b=document.getElementById('manut-btn-bug'), m=document.getElementById('manut-btn-mel'); if(b&&m){ if(t==='bug'){ b.className='flex-1 px-4 py-2.5 text-sm font-bold bg-red-500 text-white'; m.className='flex-1 px-4 py-2.5 text-sm font-bold text-slate-500'; } else { m.className='flex-1 px-4 py-2.5 text-sm font-bold bg-blue-600 text-white'; b.className='flex-1 px-4 py-2.5 text-sm font-bold text-slate-500'; } } }
 window._manutPrints = window._manutPrints || [];
-function _manutRenderPreview(){ var box=document.getElementById('manut-prints-preview'); if(!box) return; box.innerHTML=(window._manutPrints||[]).map(function(pp,i){ return '<div class="relative rounded-lg overflow-hidden border border-slate-200"><img src="'+(pp.dados||'')+'" class="h-24 w-full object-cover bg-slate-50"><button type="button" onclick="_manutRmPrint('+i+')" class="absolute right-1 top-1 h-6 w-6 rounded-full bg-black/60 text-white text-xs">✕</button></div>'; }).join(''); }
+function _manutRenderPreview(){ var box=document.getElementById('manut-prints-preview'); if(!box) return; box.innerHTML=(window._manutPrints||[]).map(function(pp,i){ return '<div class="relative rounded-lg overflow-hidden border border-slate-200"><img src="'+escUrl(pp.dados||'')+'" class="h-24 w-full object-cover bg-slate-50"><button type="button" onclick="_manutRmPrint('+i+')" class="absolute right-1 top-1 h-6 w-6 rounded-full bg-black/60 text-white text-xs">✕</button></div>'; }).join(''); }
 function _manutRmPrint(i){ (window._manutPrints||[]).splice(i,1); _manutRenderPreview(); }
 function _manutAddPrint(input){ var files=input&&input.files?Array.prototype.slice.call(input.files):[]; _manutAddFiles(files); if(input) input.value=''; }
 function _manutAddFiles(files){ files.forEach(function(file){ if(!file||file.type.indexOf('image/')!==0) return; if((window._manutPrints||[]).length>=5){ if(typeof toast==='function') toast('Máximo de 5 prints','amber'); return; } if(file.size>5*1024*1024){ if(typeof toast==='function') toast('Imagem acima de 5MB','red'); return; } var reader=new FileReader(); reader.onload=function(e){ var b64=e.target.result; var id='idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); try{ _idbPut(id,b64).then(function(){ try{ if(typeof _anexoCloudPush==='function') _anexoCloudPush(id,b64,{nome:file.name,tipo:file.type}); }catch(_){} }); }catch(_){} window._manutPrints.push({nome:file.name,tipo:file.type,_idb:id,dados:b64}); _manutRenderPreview(); }; reader.readAsDataURL(file); }); }
@@ -4755,18 +4804,18 @@ async function manutAbrirChamado(){
 function _manutAdmin(){ return state.sessao && state.sessao.cargo==='Administrador'; }
 function manutDefinirStatus(id, st){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; t.status=st; t.updated_at=new Date().toISOString(); try{ saveState(); }catch(e){} if(typeof toast==='function') toast('Status: '+((_MANUT_STATUS[st]||{}).label||st),'blue'); try{ render(); }catch(e){} }
 function manutArquivar(id, arq){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; t.arquivado=!!arq; t.updated_at=new Date().toISOString(); try{ saveState(); }catch(e){} try{ render(); }catch(e){} }
-function manutResponderAbrir(id){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-bold text-slate-800">Responder chamado</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button></div><div class="p-5 space-y-3"><div><label class="text-xs font-semibold text-slate-500 uppercase">Resposta ao autor (o autor vê)</label><textarea id="manut-nota" rows="3" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded text-sm">'+esc(t.nota_admin||'')+'</textarea></div><div><label class="text-xs font-semibold text-slate-500 uppercase">Observação interna (só admin)</label><textarea id="manut-obs" rows="2" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded text-sm">'+esc(t.obs_interna||'')+'</textarea></div><button onclick="manutResponderSalvar(\''+t.id+'\')" class="w-full py-2 bg-emerald-600 text-white rounded font-semibold text-sm hover:bg-emerald-700">Salvar</button></div>'); }
+function manutResponderAbrir(id){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; showModal('<div class="px-5 py-4 border-b border-slate-200 flex justify-between items-center"><h3 class="text-lg font-bold text-slate-800">Responder chamado</h3><button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button></div><div class="p-5 space-y-3"><div><label class="text-xs font-semibold text-slate-500 uppercase">Resposta ao autor (o autor vê)</label><textarea id="manut-nota" rows="3" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded text-sm">'+esc(t.nota_admin||'')+'</textarea></div><div><label class="text-xs font-semibold text-slate-500 uppercase">Observação interna (só admin)</label><textarea id="manut-obs" rows="2" class="w-full mt-1 px-3 py-2 border border-slate-300 rounded text-sm">'+esc(t.obs_interna||'')+'</textarea></div><button onclick="manutResponderSalvar(\''+escJs(t.id)+'\')" class="w-full py-2 bg-emerald-600 text-white rounded font-semibold text-sm hover:bg-emerald-700">Salvar</button></div>'); }
 function manutResponderSalvar(id){ if(!_manutAdmin()) return; var t=_manutLista().find(function(x){return x.id===id;}); if(!t) return; t.nota_admin=((document.getElementById('manut-nota')||{}).value||'').slice(0,2000); t.obs_interna=((document.getElementById('manut-obs')||{}).value||'').slice(0,2000); t.updated_at=new Date().toISOString(); try{ saveState(); }catch(e){} try{ closeModal(); }catch(e){} if(typeof toast==='function') toast('Resposta salva','emerald'); try{ render(); }catch(e){} }
 function _manutSetFiltro(f){ window._manutFiltro=f; try{ render(); }catch(e){} }
 function _manutCardChamado(t, adminView){
   var icon = t.tipo==='melhoria' ? '💡' : '🐞';
-  var prints=(t.prints||[]).map(function(pp){ return '<button onclick="_manutVerPrint(\''+esc(pp._idb||'')+'\')" class="text-[11px] text-blue-600 hover:underline mr-2">🖼️ '+esc(pp.nome||'print')+'</button>'; }).join('');
+  var prints=(t.prints||[]).map(function(pp){ return '<button onclick="_manutVerPrint(\''+escJs(pp._idb||'')+'\')" class="text-[11px] text-blue-600 hover:underline mr-2">🖼️ '+esc(pp.nome||'print')+'</button>'; }).join('');
   var acoes='';
   if(adminView){
     var st=['aprovado','em_andamento','resolvido','rejeitado'];
-    acoes='<div class="mt-2 flex flex-wrap gap-1">'+st.map(function(x){ var a=(_MANUT_STATUS[x]||{}); var on=(t.status===x); return '<button onclick="manutDefinirStatus(\''+t.id+'\',\''+x+'\')" class="px-2 py-1 text-[11px] rounded '+(on?'bg-'+a.cor+'-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+a.label+'</button>'; }).join('')
-      +'<button onclick="manutResponderAbrir(\''+t.id+'\')" class="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-700 hover:bg-blue-200">✍️ Responder</button>'
-      +'<button onclick="manutArquivar(\''+t.id+'\','+(t.arquivado?'false':'true')+')" class="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-500 hover:bg-slate-200">'+(t.arquivado?'Desarquivar':'Arquivar')+'</button></div>';
+    acoes='<div class="mt-2 flex flex-wrap gap-1">'+st.map(function(x){ var a=(_MANUT_STATUS[x]||{}); var on=(t.status===x); return '<button onclick="manutDefinirStatus(\''+escJs(t.id)+'\',\''+escJs(x)+'\')" class="px-2 py-1 text-[11px] rounded '+(on?'bg-'+a.cor+'-600 text-white':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+a.label+'</button>'; }).join('')
+      +'<button onclick="manutResponderAbrir(\''+escJs(t.id)+'\')" class="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-700 hover:bg-blue-200">✍️ Responder</button>'
+      +'<button onclick="manutArquivar(\''+escJs(t.id)+'\','+(t.arquivado?'false':'true')+')" class="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-500 hover:bg-slate-200">'+(t.arquivado?'Desarquivar':'Arquivar')+'</button></div>';
   }
   return '<div class="bg-white rounded-xl border border-slate-200 p-3 '+(t.arquivado?'opacity-60':'')+'">'
     +'<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-semibold text-slate-800 text-sm truncate">'+icon+' '+esc(t.titulo)+'</div>'
@@ -4880,7 +4929,7 @@ function renderUsuarios(){
         <h1 class="text-2xl font-bold text-slate-800 mb-1">Meu perfil</h1>
         <p class="text-sm text-slate-500 mb-6">Atualize sua foto, seus dados e sua senha. Você só tem acesso ao seu próprio cadastro.</p>
         <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 text-center">
-          <div class="w-24 h-24 mx-auto rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center font-bold text-3xl mb-3">${_u.foto?`<img src="${_u.foto}" class="w-full h-full object-cover">`:esc(_ini)}</div>
+          <div class="w-24 h-24 mx-auto rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-indigo-500 text-white flex items-center justify-center font-bold text-3xl mb-3">${_u.foto?`<img src="${escUrl(_u.foto)}" class="w-full h-full object-cover">`:esc(_ini)}</div>
           <div class="text-lg font-semibold text-slate-800">${esc(_u.nome||'')}</div>
           <div class="text-xs text-blue-600 uppercase tracking-wider mb-1">${esc(_u.cargo||'')}</div>
           <div class="text-xs text-slate-500 mb-5">${esc(_u.email||'')}</div>
@@ -4908,7 +4957,7 @@ function renderUsuarios(){
         ${state.usuarios.map(u => `
           <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col">
             <div class="flex items-start justify-between mb-3 gap-1">
-              <div class="w-12 h-12 rounded-full overflow-hidden bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">${u.foto?`<img src="${u.foto}" class="w-full h-full" style="object-fit:cover">`:esc((u.nome&&u.nome[0])||"?")}</div>
+              <div class="w-12 h-12 rounded-full overflow-hidden bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">${u.foto?`<img src="${escUrl(u.foto)}" class="w-full h-full" style="object-fit:cover">`:esc((u.nome&&u.nome[0])||"?")}</div>
               <div class="flex flex-col items-end gap-1">
                 <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${u.ativo?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-500'}">${u.ativo?'Ativo':'Inativo'}</span>
                 ${(function(){
@@ -4930,7 +4979,7 @@ function renderUsuarios(){
             </div>
             ${(state.sessao && state.sessao.cargo==='Administrador') ? `
             <label class="flex items-center gap-2 mt-3 text-xs font-medium ${u.cargo==='Administrador'?'text-amber-700':'text-slate-600'} cursor-pointer select-none" title="Marcar dá a esta pessoa acesso TOTAL de administrador">
-              <input type="checkbox" ${u.cargo==='Administrador'?'checked':''} onchange="toggleUsuarioAdmin('${u.id}', this.checked)" class="w-4 h-4 accent-amber-600">
+              <input type="checkbox" ${u.cargo==='Administrador'?'checked':''} onchange="toggleUsuarioAdmin('${escJs(u.id)}', this.checked)" class="w-4 h-4 accent-amber-600">
               <span>🛡️ Administrador</span>
             </label>` : ''}
             <!-- [v6.2.6] Saiu o botao "🔑 Senha": era a MESMA acao do "Redefinir
@@ -4939,8 +4988,8 @@ function renderUsuarios(){
                  Ainda por cima aparecia para nao-admin, pois so o checkbox de
                  Administrador estava protegido. -->
             <div class="flex gap-1 mt-3 pt-3 border-t border-slate-100">
-              <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-2 rounded text-blue-600 hover:bg-blue-50">Editar</button>
-              <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-2 rounded text-red-600 hover:bg-red-50">Excluir</button>
+              <button onclick="openModalUsuario('${escJs(u.id)}')" class="flex-1 text-xs py-2 rounded text-blue-600 hover:bg-blue-50">Editar</button>
+              <button onclick="excluirUsuario('${escJs(u.id)}')" class="flex-1 text-xs py-2 rounded text-red-600 hover:bg-red-50">Excluir</button>
             </div>
           </div>`).join('')}
       </div>
@@ -5401,7 +5450,7 @@ function openModalUsuario(id) {
       <!-- [v6.2.6] Foto ao lado de nome/e-mail. Empilha em tela estreita. -->
       <div class="flex flex-col sm:flex-row items-center sm:items-start gap-3">
         <div class="flex flex-col items-center gap-1 shrink-0">
-          <div id="fu-foto-preview" class="w-16 h-16 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden" style="background:var(--azuos-button);color:#fff">${u.foto ? `<img src="${u.foto}" class="w-full h-full object-cover">` : esc((u.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase() || '?')}</div>
+          <div id="fu-foto-preview" class="w-16 h-16 rounded-full flex items-center justify-center font-bold text-xl overflow-hidden" style="background:var(--azuos-button);color:#fff">${u.foto ? `<img src="${escUrl(u.foto)}" class="w-full h-full object-cover">` : esc((u.nome||'').split(' ').map(s=>s[0]).slice(0,2).join('').toUpperCase() || '?')}</div>
           <input type="file" id="fu-foto-file" accept="image/*" class="hidden">
           <div class="flex gap-1">
             <button type="button" onclick="document.getElementById('fu-foto-file').click()" class="px-3 py-2 text-[11px] font-bold rounded-lg" style="color:var(--azuos-blue)">📷 Foto</button>
@@ -5434,9 +5483,9 @@ function openModalUsuario(id) {
       <div class="rounded-xl px-3 py-2.5" style="background:var(--azuos-bg);border:1px solid var(--azuos-border)">
         <div class="text-[11px] mb-2" style="color:var(--azuos-text-muted)">🔐 Login: <b style="color:var(--azuos-text)">${esc(u.email||'(sem e-mail)')}</b> — estas ações valem na hora e não dependem do "Salvar".</div>
         <div class="flex flex-wrap gap-1.5">
-          <button type="button" onclick="usuarioRedefinirSenha('${String(id)}')" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:var(--azuos-button)">🔑 Redefinir senha</button>
-          <button type="button" onclick="usuarioTrocarEmail('${String(id)}')" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">✉️ Trocar e-mail</button>
-          <button type="button" onclick="usuarioCriarAcesso('${String(id)}')" title="Para quem ainda não tem login. Se já tiver, envia link de redefinição." class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-text);border:1px solid var(--azuos-border)">🆕 Criar acesso</button>
+          <button type="button" onclick="usuarioRedefinirSenha('${escJs(id)}')" class="px-3 py-2 text-[11px] font-bold rounded-lg text-white" style="background:var(--azuos-button)">🔑 Redefinir senha</button>
+          <button type="button" onclick="usuarioTrocarEmail('${escJs(id)}')" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">✉️ Trocar e-mail</button>
+          <button type="button" onclick="usuarioCriarAcesso('${escJs(id)}')" title="Para quem ainda não tem login. Se já tiver, envia link de redefinição." class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-text);border:1px solid var(--azuos-border)">🆕 Criar acesso</button>
           ${_ehEuMesmo ? `<button type="button" onclick="closeModal(); setTimeout(abrirModalSenha, 150);" class="px-3 py-2 text-[11px] font-semibold rounded-lg" style="background:var(--azuos-surface);color:var(--azuos-blue);border:1px solid var(--azuos-border)">🔒 Minha senha</button>` : ''}
         </div>
         <div id="fu-senha-box" class="hidden mt-2 rounded-lg p-2.5" style="background:var(--azuos-surface);border:1px solid var(--azuos-success)">
@@ -5458,7 +5507,7 @@ function openModalUsuario(id) {
     </div>
     <div class="px-5 py-4 border-t flex justify-end gap-2 shrink-0" style="border-color:var(--azuos-border);background:var(--azuos-surface)">
       <button onclick="closeModal()" class="px-4 py-2 rounded-lg font-semibold" style="background:var(--azuos-bg);color:var(--azuos-text)">Cancelar</button>
-      <button onclick="salvarUsuario(${id?("'"+String(id)+"'"):'null'})" class="px-5 py-2 rounded-lg text-sm font-bold text-white" style="background:var(--azuos-button)">Salvar dados</button>
+      <button onclick="salvarUsuario(${id?("'"+escJs(id)+"'"):'null'})" class="px-5 py-2 rounded-lg text-sm font-bold text-white" style="background:var(--azuos-button)">Salvar dados</button>
     </div>
   `);
 }
@@ -7093,7 +7142,7 @@ function abrirBaselineDialog() {
           <div><label style="${_L}">Meus dados (nome e foto)</label>
             <input id="mc-nome" type="text" value="${esc(_s.nome||'')}" placeholder="Seu nome" style="${_I}margin-bottom:10px;"/>
             <div style="display:flex;align-items:center;gap:12px;">
-              <div id="mc-foto-preview" style="width:56px;height:56px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#60a5fa,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">${_foto?('<img src="'+_foto+'" style="width:100%;height:100%;object-fit:cover">'):esc(_ini)}</div>
+              <div id="mc-foto-preview" style="width:56px;height:56px;border-radius:50%;overflow:hidden;background:linear-gradient(135deg,#60a5fa,#6366f1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;">${_foto?('<img src="'+escUrl(_foto)+'" style="width:100%;height:100%;object-fit:cover">'):esc(_ini)}</div>
               <input type="file" id="mc-foto-file" accept="image/*" style="display:none">
               <button id="mc-foto-escolher" style="padding:8px 12px;border:0;border-radius:9px;background:#dbeafe;color:#1d4ed8;font-weight:700;font-size:12px;cursor:pointer;">📷 Trocar foto</button>
               <button id="mc-foto-salvar" style="padding:8px 12px;border:0;border-radius:9px;background:#059669;color:#fff;font-weight:700;font-size:12px;cursor:pointer;">Salvar dados</button>
@@ -9184,8 +9233,8 @@ document.body.appendChild(ov);
 function getEd(){return Object.values(state.edicoes_alvaras||{}).filter(function(e){return e&&e._editado_por&&e._editado_em;});}
 function porDias(ed,d){if(!d) return ed; var l=Date.now()-d*86400000; return ed.filter(function(e){return new Date(e._editado_em).getTime()>=l;});}
 function rankear(ed){var at={},cn={};ed.forEach(function(e){var u=e._editado_por; if(!u) return; at[u]=(at[u]||0)+1; if(ehC(e.status)) cn[u]=(cn[u]||0)+1;}); return {ra:Object.keys(at).map(function(u){return{nome:u,total:at[u]};}).sort(function(a,b){return b.total-a.total;}),rc:Object.keys(cn).map(function(u){return{nome:u,total:cn[u]};}).sort(function(a,b){return b.total-a.total;})};}
-function podio(r){var m=['🥇','🥈','🥉'],c=['#fbbf24','#94a3b8','#d97706'];var h='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,1vw,16px);margin-bottom:clamp(8px,1vh,16px);">';for(var i=0;i<3;i++){var it=r[i]; if(!it){h+='<div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:clamp(10px,1.5vw,20px);text-align:center;border:2px dashed rgba(255,255,255,0.1);"><div style="opacity:0.3;font-size:1rem;">—</div></div>';continue;} var sn=(it.nome||'').replace(/'/g,'&#39;'); h+='<div onclick="window._abrirDrill(\''+sn+'\',\'atualizacoes\')" style="background:linear-gradient(135deg,'+c[i]+'30,'+c[i]+'08);border:2px solid '+c[i]+';border-radius:10px;padding:clamp(8px,1.2vw,18px);text-align:center;cursor:pointer;transition:transform 0.15s;line-height:1.2;" onmouseover="this.style.transform=\'scale(1.03)\'" onmouseout="this.style.transform=\'scale(1)\'">'; h+='<div style="font-size:clamp(1.5rem,3vw,3rem);line-height:1;margin-bottom:4px;">'+m[i]+'</div>';h+='<div style="font-size:clamp(0.9rem,1.4vw,1.4rem);font-weight:700;color:white;">'+it.nome+'</div>';h+='<div style="font-size:clamp(1.6rem,3vw,3rem);font-weight:900;color:'+c[i]+';line-height:1.1;">'+it.total+'</div>';h+='<div style="font-size:clamp(0.55rem,0.7vw,0.7rem);color:#cbd5e1;text-transform:uppercase;letter-spacing:0.5px;">atualizações</div>';h+='</div>';} return h+'</div>';}
-function lista(r,tit,emj,cor,so){var tipo=so?'conclusoes':'atualizacoes';var h='<div style="background:rgba(15,23,42,0.6);border-radius:10px;padding:clamp(8px,1vw,16px);overflow:auto;display:flex;flex-direction:column;">';h+='<h3 style="font-size:clamp(0.85rem,1.15vw,1.15rem);font-weight:800;color:white;margin:0 0 8px 0;">'+emj+' '+tit+'</h3>';if(r.length===0){h+='<div style="color:#64748b;text-align:center;padding:16px;font-size:0.85rem;">Nenhum registro neste período</div>';}else{h+='<div style="display:flex;flex-direction:column;gap:3px;overflow:auto;">';r.forEach(function(it,i){var bg=i<3?cor+'25':'rgba(255,255,255,0.04)'; var sn=(it.nome||'').replace(/'/g,'&#39;'); h+='<div onclick="window._abrirDrill(\''+sn+'\',\''+tipo+'\')" style="display:flex;align-items:center;gap:clamp(6px,0.8vw,12px);padding:clamp(5px,0.7vh,10px) clamp(8px,1vw,14px);background:'+bg+';border-radius:6px;cursor:pointer;user-select:none;line-height:1.2;transition:background 0.15s;" onmouseover="this.style.background=\''+cor+'40\'" onmouseout="this.style.background=\''+bg+'\'">'; h+='<div style="font-size:clamp(0.7rem,0.9vw,0.9rem);font-weight:800;color:#94a3b8;min-width:clamp(20px,2vw,28px);">'+(i+1)+'°</div>';h+='<div style="flex:1;font-size:clamp(0.8rem,1vw,1rem);font-weight:600;color:white;">'+it.nome+'</div>';h+='<div style="font-size:clamp(0.95rem,1.3vw,1.3rem);font-weight:900;color:'+cor+';">'+it.total+'</div>';h+='<div style="font-size:clamp(0.55rem,0.7vw,0.7rem);color:'+cor+';opacity:0.8;font-weight:700;">▶</div></div>';}); h+='</div>';} return h+'</div>';}
+function podio(r){var m=['🥇','🥈','🥉'],c=['#fbbf24','#94a3b8','#d97706'];var h='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,1vw,16px);margin-bottom:clamp(8px,1vh,16px);">';for(var i=0;i<3;i++){var it=r[i]; if(!it){h+='<div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:clamp(10px,1.5vw,20px);text-align:center;border:2px dashed rgba(255,255,255,0.1);"><div style="opacity:0.3;font-size:1rem;">—</div></div>';continue;} var sn=escJs(it.nome||''); h+='<div onclick="window._abrirDrill(\''+sn+'\',\'atualizacoes\')" style="background:linear-gradient(135deg,'+c[i]+'30,'+c[i]+'08);border:2px solid '+c[i]+';border-radius:10px;padding:clamp(8px,1.2vw,18px);text-align:center;cursor:pointer;transition:transform 0.15s;line-height:1.2;" onmouseover="this.style.transform=\'scale(1.03)\'" onmouseout="this.style.transform=\'scale(1)\'">'; h+='<div style="font-size:clamp(1.5rem,3vw,3rem);line-height:1;margin-bottom:4px;">'+m[i]+'</div>';h+='<div style="font-size:clamp(0.9rem,1.4vw,1.4rem);font-weight:700;color:white;">'+esc(it.nome||'')+'</div>';h+='<div style="font-size:clamp(1.6rem,3vw,3rem);font-weight:900;color:'+c[i]+';line-height:1.1;">'+it.total+'</div>';h+='<div style="font-size:clamp(0.55rem,0.7vw,0.7rem);color:#cbd5e1;text-transform:uppercase;letter-spacing:0.5px;">atualizações</div>';h+='</div>';} return h+'</div>';}
+function lista(r,tit,emj,cor,so){var tipo=so?'conclusoes':'atualizacoes';var h='<div style="background:rgba(15,23,42,0.6);border-radius:10px;padding:clamp(8px,1vw,16px);overflow:auto;display:flex;flex-direction:column;">';h+='<h3 style="font-size:clamp(0.85rem,1.15vw,1.15rem);font-weight:800;color:white;margin:0 0 8px 0;">'+emj+' '+tit+'</h3>';if(r.length===0){h+='<div style="color:#64748b;text-align:center;padding:16px;font-size:0.85rem;">Nenhum registro neste período</div>';}else{h+='<div style="display:flex;flex-direction:column;gap:3px;overflow:auto;">';r.forEach(function(it,i){var bg=i<3?cor+'25':'rgba(255,255,255,0.04)'; var sn=escJs(it.nome||''); h+='<div onclick="window._abrirDrill(\''+sn+'\',\''+tipo+'\')" style="display:flex;align-items:center;gap:clamp(6px,0.8vw,12px);padding:clamp(5px,0.7vh,10px) clamp(8px,1vw,14px);background:'+bg+';border-radius:6px;cursor:pointer;user-select:none;line-height:1.2;transition:background 0.15s;" onmouseover="this.style.background=\''+cor+'40\'" onmouseout="this.style.background=\''+bg+'\'">'; h+='<div style="font-size:clamp(0.7rem,0.9vw,0.9rem);font-weight:800;color:#94a3b8;min-width:clamp(20px,2vw,28px);">'+(i+1)+'°</div>';h+='<div style="flex:1;font-size:clamp(0.8rem,1vw,1rem);font-weight:600;color:white;">'+esc(it.nome||'')+'</div>';h+='<div style="font-size:clamp(0.95rem,1.3vw,1.3rem);font-weight:900;color:'+cor+';">'+it.total+'</div>';h+='<div style="font-size:clamp(0.55rem,0.7vw,0.7rem);color:'+cor+';opacity:0.8;font-weight:700;">▶</div></div>';}); h+='</div>';} return h+'</div>';}
 function fb(a){return [{d:1,l:'Hoje'},{d:7,l:'7 dias'},{d:30,l:'30 dias'},{d:60,l:'60 dias'}].map(function(o){var at=o.d===a,bg=at?'#3b82f6':'rgba(255,255,255,0.1)',co=at?'white':'#cbd5e1'; return '<button data-filtro-dias="'+o.d+'" style="padding:clamp(5px,0.6vh,10px) clamp(10px,1vw,16px);background:'+bg+';color:'+co+';border:none;border-radius:6px;font-size:clamp(0.7rem,0.85vw,0.85rem);font-weight:600;cursor:pointer;">'+o.l+'</button>';}).join('');}
 function abrir(){var ja=document.getElementById('dashboard-tv-modal'); if(ja) ja.remove(); var modal=document.createElement('div'); modal.id='dashboard-tv-modal'; modal.style.cssText='position:fixed;inset:0;background:linear-gradient(135deg,#0f172a,#1e293b);z-index:99999;overflow:auto;padding:clamp(8px,1vh,16px) clamp(10px,1vw,20px);display:flex;flex-direction:column;'; var dias=parseInt(localStorage.getItem('azuos_tv_filtro')||'7'); function render(){var ed=getEd(),f=porDias(ed,dias),r=rankear(f); window._azuosTV.edicoes=f; window._azuosTV.dias=dias; var totE=f.length,totC=f.filter(function(e){return ehC(e.status);}).length,hoje=new Date().toLocaleDateString('pt-BR'); var aviso=''; if(totE===0 && ed.length>0){ var ult=ed.slice().sort(function(a,b){return new Date(b._editado_em)-new Date(a._editado_em);})[0]; var dult=new Date(ult._editado_em).toLocaleDateString('pt-BR'); aviso='<div style="background:#f59e0b20;border:1px solid #f59e0b;border-radius:6px;padding:8px 12px;margin-bottom:8px;color:#fbbf24;font-size:clamp(0.75rem,0.9vw,0.9rem);">⚠ Sem registros em '+dias+' dias. Última atualização em '+dult+'. Tente 30 ou 60 dias.</div>';} modal.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:clamp(6px,0.8vh,12px);flex-shrink:0;line-height:1.2;flex-wrap:wrap;gap:8px;"><div><h1 style="font-size:clamp(1rem,1.6vw,1.6rem);font-weight:900;color:white;margin:0;">🏆 Ranking AZUOS Paralegal</h1><div style="color:#94a3b8;font-size:clamp(0.7rem,0.85vw,0.85rem);">'+hoje+' &middot; <strong style="color:#10b981;">'+totE+'</strong> atualizações &middot; <strong style="color:#3b82f6;">'+totC+'</strong> conclusões</div></div><div style="display:flex;gap:clamp(4px,0.4vw,8px);flex-wrap:wrap;">'+fb(dias)+'<button onclick="document.getElementById(\'dashboard-tv-modal\').remove()" style="padding:clamp(5px,0.6vh,10px) clamp(10px,1vw,16px);background:#dc2626;color:white;border:none;border-radius:6px;font-size:clamp(0.7rem,0.85vw,0.85rem);font-weight:700;cursor:pointer;">✖ Fechar</button></div></div>'+aviso+'<div style="background:rgba(0,0,0,0.3);border-radius:10px;padding:clamp(8px,1vw,16px);margin-bottom:clamp(6px,0.8vh,12px);flex-shrink:0;"><h2 style="font-size:clamp(0.85rem,1.15vw,1.15rem);font-weight:800;color:white;margin:0 0 8px 0;">📝 Top 3 — Mais Atualizações (clique para ver empresas)</h2>'+podio(r.ra)+'</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:clamp(8px,1vw,16px);flex:1;min-height:0;">'+lista(r.ra,'Ranking Completo - Atualizações','📝','#10b981',false)+lista(r.rc,'Conclusões','✅','#3b82f6',true)+'</div>'; modal.querySelectorAll('[data-filtro-dias]').forEach(function(b){b.onclick=function(){dias=parseInt(b.dataset.filtroDias);localStorage.setItem('azuos_tv_filtro',String(dias));render();};}); } render(); document.body.appendChild(modal); var iv=setInterval(function(){if(!document.getElementById('dashboard-tv-modal')){clearInterval(iv);return;}render();},60000);}
 window.abrirDashboardTV=abrir;

@@ -8,6 +8,16 @@
    ========================================================================== */
 (function(){
   function _esc(s){ return (typeof esc==='function') ? esc(s) : String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  /* [04/08/2026] escape para dado dentro de atributo de evento. Ver escJs no
+     index.html: esc() nao serve aqui, porque o parser HTML decodifica &#39; de
+     volta para aspa ANTES de o JavaScript compilar. */
+  function _escJs(s){
+    if (typeof escJs === 'function') return escJs(s);
+    return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,'\\x27')
+      .replace(/"/g,'\\x22').replace(/</g,'\\x3c').replace(/>/g,'\\x3e')
+      .replace(/&/g,'\\x26').replace(/[\r\n\u2028\u2029]/g,'');
+  }
+  function _escUrl(s){ return (typeof escUrl === 'function') ? escUrl(s) : ''; }
   function _fmt(v){ return (typeof _gamFmt==='function') ? _gamFmt(v) : ('R$ ' + (Number(v)||0).toFixed(2).replace('.',',')); }
   function _norm(s){ try{ return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toLowerCase(); }catch(e){ return String(s==null?'':s).trim().toLowerCase(); } }
   window.ehAdminGestao = function(){ return !!(typeof state!=='undefined' && state.sessao && state.sessao.cargo==='Administrador'); };
@@ -324,7 +334,7 @@
         ${meses.slice(0,12).map(function(m){
           var lbl = (typeof _gamMesLabel==='function') ? _gamMesLabel(m) : m;
           var on = multi ? (selN.indexOf(m)>=0) : (m===mesSel);
-          return '<button onclick="window._gestaoToggleMes(\''+_esc(m)+'\')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition '+(on?'bg-blue-600 text-white shadow-sm':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+(on&&multi?'✓ ':'')+_esc(lbl)+'</button>';
+          return '<button onclick="window._gestaoToggleMes(\''+_escJs(m)+'\')" class="px-3 py-1.5 rounded-lg text-xs font-semibold transition '+(on?'bg-blue-600 text-white shadow-sm':'bg-slate-100 text-slate-600 hover:bg-slate-200')+'">'+(on&&multi?'✓ ':'')+_esc(lbl)+'</button>';
         }).join('')}
         ${multi ? '<button onclick="window._gestaoMesesSel=[];render()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100">✕ limpar seleção</button>' : '<span class="text-[11px] text-slate-400 ml-1">clique em 2+ meses pra consolidar o período</span>'}
       </div>
@@ -345,7 +355,7 @@
         <div class="rounded-2xl shadow-sm p-5 flex flex-col justify-center text-white relative overflow-hidden" style="background:linear-gradient(135deg,#2B3A8C,#141A42)">
           <div class="text-xs font-semibold uppercase tracking-wide" style="color:#F5C518">🏆 Destaque ${multi?'do período':'de '+_esc(mLbl(mesSel))}</div>
           <div class="flex items-center gap-3 mt-3">
-            <div class="w-14 h-14 rounded-full bg-white/15 ring-2 ring-white/30 flex items-center justify-center text-xl font-bold shrink-0">${top.foto?('<img src="'+top.foto+'" class="w-full h-full rounded-full" style="object-fit:cover">'):_esc(((top.nome||'?')[0]||'?').toUpperCase())}</div>
+            <div class="w-14 h-14 rounded-full bg-white/15 ring-2 ring-white/30 flex items-center justify-center text-xl font-bold shrink-0">${top.foto?('<img src="'+_escUrl(top.foto)+'" class="w-full h-full rounded-full" style="object-fit:cover">'):_esc(((top.nome||'?')[0]||'?').toUpperCase())}</div>
             <div class="min-w-0">
               <div class="text-lg font-bold truncate">${_esc(top.nome||'—')}</div>
               <div class="text-sm text-blue-100">${_fmt(top.valor)} · ${top.qtd} alvarás</div>
@@ -401,9 +411,9 @@
             </thead>
             <tbody class="divide-y divide-slate-50">
               ${doMes.map(function(r){
-                var ck = _esc(r.chave).replace(/'/g,"\\'");
+                var ck = _escJs(r.chave);
                 var detMes = multi ? selN[selN.length-1] : mesSel; // no multi, detalhe abre o mês mais recente
-                var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_esc(detMes)+"','"+_esc(r.nome||'').replace(/'/g,"\\'")+"')" : "";
+                var vd = window._gestaoVerDetalhe ? "window._gestaoVerDetalhe('"+ck+"','"+_escJs(detMes)+"','"+_escJs(r.nome||'')+"')" : "";
                 var dr = multi ? null : _delta(r.valor, (antMap[r.chave]||{}).valor, true);
                 // pago: single = toggle do mês; multi = quantos dos meses já pagos
                 var pagoCell, aPagarCell;
@@ -418,7 +428,7 @@
                 } else {
                   var pago = window._gestaoPago(r.chave, mesSel);
                   aPagarCell = pago ? '<span class="text-emerald-600 font-semibold">✓ quitado</span>' : '<span class="font-bold text-rose-600 tabular-nums">'+_fmt(r.valor)+'</span>';
-                  pagoCell = '<button onclick="event.stopPropagation();window._gestaoMarcarPago(\''+ck+'\',\''+_esc(mesSel)+'\','+(pago?'false':'true')+')" class="px-3 py-1.5 rounded-lg text-xs font-bold '+(pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100')+'">'+(pago?'✓ Pago':'A pagar')+'</button>';
+                  pagoCell = '<button onclick="event.stopPropagation();window._gestaoMarcarPago(\''+ck+'\',\''+_escJs(mesSel)+'\','+(pago?'false':'true')+')" class="px-3 py-1.5 rounded-lg text-xs font-bold '+(pago?'bg-emerald-100 text-emerald-700 hover:bg-emerald-200':'bg-rose-50 text-rose-600 hover:bg-rose-100')+'">'+(pago?'✓ Pago':'A pagar')+'</button>';
                 }
                 return `<tr class="hover:bg-blue-50 cursor-pointer" onclick="${vd}" title="Clique para ver os alvarás">
                   <td class="px-4 py-3"><div class="font-semibold text-blue-700 flex items-center gap-1.5">${_esc(r.nome||'—')} <span class="text-[10px] text-slate-400 font-normal">🔍</span></div><div class="text-[11px] text-slate-400">${_esc(r.email||'')}</div></td>
@@ -711,7 +721,7 @@
       var key = (u.email||u.nome||'').toLowerCase();
       var prod = acc[key];
       var ini = _esc((u.nome&&u.nome[0])||'?').toUpperCase();
-      var foto = u.foto ? '<img src="'+u.foto+'" class="w-full h-full" style="object-fit:cover">' : ini;
+      var foto = u.foto ? '<img src="'+_escUrl(u.foto)+'" class="w-full h-full" style="object-fit:cover">' : ini;
       var inativo = u.ativo===false;
       return `<div class="bg-white rounded-xl shadow-sm p-4 flex flex-col ${inativo?'opacity-60':''}">
         <div class="flex items-center gap-3 mb-2">
@@ -730,8 +740,8 @@
             <span class="ml-auto font-bold text-emerald-600">${_fmt(prod.valor)}</span>
           </div>` : `<div class="text-[11px] text-slate-400 bg-slate-50 rounded-lg px-3 py-2 mb-2">Sem produtividade registrada</div>`}
         <div class="flex gap-1 mt-auto pt-2 border-t border-slate-100">
-          <button onclick="openModalUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50 font-medium">✏️ Editar</button>
-          <button onclick="excluirUsuario('${u.id}')" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50 font-medium">🗑️ Excluir</button>
+          <button onclick="openModalUsuario('${_escJs(u.id)}')" class="flex-1 text-xs py-1.5 rounded text-blue-600 hover:bg-blue-50 font-medium">✏️ Editar</button>
+          <button onclick="excluirUsuario('${_escJs(u.id)}')" class="flex-1 text-xs py-1.5 rounded text-red-600 hover:bg-red-50 font-medium">🗑️ Excluir</button>
         </div>
       </div>`;
     }
