@@ -160,3 +160,54 @@ test('a sobreposição das edições vence o valor da base nos alvarás', () => 
   assert.equal(state.alvaras[0].status, 'Concluído');
   assert.equal(state.alvaras[0].observacao, 'da planilha', 'campo sem edição não podia mudar');
 });
+
+/* ---- id determinístico de empresa (v7.9.0) ----
+ * Antes, empresa nova recebia `++_proxId` calculado sobre a base LOCAL. Dois
+ * navegadores geravam ids diferentes para a MESMA empresa, e o vínculo
+ * alvará→empresa passava a apontar para empresas distintas conforme quem abriu. */
+function carregarLib() {
+  const src = readFileSync('public/lib.js', 'utf-8');
+  const ctx = { window: {}, console, Math, String, Number, Date, isNaN, parseInt, parseFloat };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx, { filename: 'public/lib.js' });
+  return ctx;
+}
+
+test('mesma empresa gera o MESMO id em qualquer navegador', () => {
+  const a = carregarLib(), b = carregarLib();   // duas "máquinas" independentes
+  const id1 = a._idEmpresaDeterministico('ACME COMERCIO LTDA', '12.345.678/0001-90');
+  const id2 = b._idEmpresaDeterministico('ACME COMERCIO LTDA', '12.345.678/0001-90');
+  assert.equal(id1, id2);
+  assert.ok(id1 >= 1000000, 'id novo não pode cair na faixa dos ids sequenciais antigos');
+});
+
+test('o CNPJ manda: mesma empresa com o nome digitado diferente dá o mesmo id', () => {
+  const c = carregarLib();
+  assert.equal(
+    c._idEmpresaDeterministico('ACME COMERCIO LTDA', '12.345.678/0001-90'),
+    c._idEmpresaDeterministico('Acme Comércio', '12345678000190')
+  );
+});
+
+test('sem CNPJ, cai no nome normalizado (espaços e caixa não contam)', () => {
+  const c = carregarLib();
+  assert.equal(
+    c._idEmpresaDeterministico('  Padaria   Central ', ''),
+    c._idEmpresaDeterministico('PADARIA CENTRAL', null)
+  );
+});
+
+test('empresas diferentes geram ids diferentes', () => {
+  const c = carregarLib();
+  assert.notEqual(
+    c._idEmpresaDeterministico('ACME LTDA', '12.345.678/0001-90'),
+    c._idEmpresaDeterministico('BETA LTDA', '98.765.432/0001-10')
+  );
+});
+
+test('sem nome e sem CNPJ devolve 0, para quem chama decidir', () => {
+  const c = carregarLib();
+  assert.equal(c._idEmpresaDeterministico('', ''), 0);
+  assert.equal(c._idEmpresaDeterministico(null, undefined), 0);
+});

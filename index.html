@@ -2511,9 +2511,23 @@ async function handleSyncDriveAuto() {
     });
     // Empresa nova recebe id PROPRIO do app (o da planilha e posicional e pode
     // colidir com um id local ja em uso, embaralhando alvarás e edicoes_empresas).
+    //
+    // [04/08/2026] O id agora vem do CONTEUDO (CNPJ, ou nome normalizado), nao de um
+    // contador local. Com `++_proxId`, dois navegadores que sincronizassem a mesma
+    // empresa nova geravam ids DIFERENTES para ela, e o empresa_id dos alvarás
+    // passava a apontar para empresas distintas conforme quem tinha aberto o sistema.
+    // Ver _idEmpresaDeterministico em public/lib.js.
+    const _idsEmUso = new Set(state.empresas.map(x => Number(x && x.id)).filter(Boolean));
     let _proxId = state.empresas.reduce((m, e) => Math.max(m, Number(e && e.id) || 0), 0);
     _novas.forEach(e => {
-      const nova = Object.assign({}, e, { id: ++_proxId });
+      let _id = (typeof window._idEmpresaDeterministico === 'function')
+        ? window._idEmpresaDeterministico(e && e.nome, e && e.cnpj) : 0;
+      // Sem nome e sem CNPJ nao da para derivar nada: cai no contador, como antes.
+      if (!_id) _id = ++_proxId;
+      // Colisao de hash e improvavel, mas se acontecer nao pode juntar duas empresas.
+      while (_idsEmUso.has(_id)) _id++;
+      _idsEmUso.add(_id);
+      const nova = Object.assign({}, e, { id: _id });
       state.empresas.push(nova);
       const n = _kNome(nova); if (n) _nomesLocais.add(n);
       const c = _kCnpj(nova); if (c) _cnpjsLocais.add(c);
@@ -2719,9 +2733,23 @@ async function handleSyncDrive() {
     });
     // Empresa nova recebe id PROPRIO do app (o da planilha e posicional e pode
     // colidir com um id local ja em uso, embaralhando alvarás e edicoes_empresas).
+    //
+    // [04/08/2026] O id agora vem do CONTEUDO (CNPJ, ou nome normalizado), nao de um
+    // contador local. Com `++_proxId`, dois navegadores que sincronizassem a mesma
+    // empresa nova geravam ids DIFERENTES para ela, e o empresa_id dos alvarás
+    // passava a apontar para empresas distintas conforme quem tinha aberto o sistema.
+    // Ver _idEmpresaDeterministico em public/lib.js.
+    const _idsEmUso = new Set(state.empresas.map(x => Number(x && x.id)).filter(Boolean));
     let _proxId = state.empresas.reduce((m, e) => Math.max(m, Number(e && e.id) || 0), 0);
     _novas.forEach(e => {
-      const nova = Object.assign({}, e, { id: ++_proxId });
+      let _id = (typeof window._idEmpresaDeterministico === 'function')
+        ? window._idEmpresaDeterministico(e && e.nome, e && e.cnpj) : 0;
+      // Sem nome e sem CNPJ nao da para derivar nada: cai no contador, como antes.
+      if (!_id) _id = ++_proxId;
+      // Colisao de hash e improvavel, mas se acontecer nao pode juntar duas empresas.
+      while (_idsEmUso.has(_id)) _id++;
+      _idsEmUso.add(_id);
+      const nova = Object.assign({}, e, { id: _id });
       state.empresas.push(nova);
       const n = _kNome(nova); if (n) _nomesLocais.add(n);
       const c = _kCnpj(nova); if (c) _cnpjsLocais.add(c);
@@ -7353,28 +7381,22 @@ function abrirBaselineDialog() {
     if (!Array.isArray(state.ciencias_por_usuario[u])) state.ciencias_por_usuario[u] = [];
     return u;
   }
-  // Override darCienciaEmpresa
+  // [04/08/2026] Override de darCienciaEmpresa REMOVIDO daqui.
+  //
+  // A funcao tinha SEIS definicoes concorrentes (v5.7.14, .15, .16, .17, .22, .23) e
+  // tres delas se reinstalavam a cada 2 segundos com guardas cegas entre si: a da
+  // v5.7.17 so reinstalava se a assinatura nao contivesse '_salvarCienciaFirestore',
+  // e a da v5.7.23 so se nao contivesse 'v5_7_23'. Como nenhuma continha a marca da
+  // outra, cada uma satisfazia o gatilho da outra e elas se trocavam indefinidamente.
+  // Qual versao o clique do usuario encontrava era sorteio — e elas gravavam FORMATOS
+  // DIFERENTES no mesmo array (esta empurrava a chave como string crua; a v5.7.23
+  // empurra {key, ciencia_em}), o que obrigou public/firestore.js a conviver com os
+  // dois formatos.
+  //
+  // Dono unico agora: v5.7.23 (formato de objeto, gravando no destino oficial
+  // por_usuario/{chave}). Este bloco continua responsavel apenas por darCienciaTodas.
   setTimeout(function(){
     try {
-      if (typeof window.darCienciaEmpresa === 'function') {
-        var originalDarCiencia = window.darCienciaEmpresa;
-        window.darCienciaEmpresa = function(chave){
-          try {
-            var u = ensureArray();
-            if (!u) return;
-            if (state.ciencias_por_usuario[u].indexOf(chave) < 0) {
-              state.ciencias_por_usuario[u].push(chave);
-            }
-            try { if (typeof _fsWriteDebounced === 'function') _fsWriteDebounced(); } catch(e){}
-            try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
-          } catch(e) {
-            console.warn('[v5.7.14 darCiencia]', e);
-            // fallback original
-            try { return originalDarCiencia.apply(this, arguments); } catch(e){}
-          }
-        };
-        console.log('[v5.7.14] darCienciaEmpresa override OK');
-      }
       if (typeof window.darCienciaTodas === 'function') {
         var origTodas = window.darCienciaTodas;
         window.darCienciaTodas = function(){
@@ -7510,23 +7532,12 @@ function abrirBaselineDialog() {
     } catch(e) { console.warn('[v5.7.15 salvar]', e); }
   }
 
-  // Override darCienciaEmpresa para salvar IMEDIATAMENTE
+  // [04/08/2026] Override de darCienciaEmpresa removido — ver v5.7.14.
+  // Esta versao empurrava a chave como STRING CRUA no array, enquanto a v5.7.23
+  // empurra {key, ciencia_em}. Com as duas se revezando, o mesmo array acumulava os
+  // dois formatos, e public/firestore.js precisou aprender a conviver com isso.
+  // Dono unico: v5.7.23. Este bloco segue cuidando so de darCienciaTodas.
   setTimeout(function(){
-    if (typeof window.darCienciaEmpresa === 'function') {
-      window.darCienciaEmpresa = function(chave){
-        try {
-          var u = state.sessao && state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
-          if (!u) return;
-          if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
-          if (!Array.isArray(state.ciencias_por_usuario[u])) state.ciencias_por_usuario[u] = [];
-          if (state.ciencias_por_usuario[u].indexOf(chave) < 0) {
-            state.ciencias_por_usuario[u].push(chave);
-          }
-          salvarFirestoreDireto();
-          try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
-        } catch(e) { console.warn('[v5.7.15 darCiencia]', e); }
-      };
-    }
     if (typeof window.darCienciaTodas === 'function') {
       window.darCienciaTodas = function(){
         try {
@@ -7652,23 +7663,9 @@ function abrirBaselineDialog() {
   window._salvarCienciaFirestore = salvarCienciaFirestore;
   window._salvarUsuariosFirestore = salvarUsuariosFirestore;
 
-  // Override darCiencia para usar FieldPath
+  // [04/08/2026] Override de darCienciaEmpresa removido — ver v5.7.14. Mesmo
+  // problema: formato de string crua e disputa a cada 2s. Dono unico: v5.7.23.
   setTimeout(function(){
-    if (typeof window.darCienciaEmpresa === 'function') {
-      window.darCienciaEmpresa = function(chave){
-        try {
-          var emailUsr = state.sessao && state.sessao.email ? state.sessao.email.toLowerCase().trim() : null;
-          if (!emailUsr) return;
-          if (!state.ciencias_por_usuario) state.ciencias_por_usuario = {};
-          if (!Array.isArray(state.ciencias_por_usuario[emailUsr])) state.ciencias_por_usuario[emailUsr] = [];
-          if (state.ciencias_por_usuario[emailUsr].indexOf(chave) < 0) {
-            state.ciencias_por_usuario[emailUsr].push(chave);
-          }
-          salvarCienciaFirestore();
-          try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
-        } catch(e) { console.warn('[v5.7.16 darCiencia]', e); }
-      };
-    }
     if (typeof window.darCienciaTodas === 'function') {
       window.darCienciaTodas = function(){
         try {
@@ -7763,12 +7760,14 @@ function abrirBaselineDialog() {
   // Aplicar override e checar a cada 2s
   function aplicarOverride(){
     try {
-      if (typeof window.darCienciaEmpresa === 'function') {
-        var sig = window.darCienciaEmpresa.toString();
-        if (sig.indexOf('_salvarCienciaFirestore') < 0) {
-          window.darCienciaEmpresa = novaDarCienciaEmpresa;
-        }
-      }
+      // [04/08/2026] Este reinstalador NAO disputa mais darCienciaEmpresa.
+      // A guarda era `sig.indexOf('_salvarCienciaFirestore') < 0`, e a funcao da
+      // v5.7.23 (v5_7_23_dC) nao contem essa marca — entao, a cada 2 segundos, este
+      // bloco a derrubava e instalava a sua; 2 segundos depois a v5.7.23 fazia o
+      // mesmo de volta, porque a funcao daqui nao contem 'v5_7_23'. Nenhuma das duas
+      // guardas conseguia enxergar a outra, e as duas estavam certas do seu ponto de
+      // vista. Qual delas o clique do usuario encontrava era sorteio.
+      // Dono unico de darCienciaEmpresa: v5.7.23. Aqui fica so darCienciaTodas.
       if (typeof window.darCienciaTodas === 'function') {
         var sig2 = window.darCienciaTodas.toString();
         if (sig2.indexOf('_salvarCienciaFirestore') < 0) {
@@ -7999,13 +7998,11 @@ function abrirBaselineDialog() {
       if (state.ciencias_por_usuario[email].indexOf(c) < 0) {
         state.ciencias_por_usuario[email].push(c);
       }
-      // Persistir no Firestore via FieldPath
+      // [04/08/2026] Destino oficial (por_usuario/{chave}), nao mais o campo legado
+      // dentro do azuos/shared. Ver v5.7.23 e _cienciasSalvarMinhas.
       try {
-        if (firebase && firebase.firestore) {
-          var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', email);
-          firebase.firestore().collection('azuos').doc('shared').update(fp, state.ciencias_por_usuario[email]).catch(function(e){ console.warn('[v5.7.22 fs]', e.message); });
-        }
-      } catch(e){}
+        if (typeof window._cienciasSalvarMinhas === 'function') window._cienciasSalvarMinhas();
+      } catch(e){ console.warn('[v5.7.22 ciencia]', (e&&e.message)||e); }
       try { if (typeof renderApp === 'function') renderApp(); } catch(e){}
     } catch(e) { console.warn('[v5.7.22 darC]', e); }
   }
@@ -8030,11 +8027,8 @@ function abrirBaselineDialog() {
 
   function aplicar(){
     try {
-      if (typeof window.darCienciaEmpresa === 'function') {
-        if (window.darCienciaEmpresa.toString().indexOf('v5_7_22') < 0) {
-          window.darCienciaEmpresa = function v5_7_22_dC(c){ return novoDarCienciaEmpresa(c); };
-        }
-      }
+      // [04/08/2026] Nao disputa mais darCienciaEmpresa — ver v5.7.17 e v5.7.14.
+      // Dono unico: v5.7.23. Aqui fica so cienciasDoUsuarioAtual.
       if (typeof window.cienciasDoUsuarioAtual === 'function') {
         if (window.cienciasDoUsuarioAtual.toString().indexOf('v5_7_22') < 0) {
           window.cienciasDoUsuarioAtual = function v5_7_22_cu(){ return novaCienciasDoUsuarioAtual(); };
@@ -8106,12 +8100,13 @@ function abrirBaselineDialog() {
       if (!ja) {
         state.ciencias_por_usuario[email].push({key: chave, ciencia_em: new Date().toISOString()});
       }
+      // [04/08/2026] Grava no destino OFICIAL (por_usuario/{chave}, v7.0.0) em vez de
+      // devolver a ciencia para dentro do azuos/shared. O campo legado no shared foi o
+      // que estourou 1 MB e travou todas as gravacoes do sistema; enquanto alguem
+      // continuar regravando ele, a migracao se desfaz sozinha.
       try {
-        if (firebase && firebase.firestore) {
-          var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', email);
-          firebase.firestore().collection('azuos').doc('shared').update(fp, JSON.parse(JSON.stringify(state.ciencias_por_usuario[email]))).catch(function(e){});
-        }
-      } catch(e){}
+        if (typeof window._cienciasSalvarMinhas === 'function') window._cienciasSalvarMinhas();
+      } catch(e){ console.warn('[v5.7.23 ciencia]', (e&&e.message)||e); }
       try { if (typeof renderNovasEmpresas === 'function') renderNovasEmpresas(); } catch(e){}
       try { if (typeof attachNovasEmpresas === 'function') attachNovasEmpresas(); } catch(e){}
       try { if (typeof render === 'function') render(); } catch(e){}
@@ -8135,10 +8130,10 @@ function abrirBaselineDialog() {
           novas++;
         }
       });
+      // [04/08/2026] Destino oficial (por_usuario/{chave}), nao o campo legado.
       try {
-        var fp = new firebase.firestore.FieldPath('ciencias_por_usuario', email);
-        firebase.firestore().collection('azuos').doc('shared').update(fp, JSON.parse(JSON.stringify(state.ciencias_por_usuario[email]))).catch(function(e){});
-      } catch(e){}
+        if (typeof window._cienciasSalvarMinhas === 'function') window._cienciasSalvarMinhas();
+      } catch(e){ console.warn('[v5.7.23 dCN ciencia]', (e&&e.message)||e); }
       try { if (typeof renderNovasEmpresas === 'function') renderNovasEmpresas(); } catch(e){}
       try { if (typeof attachNovasEmpresas === 'function') attachNovasEmpresas(); } catch(e){}
       try { if (typeof render === 'function') render(); } catch(e){}

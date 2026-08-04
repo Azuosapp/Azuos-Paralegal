@@ -47,3 +47,31 @@ function parseDataBR(s) {
   }
   return null;
 }
+
+/* [04/08/2026] ID DETERMINISTICO DE EMPRESA NOVA.
+   Ate aqui, empresa vinda da planilha recebia `id: ++_proxId`, calculado sobre a
+   base LOCAL de cada navegador. Duas pessoas sincronizando a mesma empresa nova
+   geravam ids DIFERENTES para ela — e o vinculo alvara->empresa (empresa_id) passava
+   a apontar para empresas distintas dependendo de quem tinha aberto o sistema. Isso
+   alimenta as auditorias "orfaos" e "cache desatualizado" do Centro de Inteligencia
+   de um jeito que ninguem resolve atualizando, porque o dado esta certo em cada
+   maquina e diferente entre elas.
+
+   Agora o id vem do proprio conteudo: CNPJ quando existe, senao o nome normalizado.
+   Mesma empresa, mesmo id, em qualquer navegador, sem precisar de coordenacao.
+
+   Faixa alta de proposito: os ids sequenciais historicos vao ate a casa dos
+   milhares, entao comecar em 1.000.000 garante que um id novo nunca colida com um
+   antigo. FNV-1a e escolhido por ser curto, estavel e sem dependencia. */
+function _idEmpresaDeterministico(nome, cnpj){
+  var digitos = String(cnpj == null ? '' : cnpj).replace(/\D/g, '');
+  var base = digitos || String(nome == null ? '' : nome).toLowerCase().trim().replace(/\s+/g, ' ');
+  if (!base) return 0;                       // sem nome e sem CNPJ: quem chama decide
+  var h = 2166136261;
+  for (var i = 0; i < base.length; i++) {
+    h ^= base.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return 1000000 + ((h >>> 0) % 900000000);
+}
+if (typeof window !== 'undefined') window._idEmpresaDeterministico = _idEmpresaDeterministico;
