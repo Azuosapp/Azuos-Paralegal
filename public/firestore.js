@@ -243,7 +243,56 @@ function _absorverEdicoesLegado(){
     });
   }catch(e){ window._absorvendoEdicoes = false; }
 }
-window._edicoesCloudSave = _edicoesCloudSave;
+/* ============================================================================
+   PORTA UNICA DE ESCRITA DAS EDICOES DE ALVARA  —  [04/08/2026]
+   ============================================================================
+   Por que isto existe. A revisao de arquitetura mapeou DOZE gravadores para o
+   mesmo dado (edicoes_alvaras), em TRES destinos diferentes: os chunks
+   azuos/edicoes_*, a subcolecao azuos/edicoes/alvaras e o campo legado dentro de
+   azuos/shared. Esse e o modo de falha estrutural deste sistema, nao descuido: em
+   26/07 uma correcao redirecionou cinco gravadores e nao viu o sexto, que rodava a
+   cada 20 segundos e desfazia a migracao; em 04/08 encontramos ainda um setimo,
+   que sobrescrevia as edicoes boas com uma copia parcial. Cada rodada de conserto
+   descobre mais um.
+
+   A partir daqui existem DUAS funcoes publicas, e nenhuma outra:
+
+     salvarEdicaoDeAlvara(alvaraId, campos)  -> grava a edicao de UM alvara
+     publicarEdicoes()                       -> publica o mapa atual (uso em lote)
+
+   E uma regra no CI (scripts/validate-html.js) recusa qualquer referencia a
+   _edicoesCloudSave, _edicoesCloudPublicar ou edicoes_alvaras: fora deste arquivo.
+   E a regra, e nao a disciplina de quem edita, que impede o decimo terceiro
+   gravador de nascer — os doze anteriores foram todos escritos por gente atenta.
+   ============================================================================ */
+
+function salvarEdicaoDeAlvara(alvaraId, campos){
+  try{
+    if(alvaraId == null) return Promise.resolve(false);
+    if(!campos || typeof campos !== 'object') return Promise.resolve(false);
+    var id = String(alvaraId);
+    var quem = (state.sessao && (state.sessao.email || state.sessao.nome)) || '';
+    state.edicoes_alvaras = state.edicoes_alvaras || {};
+    state.edicoes_alvaras[id] = Object.assign(
+      {}, state.edicoes_alvaras[id] || {}, campos,
+      { _editado_em: new Date().toISOString(), _editado_por: quem, _editado_manualmente: true }
+    );
+    // Espelha no alvara em memoria, para a tela nao ficar atras do dado.
+    try{
+      var alv = (state.alvaras || []).find(function(a){ return a && String(a.id) === id; });
+      if (alv) Object.assign(alv, campos);
+    }catch(e){}
+    return _edicoesCloudSave();
+  }catch(e){ console.warn('[salvarEdicaoDeAlvara]', (e&&e.message)||e); return Promise.resolve(false); }
+}
+
+function publicarEdicoes(){
+  return _edicoesCloudSave();
+}
+
+window.salvarEdicaoDeAlvara = salvarEdicaoDeAlvara;
+window.publicarEdicoes = publicarEdicoes;
+window._edicoesCloudSave = _edicoesCloudSave;   // uso INTERNO deste arquivo
 window._edicoesCloudLoad = _edicoesCloudLoad;
 window._mesclarEdicoesAlvaras = _mesclarEdicoesAlvaras;
 

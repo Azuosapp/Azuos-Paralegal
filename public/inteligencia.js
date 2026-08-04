@@ -208,8 +208,8 @@
         // aqui era um dos cinco pontos que recolocavam ~500 KB no documento e o
         // levavam de volta ao limite de 1 MB, travando as gravacoes de todo mundo.
         // Destino agora e o mesmo dos chunks (azuos/edicoes_*).
-        if (typeof window._edicoesCloudSave === 'function') {
-          window._edicoesCloudSave()
+        if (typeof window.publicarEdicoes === 'function') {
+          window.publicarEdicoes()
             .then(function(ver){
               if (ver) console.log('[intel] prox. atualizacao do alvara ' + alvaraId + ' salva na nuvem');
               else alert('Aviso: salvo localmente, mas FALHOU no servidor. Tente de novo em instantes.');

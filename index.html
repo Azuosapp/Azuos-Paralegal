@@ -302,10 +302,10 @@ async function _fsWriteNow() {
     // payload ja e o novo, e os outros navegadores recarregam na hora certa.
     // Comparamos por assinatura para nao reescrever ~500 KB a cada saveState.
     try {
-      if (typeof window._edicoesCloudSave === 'function') {
+      if (typeof window.publicarEdicoes === 'function') {
         const _assin = JSON.stringify(state.edicoes_alvaras || {}).length + ':' + Object.keys(state.edicoes_alvaras || {}).length;
         if (_assin !== window._edicoesAssin) {
-          await window._edicoesCloudSave();
+          await window.publicarEdicoes();
           window._edicoesAssin = _assin;
         }
       }
@@ -426,7 +426,7 @@ function _fsSubscribeRealtime() {
       // processamos — nao com window._edicoesVer.
       //
       // window._edicoesVer guarda o 'ver' de azuos/edicoes_meta, que e outro
-      // documento. _edicoesCloudSave grava os chunks e adianta _edicoesVer sem tocar
+      // documento. A publicacao grava os chunks e adianta _edicoesVer sem tocar
       // no shared; _edicoesCloudLoad tambem faz _edicoesVer = meta.ver. Ou seja, os
       // dois lados da comparacao vinham de fontes diferentes e ficavam permanentemente
       // desiguais: TODO snapshot rebaixava ~500 KB de chunks, remesclava e chamava
@@ -3562,7 +3562,7 @@ function _persistirCamposAlvaraAtual(campos){
         // campo era um dos cinco pontos que recolocavam os ~500 KB no documento e o
         // levavam de volta ao limite de 1 MB, travando o sistema inteiro.
         // O destino agora e o mesmo dos chunks (azuos/edicoes_*).
-        try{ if(typeof window._edicoesCloudSave==='function') window._edicoesCloudSave(); }catch(e){ console.warn('[edicoes]', e && e.message); }
+        try{ if(typeof window.publicarEdicoes==='function') window.publicarEdicoes(); }catch(e){ console.warn('[edicoes]', e && e.message); }
       }
     }catch(e){}
     return true;
@@ -4122,7 +4122,7 @@ function salvarAlvara(id, empresaId){
         }
       });
       // [02/08/2026] redirecionado para os chunks — ver comentario em salvarAlvara
-      try{ if(typeof window._edicoesCloudSave==='function') window._edicoesCloudSave(); }catch(e){}
+      try{ if(typeof window.publicarEdicoes==='function') window.publicarEdicoes(); }catch(e){}
       Promise.resolve()
         .then(function(){ console.log('[v6.0.8] alvará ' + _idSalvo + ' salvo por campo no Firestore'); })
         .catch(function(err){
@@ -9334,8 +9334,8 @@ window._detectarESalvarEdicoes54 = async function(){
       // dele fazia TODO navegador rodar _absorverEdicoesLegado, que grava chunks e
       // atualiza o shared de novo — com N pessoas online, um tique virava N x N
       // gravacoes e re-renders. Era o motor da tela piscando.
-      if(typeof window._edicoesCloudSave==='function'){
-        await window._edicoesCloudSave();
+      if(typeof window.publicarEdicoes==='function'){
+        await window.publicarEdicoes();
       }
       console.log('[v5.7.54] SALVO nos chunks!',mudancas.length,'mudancas');
     }
@@ -9537,8 +9537,8 @@ console.log('[v5.7.56] auto-sync usuarios armado');
           // [v7.7.0] Mesmo motivo do bloco v5.7.54 acima: nada de edicoes_alvaras
           // dentro do azuos/shared. Este wrapper SUBSTITUI a funcao original, entao
           // corrigir so a de cima nao adiantaria — em producao quem roda e esta.
-          if(typeof window._edicoesCloudSave==='function'){
-            await window._edicoesCloudSave();
+          if(typeof window.publicarEdicoes==='function'){
+            await window.publicarEdicoes();
           }
           console.log('[v5.7.57] SALVO!');
         }
@@ -9675,8 +9675,8 @@ try{
           batchSize += sz;
         }
         await flush();
-        if (enviados > 0 && typeof window._edicoesCloudSave === 'function') {
-          var _okVer = await window._edicoesCloudSave();
+        if (enviados > 0 && typeof window.publicarEdicoes === 'function') {
+          var _okVer = await window.publicarEdicoes();
           if (!_okVer) { console.warn('[v5.7.71] chunks nao gravaram — fila preservada'); return; }
           try{ saveState(); }catch(e){}
         }
@@ -9857,8 +9857,8 @@ try{
       }
     }
     // grava UMA vez, ja com tudo aplicado no estado
-    if (enviados.length > 0 && typeof window._edicoesCloudSave === 'function') {
-      var _ver = await window._edicoesCloudSave();
+    if (enviados.length > 0 && typeof window.publicarEdicoes === 'function') {
+      var _ver = await window.publicarEdicoes();
       if (!_ver) {
         // nao conseguiu subir: mantem a fila para tentar de novo
         console.warn('[v5.7.78] falha ao gravar os chunks — fila preservada');
@@ -10098,8 +10098,8 @@ try{
               + ' edições, ' + (mudou ? 'algo novo foi absorvido' : 'nada novo'));
             // O que era exclusivo da subcoleção agora vive nos chunks, que são o
             // destino oficial desde a v7.2.0.
-            if (mudou && typeof window._edicoesCloudSave === 'function') {
-              try { await window._edicoesCloudSave(); } catch(e) { console.warn('[v6.fase1] publicar:', e && e.message); }
+            if (mudou && typeof window.publicarEdicoes === 'function') {
+              try { await window.publicarEdicoes(); } catch(e) { console.warn('[v6.fase1] publicar:', e && e.message); }
             }
           }
           try{ localStorage.setItem('azuos_fase1_absorvida','1'); }catch(e){}
@@ -10264,79 +10264,18 @@ try{
 })();
 
 
-/* ===== v6.0.6 — EMERGENCIAL: auto-limpa shared se > 500KB (QUALQUER user) ===== */
-(function emergencia606(){
-  setTimeout(async function(){
-    try {
-      if (!firebase || !firebase.firestore) return;
-      var email = (state && state.sessao && state.sessao.email) || '';
-      if (!email) return; // precisa estar autenticado, qualquer paralegal serve
-      var db = firebase.firestore();
-      var snap = await db.collection('azuos').doc('shared').get();
-      var data = snap.data() || {};
-      var sizeKB = Math.round(JSON.stringify(data).length / 1024);
-      console.log('[v6.0.6] tamanho atual do shared: ' + sizeKB + 'KB');
-      // Flag no Firestore pra evitar dupla execução entre paralegais
-      if (data._v606_limpo_em) {
-        console.log('[v6.0.6] shared ja foi limpo em ' + data._v606_limpo_em);
-        return;
-      }
-      if (sizeKB < 500) {
-        // Marca como limpo pra não tentar de novo
-        try { await db.collection('azuos').doc('shared').update({_v606_limpo_em: new Date().toISOString()}); } catch(e){}
-        console.log('[v6.0.6] shared OK (< 500KB), sem necessidade');
-        return;
-      }
-      console.warn('[v6.0.6] === LIMPEZA EMERGENCIAL INICIANDO === ('+sizeKB+'KB)');
-      var backupId = 'pre_v606_' + Date.now();
-      await db.collection('azuos').doc(backupId).set(data);
-      console.log('[v6.0.6] backup em azuos/' + backupId);
-      var edicoes = data.edicoes_alvaras || {};
-      var chaves = Object.keys(edicoes);
-      var LIMITE_INDIVIDUAL = 50000;
-      var gigantes = [], normais = [];
-      chaves.forEach(function(k){
-        var sz = JSON.stringify(edicoes[k]).length;
-        if (sz > LIMITE_INDIVIDUAL) gigantes.push({k: k, sz: sz});
-        else normais.push(k);
-      });
-      console.log('[v6.0.6] ' + gigantes.length + ' gigantes, ' + normais.length + ' normais');
-      var movidas = 0;
-      for (var i = 0; i < gigantes.length; i++) {
-        var g = gigantes[i];
-        try {
-          await db.collection('azuos').doc('edicoes').collection('alvaras').doc(String(g.k)).set(
-            Object.assign({}, edicoes[g.k], { _movido_em: new Date().toISOString() })
-          );
-          movidas++;
-          console.log('[v6.0.6] movida alvId=' + g.k + ' (' + Math.round(g.sz/1024) + 'KB)');
-        } catch(e) {
-          console.warn('[v6.0.6] erro movendo alvId=' + g.k + ':', e.message);
-        }
-      }
-      var novasEdicoes = {};
-      normais.forEach(function(k){ novasEdicoes[k] = edicoes[k]; });
-      await db.collection('azuos').doc('shared').update({
-        edicoes_alvaras: novasEdicoes,
-        _v606_limpo_em: new Date().toISOString(),
-        _v606_backup: backupId,
-        _v606_movidas: movidas
-      });
-      var novoTamanho = Math.round(JSON.stringify(novasEdicoes).length / 1024);
-      console.log('[v6.0.6] === LIMPEZA CONCLUIDA === ' + sizeKB + 'KB -> ' + novoTamanho + 'KB (edicoes_alvaras)');
-      console.log('[v6.0.6] ' + movidas + ' edicoes movidas para subcolecao');
-      try {
-        var t = document.createElement('div');
-        t.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#10b981;color:white;padding:12px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.2);z-index:99999;font-size:13px;font-weight:600;';
-        t.innerHTML = '✓ Firestore otimizado<br><span style="font-weight:400;font-size:11px;">' + movidas + ' edicoes grandes movidas para subcolecao.</span>';
-        document.body.appendChild(t);
-        setTimeout(function(){ if(t.parentElement) t.remove(); }, 10000);
-      } catch(e){}
-    } catch(e) {
-      console.error('[v6.0.6] ERRO CRITICO:', e.message);
-    }
-  }, 15000);
-})();
+/* ===== v6.0.6 — limpeza emergencial do shared: REMOVIDA em 04/08/2026 =====
+   Era uma migracao de uma vez so, de quando as edicoes moravam DENTRO do
+   azuos/shared. Ja rodou, e desde a v7.2.0 as edicoes vivem em chunks
+   (azuos/edicoes_*) — o campo legado e absorvido e apagado assim que aparece.
+
+   Foi removida por dois motivos concretos:
+   1) Ela REGRAVAVA edicoes_alvaras dentro do shared. Bastava a flag
+      _v606_limpo_em se perder para o campo de 500 KB voltar ao documento que ja
+      travou todas as gravacoes do sistema uma vez ao passar de 1 MB.
+   2) Ela lia o azuos/shared inteiro no boot de CADA usuario, so para conferir uma
+      flag — leitura paga, repetida, sem serventia desde a v7.2.0.
+   ===================================================================== */
 
 </script>
 <script>
