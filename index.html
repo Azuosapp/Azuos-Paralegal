@@ -2412,10 +2412,10 @@ function attachEmpresas(){
   if (_fc) _fc.onchange = (e) => { _filtroCidade = e.target.value; renderPartial(); };
   document.getElementById('nova-empresa').onclick = () => openModalEmpresa(null);
   document.getElementById('csv-file').onchange = handleCsvImport;
-  // [v6.1.9] #sync-drive e #trava-planilha nao existem mais no markup. Os binds
-  // ficam guardados por if para o caso de alguma rotina antiga reinserir o botao.
-  var _sd = document.getElementById('sync-drive');
-  if (_sd) _sd.onclick = handleSyncDrive;
+  // [v6.1.9] #trava-planilha nao existe mais no markup; o bind fica guardado por if
+  // para o caso de alguma rotina antiga reinserir o controle.
+  // [04/08/2026] O bind de #sync-drive saiu junto com handleSyncDrive: ver a nota
+  // onde a funcao ficava.
   var _tp = document.getElementById('trava-planilha');
   if (_tp) _tp.onclick = toggleTravaPlanilha;
   document.querySelectorAll('.empresa-card').forEach(c => {
@@ -2692,213 +2692,22 @@ async function handleSyncDriveAuto() {
   }
 }
 
-async function handleSyncDrive() {
-  const btn = document.getElementById('sync-drive');
-  const oldText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ Sincronizando...';
-  btn.classList.add('opacity-60');
-  try {
-    const url = DRIVE_CONFIG.url + '?token=' + encodeURIComponent(DRIVE_CONFIG.token);
-    const r = await fetch(url);
-    const dados = await r.json();
-    if (!dados.ok) throw new Error(dados.error || 'Resposta sem sucesso');
+/* [04/08/2026] handleSyncDrive (versao manual) REMOVIDA — era codigo morto.
 
-    const e = dados.estatisticas || {};
-    const proceed = confirm(
-      `📊 SINCRONIZAÇÃO DO GOOGLE DRIVE\n\n` +
-      `Empresas no Drive: ${e.total_empresas}\n` +
-      `  • Ativas: ${e.ativas}\n` +
-      `  • Inativas: ${e.inativas}\n` +
-      `Alvarás cadastrados: ${e.total_alvaras}\n` +
-      `Responsáveis: ${e.total_responsaveis}\n\n` +
-      `Isso vai SUBSTITUIR todos os dados locais pelos do Drive.\n` +
-      `Empresas/alvarás que você editou no sistema serão perdidos.\n\n` +
-      `Continuar?`
-    );
-    if (!proceed) return;
+   O botao #sync-drive saiu do markup na v6.1.9, a pedido: "nao vamos colocar o
+   botao de sincronizar". O unico vinculo que restava era `if (_sd) _sd.onclick =
+   handleSyncDrive`, com _sd sempre nulo — a funcao era inalcancavel.
 
-    // Substituir dados
-    // Preservar dados do usuário usando empresa+tipo como chave estável
-    // Inclui: revisado/conversas/anexos/observação + TUDO se editado manualmente
-    const userDataMap = {};
-    (state.alvaras || []).forEach(a => {
-      const k = (a.empresa||'') + '|' + (a.tipo||'');
-      if (a._editado_manualmente) {
-        // Edição manual: preserva TODOS os campos editados pelo usuário
-        userDataMap[k] = {
-          status: a.status, responsavel: a.responsavel,
-          vencimento: a.vencimento, proxima_atualizacao: a.proxima_atualizacao,
-          observacao: a.observacao, conversas: a.conversas, anexos: a.anexos,
-          revisado: a.revisado, revisado_por: a.revisado_por, revisado_em: a.revisado_em,
-          _editado_manualmente: true, _editado_em: a._editado_em, _editado_por: a._editado_por
-        };
-      } else if (a.revisado || (a.conversas && a.conversas.length) || (a.anexos && a.anexos.length) || a.observacao) {
-        // Só dados auxiliares (sem edição manual de status/etc)
-        userDataMap[k] = {
-          revisado: a.revisado, revisado_por: a.revisado_por, revisado_em: a.revisado_em,
-          observacao: a.observacao, conversas: a.conversas, anexos: a.anexos
-        };
-      }
-    });
-    // [v6.1.9] SINCRONIZACAO ADITIVA NOS DADOS, mas a planilha continua mandando no
-    // STATUS (ATIVO/INATIVO) — igual ao comportamento antigo.
-    //
-    // Antes era `state.empresas = <planilha>`: a planilha sobrescrevia TUDO. Por isso
-    // existia a "trava de planilha", a unica defesa contra ela passar por cima do que
-    // a equipe ajustou no app. So que travar tambem congelava a entrada de empresas
-    // novas, e empresas cadastradas depois disso nunca chegavam a quem e responsavel
-    // por elas (foi o que aconteceu com as empresas da Leyla).
-    //
-    // Agora a divisao e explicita:
-    //   - CADASTRO (nome, CNPJ, cidade, responsavel) de empresa que ja existe no app:
-    //     a planilha NAO toca. O ajuste da equipe manda.
-    //   - EMPRESA NOVA na planilha: entra com o cadastro dela.
-    //   - STATUS: a planilha manda. Quem saiu de ATIVO la sai daqui, como sempre foi.
-    //   - ALVARAS: nunca mais vem da planilha (o app e o dono desde v6.1.1).
-    // [v6.1.10] IDENTIDADE DE EMPRESA = nome normalizado (+ CNPJ quando houver).
-    // NUNCA o `id`: o id da planilha e a POSICAO DA LINHA. Quando linhas entram ou
-    // saem, o mesmo id passa a apontar para outra empresa. Medido na base real:
-    // 60 ids apontavam para empresas diferentes no app e na planilha, e usar o id
-    // como chave descartava 16 empresas ATIVO de forma permanente e silenciosa.
-    const todasEmpresas = dados.empresas || [];
-    const ativasRemoto = todasEmpresas.filter(e => (e.status||'').toUpperCase() === 'ATIVO');
-    if (!Array.isArray(state.empresas)) state.empresas = [];
-    const _soDigitos = (v) => String(v == null ? '' : v).replace(/\D/g, '');
-    const _kNome = (e) => _normId(e && e.nome);
-    const _kCnpj = (e) => _soDigitos(e && e.cnpj);
-    // Cadastros feitos no app nao existem na planilha: ela nao pode remove-los.
-    // Mesma chave usada por reinjetarEmpresasManuais (nome|cnpj, sem normalizar).
-    const _keysManuais = new Set((state.empresas_manuais || [])
-      .map(m => ((m && m.nome) || '').trim() + '|' + ((m && m.cnpj) || '').trim()));
-    const _ehManual = (e) => _keysManuais.has(((e && e.nome) || '').trim() + '|' + ((e && e.cnpj) || '').trim());
+   Eram 207 linhas com 85% de igualdade com handleSyncDriveAuto, e essa duplicacao
+   cobrava caro: em 04/08 tanto o id determinstico de empresa quanto a reaplicacao
+   da sobreposicao das edicoes tiveram de ser escritos NAS DUAS copias. Uma copia
+   que ninguem executa e uma copia que ninguem testa — e alguem acabaria
+   corrigindo so a errada.
 
-    const _nomesLocais = new Set(state.empresas.map(_kNome).filter(Boolean));
-    const _cnpjsLocais = new Set(state.empresas.map(_kCnpj).filter(Boolean));
-    const _novas = ativasRemoto.filter(e => {
-      const n = _kNome(e); if (n && _nomesLocais.has(n)) return false;
-      const c = _kCnpj(e); if (c && _cnpjsLocais.has(c)) return false;
-      return true;
-    });
-    // Empresa nova recebe id PROPRIO do app (o da planilha e posicional e pode
-    // colidir com um id local ja em uso, embaralhando alvarás e edicoes_empresas).
-    //
-    // [04/08/2026] O id agora vem do CONTEUDO (CNPJ, ou nome normalizado), nao de um
-    // contador local. Com `++_proxId`, dois navegadores que sincronizassem a mesma
-    // empresa nova geravam ids DIFERENTES para ela, e o empresa_id dos alvarás
-    // passava a apontar para empresas distintas conforme quem tinha aberto o sistema.
-    // Ver _idEmpresaDeterministico em public/lib.js.
-    const _idsEmUso = new Set(state.empresas.map(x => Number(x && x.id)).filter(Boolean));
-    let _proxId = state.empresas.reduce((m, e) => Math.max(m, Number(e && e.id) || 0), 0);
-    _novas.forEach(e => {
-      let _id = (typeof window._idEmpresaDeterministico === 'function')
-        ? window._idEmpresaDeterministico(e && e.nome, e && e.cnpj) : 0;
-      // Sem nome e sem CNPJ nao da para derivar nada: cai no contador, como antes.
-      if (!_id) _id = ++_proxId;
-      // Colisao de hash e improvavel, mas se acontecer nao pode juntar duas empresas.
-      while (_idsEmUso.has(_id)) _id++;
-      _idsEmUso.add(_id);
-      const nova = Object.assign({}, e, { id: _id });
-      state.empresas.push(nova);
-      const n = _kNome(nova); if (n) _nomesLocais.add(n);
-      const c = _kCnpj(nova); if (c) _cnpjsLocais.add(c);
-    });
-    if (_novas.length) console.log('[Sync] empresas NOVAS adicionadas:', _novas.length, _novas.slice(0, 10).map(e => e.nome));
-    // Status vem da planilha: sai do app quem deixou de ser ATIVO la — casando por
-    // nome/CNPJ, nunca por id. A guarda `ativasRemoto.length` evita esvaziar a base
-    // inteira se a planilha responder vazia por falha de rede/permissao.
-    if (ativasRemoto.length) {
-      const _nomesAtivoRemoto = new Set(ativasRemoto.map(_kNome).filter(Boolean));
-      const _cnpjsAtivoRemoto = new Set(ativasRemoto.map(_kCnpj).filter(Boolean));
-      const _antes = state.empresas.length;
-      state.empresas = state.empresas.filter(e => {
-        if (_ehManual(e)) return true; // cadastro do app: a planilha nao manda
-        const n = _kNome(e); if (n && _nomesAtivoRemoto.has(n)) return true;
-        const c = _kCnpj(e); if (c && _cnpjsAtivoRemoto.has(c)) return true;
-        return false; // nao consta mais como ATIVO na planilha
-      });
-      const _saidas = _antes - state.empresas.length;
-      if (_saidas) console.log('[Sync] empresas que deixaram de ser ATIVO na planilha:', _saidas);
-    } else {
-      console.warn('[Sync] planilha nao devolveu nenhuma empresa ATIVO — status NAO aplicado (base preservada)');
-    }
-    // [v6.1.10] reinjeta ANTES de calcular idsAtivo: a filtragem de alvarás usa
-    // idsAtivo e, com a empresa manual fora da lista nesse instante, os alvarás
-    // dela eram apagados a cada sync.
-    reinjetarEmpresasManuais();
-    const idsAtivo = new Set(state.empresas.map(e => e.id));
-    // [v6.1.9] Alvarás NUNCA mais vem da planilha — o app e o dono deles (v6.1.1).
-    // A planilha traz exclusivamente o cadastro das empresas.
-    let _alvBaseCloud = null;
-    if (typeof _alvCloudLigado === 'function' && _alvCloudLigado() && typeof window._alvarasCloudLoad === 'function') {
-      try { _alvBaseCloud = await window._alvarasCloudLoad(); } catch(e) { _alvBaseCloud = null; }
-    }
-    if (_alvBaseCloud && _alvBaseCloud.length) {
-      state.alvaras = _alvBaseCloud.filter(a => idsAtivo.has(a.empresa_id) && a.tipo !== 'CERTIFICADO DIGITAL' && a.tipo !== 'INPI');
-      console.log('[Sync] alvarás carregados da NUVEM (modo app-dono):', state.alvaras.length);
-    } else {
-      // [v6.1.10] Sem base na nuvem: MANTEM os alvarás locais e NAO publica nada.
-      // _alvarasCloudLoad devolve null tanto para "nuvem vazia" quanto para falha
-      // transitoria (rede/permissao) — sao indistinguiveis aqui. Publicar nesse
-      // ponto podia sobrescrever a base de todos com o snapshot do SEED (5730
-      // registros antigos) no primeiro acesso de um navegador sem localStorage.
-      // A migracao inicial para a nuvem ja aconteceu na v6.1.2.
-      state.alvaras = Array.isArray(state.alvaras) ? state.alvaras : [];
-      console.warn('[Sync] nuvem de alvarás indisponivel ou vazia — mantendo a base local ('
-        + state.alvaras.length + ') SEM publicar, para nao sobrescrever a base da equipe');
-    }
-    // Restaura dados do usuário (revisado, conversas, anexos, obs)
-    let restaurados = 0;
-    state.alvaras.forEach(a => {
-      const k = (a.empresa||'') + '|' + (a.tipo||'');
-      if (userDataMap[k]) {
-        Object.assign(a, userDataMap[k]);
-        restaurados++;
-      }
-    });
-    sanearTipos();
-    // [03/08/2026] REAPLICA as edicoes da equipe por cima da base recem-trocada.
-    // Sem isto, a cada sync (boot e de 10 em 10 minutos) os alvaras voltavam a
-    // exibir o valor da BASE — que veio da planilha —, dando a impressao de que o
-    // sistema "continua atualizando o alvara conforme a planilha". A edicao nunca
-    // era perdida no banco: sumia so da tela, ate alguem reabrir o alvara.
-    try{ if (typeof window._aplicarEdicoesNosArrays === 'function') window._aplicarEdicoesNosArrays(); }catch(e){}
-    // [v6.1.10] reinjetarEmpresasManuais() ja rodou ANTES do calculo de idsAtivo.
-    console.log('[Sync] Filtrado:', state.empresas.length, 'ATIVO de', todasEmpresas.length, 'total empresas |', state.alvaras.length, 'alvarás de ATIVO |', restaurados, 'com dados do usuário preservados');
-    // DIAGNÓSTICO v5.2: mostra amostra dos alvarás recebidos
-    if (state.alvaras.length) {
-      console.log('[Sync] AMOSTRA primeiros 3 alvarás:');
-      state.alvaras.slice(0, 3).forEach((a, i) => console.log(`  [${i}]`, JSON.stringify({tipo:a.tipo, status:a.status, vencimento:a.vencimento, proxima_atualizacao:a.proxima_atualizacao, responsavel:a.responsavel})));
-      const comVenc = state.alvaras.filter(a => a.vencimento).length;
-      const comProx = state.alvaras.filter(a => a.proxima_atualizacao).length;
-      console.log(`[Sync] ${comVenc}/${state.alvaras.length} alvarás têm vencimento | ${comProx} têm próxima atualização`);
-      if (comVenc === 0) console.warn('[Sync] NENHUM alvará tem vencimento! Re-deploy da Apps Script ou colunas fora de posição.');
-    }
-    _mergeUsuariosPreservando(_preservaFotosOficiais(dados.usuarios || []));
-    // Mesclar status_options do servidor com customizações locais
-    if (dados.status_options && !dados.status_options.includes('Formalizado com o cliente')) {
-      const idx = dados.status_options.indexOf('Em andamento');
-      if (idx >= 0) dados.status_options.splice(idx, 0, 'Formalizado com o cliente');
-      else dados.status_options.unshift('Formalizado com o cliente');
-    }
-    if (dados.status_options) SEED.status_options = dados.status_options;
-    // Filtra tipos_alvara para remover CERTIFICADO DIGITAL
-    if (dados.tipos_alvara) {
-      SEED.tipos_alvara = dados.tipos_alvara.filter(t => t !== 'CERTIFICADO DIGITAL' && t !== 'INPI');
-    }
-    log('Sincronizou Drive', `${e.total_empresas} empresas, ${e.total_alvaras} alvarás`, `Ativas: ${e.ativas}`);
-    saveState();
-    render();
-    setTimeout(() => alert(`✅ Sincronização concluída!\n\n${e.ativas} empresas ATIVO + ${e.inativas} INATIVO\n${e.total_alvaras} alvarás carregados\nÚltima sync: ${new Date(dados.sync_at).toLocaleString('pt-BR')}`), 200);
-  } catch (err) {
-    alert('❌ Erro ao sincronizar: ' + err.message);
-    console.error(err);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = oldText;
-    btn.classList.remove('opacity-60');
-  }
-}
+   Ela tambem carregava um aviso que deixou de ser verdade: o confirm() dizia
+   "isso vai SUBSTITUIR todos os dados locais / empresas e alvaras que voce editou
+   serao perdidos". Desde a v6.1.9 a planilha nao traz mais alvara nenhum. Se um
+   dia o botao voltar, ele deve chamar handleSyncDriveAuto. */
 
 function handleCsvImport(ev) {
   const file = ev.target.files[0];
