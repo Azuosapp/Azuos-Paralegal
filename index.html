@@ -400,6 +400,14 @@ function _fsSubscribeRealtime() {
   if (!ref) return;
   if (window._fsUnsubscribe) window._fsUnsubscribe();
   window._fsUnsubscribe = ref.onSnapshot(snap => {
+    // [v7.7.0] Descarta o ECO da propria gravacao antes de qualquer outra coisa.
+    // _fsIgnoreNext sozinho nao dava conta: e um booleano so, e cada gravacao gera
+    // DOIS eventos, porque o payload leva serverTimestamp (o SDK entrega primeiro a
+    // versao local estimada e depois a confirmada pelo servidor). O primeiro evento
+    // consumia a flag e o segundo passava direto, sendo tratado como mudanca de
+    // outra pessoa. hasPendingWrites e a marca oficial do SDK para "isto ainda e
+    // seu"; com ela o eco local nunca mais realimenta o ciclo.
+    try{ if (snap.metadata && snap.metadata.hasPendingWrites) return; }catch(e){}
     if (window._fsIgnoreNext) { window._fsIgnoreNext = false; return; }
     if (!snap.exists) return;
     const remote = snap.data();
@@ -414,8 +422,19 @@ function _fsSubscribeRealtime() {
     // versao. Quando ele muda, alguem editou: recarregamos os chunks para o
     // tempo real continuar funcionando como antes.
     try {
+      // [v7.7.0] Compara o carimbo do shared com o ULTIMO CARIMBO DO SHARED que ja
+      // processamos — nao com window._edicoesVer.
+      //
+      // window._edicoesVer guarda o 'ver' de azuos/edicoes_meta, que e outro
+      // documento. _edicoesCloudSave grava os chunks e adianta _edicoesVer sem tocar
+      // no shared; _edicoesCloudLoad tambem faz _edicoesVer = meta.ver. Ou seja, os
+      // dois lados da comparacao vinham de fontes diferentes e ficavam permanentemente
+      // desiguais: TODO snapshot rebaixava ~500 KB de chunks, remesclava e chamava
+      // saveState() + render. Esse era o motor da tela piscando — e cada saveState
+      // gravava o shared de novo, alimentando o proximo snapshot.
       const _verR = remote.edicoes_ver || 0;
-      if (_verR && _verR !== (window._edicoesVer || 0) && typeof window._edicoesCloudLoad === 'function') {
+      if (_verR && _verR !== (window._edicoesVerShared || 0) && typeof window._edicoesCloudLoad === 'function') {
+        window._edicoesVerShared = _verR;   // marca ANTES de carregar, para nao reentrar
         window._edicoesCloudLoad().then(function(eds){
           if (eds && typeof window._mesclarEdicoesAlvaras === 'function' && window._mesclarEdicoesAlvaras(eds)) {
             try { saveState(); } catch(e){}
@@ -3244,6 +3263,28 @@ function _autoSalvarAlvaraSeMudou(){
   if (vc!==undefined && vc!==ctx.snap.vencimento) mud.vencimento = vc;
   if (px!==undefined && px!==ctx.snap.proxima_atualizacao) mud.proxima_atualizacao = px;
   if (ob!==undefined && ob!==ctx.snap.observacao) mud.observacao = ob;
+  // [v7.7.0] Os ANEXOS tambem entram no auto-salvamento do fechamento.
+  // Sem isto, fechar a janela logo depois de anexar descartava o anexo: ele so
+  // existia no value de um input escondido, esta funcao nao o lia, e logo em
+  // seguida closeModal zerava window._alvAtual. O arquivo subia para a nuvem e
+  // ficava orfao, sem alvara nenhum apontando para ele.
+  try{
+    var _ax = document.getElementById('fa-anexos-data');
+    if(_ax){
+      var _lista = JSON.parse(_ax.value || '[]');
+      var _atual = Array.isArray(ctx.snap.anexos) ? ctx.snap.anexos : [];
+      function _ids(l){ return (Array.isArray(l)?l:[]).map(function(a){ return (a&&(a._idb||a.nome))||''; }).sort().join('|'); }
+      if(_ids(_lista) !== _ids(_atual)){
+        // grava so a referencia; o base64 vive no IndexedDB e na nuvem
+        mud.anexos = _lista.map(function(a){
+          if(!a) return a;
+          var c = {}; Object.keys(a).forEach(function(k){ c[k]=a[k]; });
+          if(typeof c.dados==='string' && c.dados.indexOf('data:')===0){ c.dados=''; c._local=true; }
+          return c;
+        });
+      }
+    }
+  }catch(e){ console.warn('[auto-salvar anexos]', (e&&e.message)||e); }
   if (Object.keys(mud).length){
     if (_persistirCamposAlvaraAtual(mud) && typeof toast==='function') toast('💾 Alterações salvas', 'emerald');
   }
@@ -3633,6 +3674,31 @@ function adicionarAnexo(input) {
     anexos.push({ nome:_nome, tipo:_tipo, tamanho:_tamKB, dataUpload:new Date().toLocaleDateString('pt-BR'), dados:b64, _idb:id });
     if(dataField) dataField.value=JSON.stringify(anexos);
     try{ renderAnexosLista(anexos); }catch(e){}
+    // [v7.7.0] GRAVA O PONTEIRO AGORA, antes de qualquer espera.
+    // Antes, o anexo so entrava no alvara no FIM da cadeia IndexedDB -> confere ->
+    // persiste. Para um PDF de 3-5 MB isso leva segundos, e ate la o anexo existia
+    // apenas no value de um input escondido. Quem fechasse a janela nesse intervalo
+    // perdia o anexo: closeModal zera window._alvAtual e _persistirCamposAlvaraAtual
+    // passa a devolver false. O arquivo subia para a nuvem e ficava orfao, sem nenhum
+    // alvara apontando para ele \u2014 medimos 13.219 anexos na nuvem, com o mesmo arquivo
+    // repetido varias vezes seguidas, que e a pessoa tentando de novo.
+    // Gravamos SEM o base64: o arquivo mora no IndexedDB e na nuvem, aqui vai so a
+    // referencia. O base64 continua no campo do DOM ate o IndexedDB confirmar.
+    var _okReg = false;
+    try{
+      var _ptr = anexos.map(function(a){
+        if(!a) return a;
+        var c = {}; Object.keys(a).forEach(function(k){ c[k] = a[k]; });
+        if(typeof c.dados==='string' && c.dados.indexOf('data:')===0){ c.dados=''; c._local=true; }
+        return c;
+      });
+      _okReg = _persistirCamposAlvaraAtual({ anexos: _ptr }) === true;
+    }catch(e){ console.warn('[anexo registro]', (e&&e.message)||e); }
+    if(!_okReg && typeof toast==='function'){
+      // Sem isto o usuario via toast verde de sucesso mesmo quando o anexo nao
+      // entrou em alvara nenhum \u2014 o toast antigo olhava so para o envio do arquivo.
+      toast('\u26a0\ufe0f N\u00e3o consegui registrar o anexo neste alvar\u00e1. Reabra o alvar\u00e1 e anexe de novo.', 'red');
+    }
     if (typeof toast==='function') toast('\u2b06\ufe0f Enviando anexo para a plataforma...', 'blue');
     // 1) cache local (IndexedDB)  2) envia para a plataforma (nuvem) e confirma para o usuario
     // [v6.0.30] O base64 NAO pode ficar no estado do alvara. Uma imagem de 3MB vira
@@ -3668,8 +3734,15 @@ function adicionarAnexo(input) {
       if(typeof _anexoCloudPush==='function') return _anexoCloudPush(id, b64, {nome:_nome, tipo:_tipo});
       return false;
     }).then(function(ok){
-      if(ok){ if(typeof toast==='function') toast('\u2705 Anexo salvo na plataforma \u2014 todos tem acesso', 'emerald'); }
-      else { if(typeof toast==='function') toast('\u2705 Anexo salvo. Concluindo envio a plataforma...', 'blue'); }
+      if(typeof toast!=='function') return;
+      // [v7.7.0] O aviso agora olha para as DUAS coisas que precisam dar certo:
+      // o arquivo subir (ok) E o alvara passar a apontar para ele (_okReg). Antes
+      // ele olhava so para o envio, entao anexo que nao entrava em alvara nenhum
+      // exibia o mesmo visto verde de sucesso \u2014 e a pessoa so descobria depois.
+      if(ok && _okReg){ toast('\u2705 Anexo salvo na plataforma \u2014 todos tem acesso', 'emerald'); }
+      else if(ok && !_okReg){ toast('\u26a0\ufe0f Arquivo enviado, mas n\u00e3o ficou vinculado ao alvar\u00e1. Reabra o alvar\u00e1 e anexe de novo.', 'red'); }
+      else if(!ok && _okReg){ toast('\ud83d\udcbe Anexo salvo aqui; envio \u00e0 plataforma em andamento...', 'blue'); }
+      else { toast('\u26a0\ufe0f N\u00e3o consegui salvar o anexo. Tente de novo.', 'red'); }
     }).catch(function(err){ console.error('[anexo]',err); if(typeof toast==='function') toast('\u26a0\ufe0f Anexo salvo localmente; reenviando a plataforma...', 'red'); });
     input.value='';
     // [v6.4.0] TODO anexo passa pela IA — antes so imagem passava, e a maioria dos
@@ -9251,11 +9324,17 @@ window._detectarESalvarEdicoes54 = async function(){
     });
     if(mudancas.length>0){
       console.log('[v5.7.54] '+mudancas.length+' edicoes capturadas por '+email);
-      var sanit = window._sanitizar54(state.edicoes_alvaras);
-      await firebase.firestore().collection('azuos').doc('shared').update({
-        edicoes_alvaras: sanit
-      });
-      console.log('[v5.7.54] SALVO no Firestore!',mudancas.length,'mudancas');
+      // [v7.7.0] NAO grava mais edicoes_alvaras dentro do azuos/shared.
+      // Este era o sexto gravador do campo legado — a v7.4.0 redirecionou cinco e
+      // nao viu este, que roda sozinho a cada 20 segundos. Ele desfazia a migracao
+      // dos chunks a toda hora: o campo legado reaparecia no shared, e a chegada
+      // dele fazia TODO navegador rodar _absorverEdicoesLegado, que grava chunks e
+      // atualiza o shared de novo — com N pessoas online, um tique virava N x N
+      // gravacoes e re-renders. Era o motor da tela piscando.
+      if(typeof window._edicoesCloudSave==='function'){
+        await window._edicoesCloudSave();
+      }
+      console.log('[v5.7.54] SALVO nos chunks!',mudancas.length,'mudancas');
     }
   }catch(e){console.error('[v5.7.54 erro]',e.code,e.message);}
 };
@@ -9451,9 +9530,13 @@ console.log('[v5.7.56] auto-sync usuarios armado');
               responsavel:a.responsavel||'',cidade:a.cidade||'',vencimento:a.vencimento||''
             });
           });
-          console.log('[v5.7.57] '+diffs.length+' mudancas salvando no Firestore');
-          var sanit = window._sanitizar54 ? window._sanitizar54(state.edicoes_alvaras) : state.edicoes_alvaras;
-          await firebase.firestore().collection('azuos').doc('shared').update({edicoes_alvaras: sanit});
+          console.log('[v5.7.57] '+diffs.length+' mudancas salvando nos chunks');
+          // [v7.7.0] Mesmo motivo do bloco v5.7.54 acima: nada de edicoes_alvaras
+          // dentro do azuos/shared. Este wrapper SUBSTITUI a funcao original, entao
+          // corrigir so a de cima nao adiantaria — em producao quem roda e esta.
+          if(typeof window._edicoesCloudSave==='function'){
+            await window._edicoesCloudSave();
+          }
           console.log('[v5.7.57] SALVO!');
         }
       }catch(e){console.error('[v5.7.57 erro]',e.message);}

@@ -115,6 +115,22 @@ window._cienciasCarregarTodas = _cienciasCarregarTodas;
 var _EDIC_PREFIX = 'edicoes_';
 var _EDIC_CH = 800000;   // ~0.8MB por chunk, margem do limite de 1MB
 
+/* [v7.7.0] Assinatura de CONTEUDO, ignorando os carimbos de auditoria.
+   _editado_em muda a cada gravacao mesmo quando nenhum valor mudou. Comparar o
+   objeto inteiro fazia o merge devolver "mudou" toda vez, e "mudou" dispara
+   saveState() + re-render — era um dos motores da tela piscando. */
+function _assinConteudoEdicao(e){
+  try{
+    if(!e || typeof e !== 'object') return '';
+    var c = {};
+    Object.keys(e).sort().forEach(function(k){
+      if(k === '_editado_em' || k === '_editado_por' || k === '_editado_manualmente') return;
+      c[k] = e[k];
+    });
+    return JSON.stringify(c);
+  }catch(err){ return ''; }
+}
+
 function _mesclarEdicoesAlvaras(remotas){
   var mudou = false;
   try{
@@ -127,8 +143,15 @@ function _mesclarEdicoesAlvaras(remotas){
       // vence o mais RECENTE por alvara (timestamps ISO comparam como string).
       var tR = (r && r._editado_em) ? r._editado_em : '';
       var tL = (l && l._editado_em) ? l._editado_em : '';
-      // ao adotar o remoto, preserva o base64 dos anexos que so existem localmente
-      if(tR > tL){ state.edicoes_alvaras[aid] = _mesclarAnexosLocais(r, l); mudou = true; }
+      // ao adotar o remoto, preserva os anexos que so existem localmente
+      if(tR > tL){
+        var novo = _mesclarAnexosLocais(r, l);
+        var antes = _assinConteudoEdicao(l);
+        state.edicoes_alvaras[aid] = novo;
+        // So conta como mudanca se algum VALOR mudou. Carimbo novo com os mesmos
+        // dados nao pode acordar a tela.
+        if(_assinConteudoEdicao(novo) !== antes) mudou = true;
+      }
     });
   }catch(e){ console.warn('[edicoes merge]', (e&&e.message)||e); }
   // reaplica por cima dos alvaras: sem isto a edicao existe no estado mas a TELA
@@ -136,7 +159,32 @@ function _mesclarEdicoesAlvaras(remotas){
   if (mudou) { try{ _aplicarEdicoesNosArrays(); }catch(e){} }
   return mudou;
 }
+/* [v7.7.0] LER ANTES DE PUBLICAR — corrige perda de anexo e de edicao alheia.
+   _edicoesCloudSave publicava o mapa inteiro com .set(), sem olhar o que havia na
+   nuvem. Qualquer navegador com copia velha que salvasse QUALQUER coisa apagava o
+   trabalho recente de todo mundo. Foi o que estourou hoje: as tres contas que
+   passaram semanas com a gravacao recusada tinham mapa antigo e, ao serem
+   destravadas, comecaram a publicar esse mapa por cima do atual.
+   Agora relemos a nuvem e unimos antes de publicar. A janela de corrida encolhe
+   para o intervalo entre a leitura e a escrita; nao vai a zero — a solucao
+   definitiva e um documento por alvara, que fica anotado como proximo passo. */
 function _edicoesCloudSave(){
+  try{
+    if(!window.fbDB) return Promise.resolve(false);
+    // Serializa as gravacoes: sem isto, duas chamadas simultaneas leem o mesmo
+    // remoto e a segunda desfaz a uniao da primeira.
+    var anterior = window._edicoesSalvandoP || Promise.resolve();
+    var p = anterior.catch(function(){}).then(function(){
+      return _edicoesCloudLoad().catch(function(){ return null; }).then(function(remotas){
+        if(remotas) { try{ _mesclarEdicoesAlvaras(remotas); }catch(e){} }
+        return _edicoesCloudPublicar();
+      });
+    });
+    window._edicoesSalvandoP = p.catch(function(){});
+    return p;
+  }catch(e){ return Promise.resolve(false); }
+}
+function _edicoesCloudPublicar(){
   try{
     if(!window.fbDB) return Promise.resolve(false);
     var C = window.fbDB.collection('azuos');
@@ -259,20 +307,43 @@ function _fsCollectFromState() {
   return out;
 }
 
-// v6.0.7 — reanexa o base64 local aos anexos vindos da nuvem (que vem sem 'dados'),
-// casando por nome do arquivo. Evita perder anexos locais quando o remoto e mais novo.
+// v6.0.7 — reanexa o base64 local aos anexos vindos da nuvem (que vem sem 'dados').
+// [v7.7.0] Passou a fazer UNIAO de verdade, e a casar por _idb em vez de por nome.
+//
+// Antes ele so reanexava o base64 de anexos que JA existiam no remoto, e o base64
+// local e justamente enxugado no fluxo normal — entao o mapa de origem vinha vazio e
+// a funcao nao fazia nada. Um anexo que existisse so do lado local era simplesmente
+// descartado ao adotar o remoto. Era um dos caminhos pelos quais o anexo "sumia"
+// depois de salvo (medimos 13.219 arquivos na nuvem, muitos deles a mesma pessoa
+// reenviando o mesmo arquivo por nao ver o anterior).
+//
+// Casar por nome tambem estava errado: dois arquivos com o mesmo nome em alvaras
+// diferentes, ou reenviados, colidiam. O _idb e unico por anexo.
+//
+// Escolha consciente: a uniao pode ressuscitar um anexo que alguem apagou de
+// proposito em outro navegador. Preferimos isso a perder arquivo — apagar de novo
+// custa um clique, recuperar arquivo perdido nao custa nada porque nao da.
 function _mesclarAnexosLocais(remoto, local) {
   try {
-    if (!remoto || !Array.isArray(remoto.anexos) || !local || !Array.isArray(local.anexos)) return remoto;
-    var mapaLocal = {};
-    local.anexos.forEach(function(a){ if (a && a.nome && a.dados) mapaLocal[a.nome] = a.dados; });
-    var copia = Object.assign({}, remoto);
-    copia.anexos = remoto.anexos.map(function(a){
-      if (a && (!a.dados || a.dados === '') && a.nome && mapaLocal[a.nome]) {
-        var m = Object.assign({}, a); m.dados = mapaLocal[a.nome]; delete m._local; return m;
+    if (!remoto || !local) return remoto || local;
+    var lr = Array.isArray(remoto.anexos) ? remoto.anexos : [];
+    var ll = Array.isArray(local.anexos) ? local.anexos : [];
+    if (!lr.length && !ll.length) return remoto;
+    function chave(a){ return (a && (a._idb || a.nome)) ? String(a._idb || a.nome) : null; }
+    var vistos = {}, out = [];
+    lr.forEach(function(a){ var k = chave(a); if (k) vistos[k] = true; out.push(a); });
+    ll.forEach(function(a){ var k = chave(a); if (k && !vistos[k]) { vistos[k] = true; out.push(a); } });
+    var b64 = {};
+    ll.forEach(function(a){ var k = chave(a); if (k && a.dados) b64[k] = a.dados; });
+    out = out.map(function(a){
+      var k = chave(a);
+      if (k && (!a.dados || a.dados === '') && b64[k]) {
+        var m = Object.assign({}, a); m.dados = b64[k]; delete m._local; return m;
       }
       return a;
     });
+    var copia = Object.assign({}, remoto);
+    copia.anexos = out;
     return copia;
   } catch(e) { return remoto; }
 }
@@ -281,9 +352,21 @@ function _mesclarAnexosLocais(remoto, local) {
 function _uniPorId(local, remoto){
   local = Array.isArray(local) ? local : [];
   remoto = Array.isArray(remoto) ? remoto : [];
-  var map = {}; var semId = [];
-  local.forEach(function(x){ if (x && x.id != null) map[x.id] = x; });
-  remoto.forEach(function(x){ if (x && x.id != null) map[x.id] = x; else if (x) semId.push(x); });
+  var map = {}; var semId = []; var vistos = {};
+  // [v7.7.0] Itens LOCAIS sem id tambem sobrevivem.
+  // Antes, o laco do local so guardava quem tinha id — entao, num historico gravado
+  // sem id, todo o lado local era descartado e sobrava so o remoto. Medido: 620
+  // itens locais viravam 500 numa unica passada, silenciosamente.
+  function por(x, ehRemoto){
+    if (!x) return;
+    if (x.id != null) { map[x.id] = x; return; }
+    if (!ehRemoto) { semId.push(x); vistos[JSON.stringify(x)] = true; return; }
+    // do lado remoto, evita duplicar um item sem id que ja veio do local
+    var k = JSON.stringify(x);
+    if (!vistos[k]) { vistos[k] = true; semId.push(x); }
+  }
+  local.forEach(function(x){ por(x, false); });
+  remoto.forEach(function(x){ por(x, true); });
   return Object.keys(map).map(function(k){ return map[k]; }).concat(semId);
 }
 
