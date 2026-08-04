@@ -82,18 +82,6 @@ jobs:
 
           const KEY = process.env.WEB_API_KEY;
           const PROJ = 'azuos-paralegal';
-          // Contas que REALMENTE existem, conferidas em 29/07/2026.
-          const alvos = [
-            'leylabraz1994@outlook.com',
-            'paralegal10@gmail.com',
-            'integracao.grupoazuos@gmail.com',
-            'grupob2bbrasil@icloud.com',
-            'luanna@azuoscontabil.com.br',
-            'diogenes@azuoscontabil.com.br',
-            'camila@azuoscontabil.com.br',
-            'ketrin@azuoscontabil.com.br',
-          ];
-
           // Quem REALMENTE tem conta. Sem isto, "sem conta" pode significar tanto
           // "a pessoa nao foi cadastrada" quanto "ela entra com outro endereco".
           const todos = [];
@@ -112,6 +100,17 @@ jobs:
               console.log(`   ${(u.email||'(sem e-mail)').padEnd(38)} ${nome} ultimo acesso: ${ult}${u.disabled ? '  [DESATIVADA]' : ''}`);
             });
           console.log('');
+
+          // [04/08/2026] Testa TODA conta que existe, em vez de uma lista escrita a mao.
+          // A lista a mao era copia da lista de autorizados, entao ela so conseguia
+          // confirmar que quem estava autorizado estava autorizado. As contas de fora —
+          // exatamente as que nao conseguem gravar — nunca eram testadas. Foi assim que
+          // Yara, Gabryel e Humberto passaram semanas logando e com toda gravacao
+          // recusada, com este diagnostico dizendo "todos conseguem gravar".
+          const alvos = todos
+            .filter(u => u.email && !u.disabled)
+            .map(u => u.email.toLowerCase())
+            .sort();
 
           let falhas = 0, semConta = [];
 

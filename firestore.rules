@@ -2,57 +2,121 @@ rules_version = '2';
 
 // ============================================================
 //  Regras de segurança do Firestore — Azuos Paralegal
-//  Objetivo: SOMENTE os e-mails autorizados abaixo podem ler/escrever
+//  Objetivo: SOMENTE os e-mails autorizados podem ler/escrever
 //  no banco. Qualquer outra conta (mesmo logada) é bloqueada.
-//
-//  IMPORTANTE: para um usuário NOVO da equipe conseguir acessar, o
-//  e-mail dele precisa ser adicionado na lista `autorizado()` e as
-//  regras precisam ser PUBLICADAS de novo no Console do Firebase.
 // ============================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Lista branca de e-mails autorizados (em minúsculas).
+    // ------------------------------------------------------------------
+    // COMO A AUTORIZAÇÃO FUNCIONA (mudou em 04/08/2026)
     //
-    // ATENÇÃO — esta lista é a causa mais comum de "não consigo salvar" / "dá erro
-    // ao abrir chamado". Quem não estiver aqui LOGA no sistema normalmente, mas
-    // TODA escrita no banco é recusada (permission-denied). Como o app guarda o
-    // dado no navegador antes de sincronizar, a pessoa acha que salvou — e nada
-    // chega para o resto da equipe.
+    // São DUAS listas somadas:
     //
-    // Ao cadastrar alguém novo, ou quando alguém trocar de e-mail de acesso,
-    // ACRESCENTE aqui e publique de novo (Console do Firebase → Firestore →
-    // Rules). O deploy do site NÃO publica regras — ver COMO-PUBLICAR-REGRAS-FIREBASE.md.
-    // Conferido em 29/07/2026 contra as contas REAIS do Firebase Authentication
-    // (workflow "Testar Acesso Real"). Nao confie na intuicao sobre qual e o
-    // e-mail de alguem: varias pessoas entram com endereco pessoal, e havia
-    // endereco autorizado aqui que nao existia como conta nenhuma.
-    function autorizado() {
+    //   1) `fixos()` abaixo — lista embutida no código. É a rede de
+    //      segurança: mesmo que o documento da lista dinâmica seja
+    //      apagado ou corrompido, os admins continuam entrando.
+    //
+    //   2) `acesso/autorizados` no próprio banco, campo `emails` —
+    //      mantida pela tela Usuários do sistema. Cadastrar alguém já
+    //      libera a gravação, SEM precisar publicar regra nenhuma.
+    //
+    // POR QUE ISSO MUDOU. A lista era só a nº 1, e uma pessoa que trocava
+    // de e-mail de acesso passava a logar normalmente e ter TODA gravação
+    // recusada (permission-denied) — sem aviso, porque o app guarda no
+    // navegador antes de sincronizar e parece que salvou. Em 04/08/2026
+    // três contas estavam nessa situação ao mesmo tempo (Yara, Gabryel e
+    // Humberto), e ninguém do time conseguia salvar anexo nem
+    // preenchimento. A lista fixa dependia de alguém lembrar de editar
+    // este arquivo e publicar de novo — e não lembrou.
+    //
+    // REGRA QUE CONTINUA VALENDO: nunca autorize e-mail "reservado", de
+    // conta que ainda não existe. E-mail autorizado sem conta pode ser
+    // reivindicado por qualquer pessoa pela API pública do Firebase, que
+    // usa a chave que está no cliente. A ordem correta é: criar o acesso
+    // primeiro, e só então o endereço entra na lista.
+    // Vale para as DUAS listas — a tela Usuários só inclui na lista
+    // dinâmica um endereço cuja conta acabou de ser criada.
+    // ------------------------------------------------------------------
+
+    // Rede de segurança. Conferido em 04/08/2026 contra as contas REAIS do
+    // Firebase Authentication (workflow "Testar Acesso Real"). Nao confie na
+    // intuicao sobre qual e o e-mail de alguem: varias pessoas entram com
+    // endereco pessoal, e ja houve endereco autorizado aqui que nao existia
+    // como conta nenhuma.
+    function fixos() {
+      return [
+        'contato@azuoscontabil.com.br',      // AZUOS Admin
+        'thierrymforte@gmail.com',
+        'comercial@azuoscontabil.com.br',
+        'camila@azuoscontabil.com.br',
+        'ketrin@azuoscontabil.com.br',
+        'luannaferreirabatista20@gmail.com', // Luanna — e ESTE o login dela desde 30/07/2026
+        'diogenes@azuoscontabil.com.br',
+        'leylabraz1994@outlook.com',         // Leyla — e ESTE o login dela
+        'paralegal10@gmail.com',
+        'integracao.grupoazuos@gmail.com',
+        'grupob2bbrasil@icloud.com',
+
+        // [04/08/2026] As tres abaixo ja logavam ha semanas e tinham TODA
+        // gravacao recusada. Confirmadas no Authentication, com acesso no
+        // proprio dia em que foram incluidas:
+        'paralalegal6@gmail.com',            // Yara  — repare no "a" a mais: paralAlegal
+        'advgabryelisaac@gmail.com',         // Gabryel — trocou o acesso; nao usa mais paralegal10
+        'paralalegal2@gmail.com',            // Humberto
+        'paralalegal2@gmail.com.br'          // Humberto — SEGUNDA conta dele, terminada em .com.br.
+                                             // Parece erro de digitacao na criacao, mas e uma conta
+                                             // real e em uso (acesso em 03/08). NAO REMOVA: a
+                                             // orientacao e preservar todos os acessos existentes.
+                                             // Cada conta tem historico e ciencias proprios; tirar
+                                             // uma daqui nao "limpa" nada, so bloqueia a gravacao
+                                             // de quem usa aquele endereco.
+      ];
+    }
+
+    // Admins: unicos que podem MEXER na lista de autorizados.
+    function admin() {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email.lower() in [
-          // --- contas com login confirmado ---
-          'contato@azuoscontabil.com.br',      // AZUOS Admin
-          'thierrymforte@gmail.com',
-          'comercial@azuoscontabil.com.br',
-          'camila@azuoscontabil.com.br',
-          'ketrin@azuoscontabil.com.br',
-          'luannaferreirabatista20@gmail.com',  // Luanna — e ESTE o login dela desde 30/07/2026
-          'diogenes@azuoscontabil.com.br',
-          'leylabraz1994@outlook.com',         // Leyla — e ESTE o login dela
-          'paralegal10@gmail.com',
-          'integracao.grupoazuos@gmail.com',
-          'grupob2bbrasil@icloud.com'
-
-          // NAO adicione e-mail "reservado", de conta que ainda nao existe.
-          // Uma auditoria de arquitetura em 29/07/2026 mostrou que isso era uma
-          // porta aberta: o e-mail autorizado aqui, somado ao auto-cadastro da
-          // tela de login, permitia que QUALQUER pessoa criasse a conta com
-          // aquele endereco e ganhasse leitura e escrita totais no banco.
-          // A ordem correta e: criar o acesso (Usuarios -> Criar acesso), e SO
-          // ENTAO incluir o e-mail aqui.
+          'contato@azuoscontabil.com.br',
+          'thierrymforte@gmail.com'
         ];
+    }
+
+    // Lista dinamica, mantida pela tela Usuarios.
+    // O exists() NAO e opcional: sem ele, se o documento nao existir o get()
+    // devolve null, a regra da erro de avaliacao e TODO MUNDO e bloqueado —
+    // inclusive quem esta na lista fixa.
+    function lista() {
+      return exists(/databases/$(database)/documents/acesso/autorizados)
+        ? get(/databases/$(database)/documents/acesso/autorizados).data
+        : {};
+    }
+
+    function autorizado() {
+      return request.auth != null
+        && (
+             // por e-mail: lista embutida + lista dinamica
+             (request.auth.token.email != null && request.auth.token.email.lower() in fixos())
+          || (request.auth.token.email != null && request.auth.token.email.lower() in lista().get('emails', []))
+             // por UID: e ISTO que resolve a troca de e-mail de vez.
+             // O UID do Firebase e o mesmo antes e depois do updateEmail. Autorizando
+             // por UID, quem troca de endereco continua gravando no mesmo segundo, sem
+             // depender de ninguem lembrar de publicar regra. Autorizar so por e-mail
+             // foi o que deixou Yara, Gabryel e Humberto travados por semanas.
+          || request.auth.uid in lista().get('uids', [])
+        );
+    }
+
+    // A lista de autorizados fica FORA de /azuos porque as regras se somam:
+    // se ela morasse em azuos/**, a regra ampla de azuos/ ja daria escrita a
+    // qualquer autorizado e a restricao de admin nao teria efeito nenhum.
+    // Quem controla quem entra nao pode ser quem entrou.
+    match /acesso/{doc} {
+      allow read:  if autorizado();
+      allow write: if admin();
     }
 
     // Coleções usadas pelo app — somente autorizados.

@@ -39,7 +39,11 @@ service firebase.storage {
           'leylabraz1994@outlook.com',
           'paralegal10@gmail.com',
           'integracao.grupoazuos@gmail.com',
-          'grupob2bbrasil@icloud.com'
+          'grupob2bbrasil@icloud.com',
+          'paralalegal6@gmail.com',            // Yara
+          'advgabryelisaac@gmail.com',         // Gabryel
+          'paralalegal2@gmail.com',            // Humberto
+          'paralalegal2@gmail.com.br'          // Humberto — segunda conta, em uso
         ];
     }
 
