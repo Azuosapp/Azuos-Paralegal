@@ -103,8 +103,11 @@ try {
   // Trilha. A chave de SERVICO nunca entra aqui: ela mora so no ambiente da Edge
   // Function, porque da acesso total ao banco compartilhado com o Trilha.
   // Instrucoes de publicacao em supabase/README.md.
-  window._SB_CFG = null;
-  // window._SB_CFG = { url: 'https://<REF>.supabase.co', anon: '<ANON KEY>', funcao: 'anexos' };
+  window._SB_CFG = {
+    url:    'https://vjwtvnttlywamibuwyqm.supabase.co',
+    anon:   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3R2bnR0bHl3YW1pYnV3eXFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MDIzODIsImV4cCI6MjA5NjI3ODM4Mn0.TV7KAcLTk302-aXc6G8fW3ZluA2OZbSc6ccRF1pgCPQ',
+    funcao: 'anexos'
+  };
 
   firebase.initializeApp(firebaseConfig);
   window.fbAuth = firebase.auth();
