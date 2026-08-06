@@ -21,8 +21,11 @@
 // Paralegal virarem "autenticados" para TODAS as regras ja existentes do Trilha,
 // inclusive o balde `feed`, que aceita insercao de qualquer autenticado.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { importX509, jwtVerify } from 'https://deno.land/x/jose@v5.9.6/index.ts';
+// Especificadores npm: sao o formato que o runtime das Edge Functions resolve.
+// A primeira versao importava por URL (esm.sh e deno.land/x) e a funcao nem
+// chegou a subir — BOOT_ERROR na primeira chamada.
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { importX509, jwtVerify } from 'npm:jose@5';
 
 const PROJETO_FIREBASE = 'azuos-paralegal';
 const BALDE = 'paralegal-anexos';
@@ -55,18 +58,6 @@ const CORS = {
 };
 
 // Chaves publicas do Google, com cache — sao trocadas periodicamente.
-let chavesCache: { valores: Record<string, string>; ate: number } | null = null;
-async function chavesDoGoogle(): Promise<Record<string, string>> {
-  const agora = Date.now();
-  if (chavesCache && chavesCache.ate > agora) return chavesCache.valores;
-  const r = await fetch('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com');
-  const valores = await r.json();
-  // respeita o max-age do proprio Google em vez de chutar um tempo
-  const cc = r.headers.get('cache-control') || '';
-  const m = /max-age=(\d+)/.exec(cc);
-  chavesCache = { valores, ate: agora + (m ? Number(m[1]) : 3600) * 1000 };
-  return valores;
-}
 
 /* Verificacao do token do Firebase.
    Usa a biblioteca `jose` em vez de analisar o certificado a mao. A primeira versao
