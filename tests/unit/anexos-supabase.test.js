@@ -116,3 +116,63 @@ test('o ponteiro do anexo nunca muda de formato — é o que torna a migração 
   assert.ok(src.includes('_anexoSupabaseFetch(chave)'),
     'a leitura precisa usar a MESMA chave, senão a migração teria de reescrever os alvarás');
 });
+
+/* ---- o id do anexo precisa GRUDAR na hora (05/08/2026) ----
+ * Aqui nasceu a enxurrada: 13.232 anexos na nuvem, 13.101 sem dono, EDMAR.png com
+ * 3.570 cópias. O id só era atribuído dentro do callback assíncrono do IndexedDB;
+ * se ele não rodasse — falha, ou o sync trocando state.alvaras antes —, o anexo
+ * era visto como "sem id" no boot seguinte, ganhava outro, e o envio automático
+ * subia mais uma cópia. A prova de que era código e não gente: milhares de ids
+ * compartilham o mesmo carimbo de milissegundo. */
+function rodarPrepararAnexosLazy(state, { idbFalha = false } = {}) {
+  const html = readFileSync('index.html', 'utf-8');
+  const ini = html.indexOf('function _prepararAnexosLazy()');
+  const fim = html.indexOf('function loadState()');
+  assert.ok(ini > 0 && fim > ini, 'não localizei _prepararAnexosLazy no index.html');
+  const ctx = {
+    state,
+    console: { warn() {}, log() {} },
+    JSON, Object, Array, String, Number, Boolean, Math, Date, Promise, isNaN,
+    _idbPut: () => (idbFalha ? Promise.reject(new Error('sem indexeddb')) : Promise.resolve()),
+    _idbGet: () => Promise.resolve(idbFalha ? null : 'data:image/png;base64,AAAA'),
+  };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(html.slice(ini, fim), ctx, { filename: 'index.html (_prepararAnexosLazy)' });
+  ctx._prepararAnexosLazy();
+  return ctx;
+}
+
+test('o id é atribuído IMEDIATAMENTE, sem esperar o IndexedDB', () => {
+  const anexo = { nome: 'EDMAR.png', dados: 'data:image/png;base64,AAAA' };
+  const state = { alvaras: [{ id: 1, anexos: [anexo] }], edicoes_alvaras: {} };
+  rodarPrepararAnexosLazy(state);
+  assert.ok(anexo._idb, 'sem id na hora, o próximo boot inventa outro e nasce uma cópia órfã');
+});
+
+test('IndexedDB falhando: mantém o id e devolve o arquivo — não perde nem duplica', async () => {
+  const anexo = { nome: 'EDMAR.png', dados: 'data:image/png;base64,AAAA' };
+  const state = { alvaras: [{ id: 1, anexos: [anexo] }], edicoes_alvaras: {} };
+  rodarPrepararAnexosLazy(state, { idbFalha: true });
+  const idPrimeiro = anexo._idb;
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(anexo._idb, idPrimeiro, 'o id não pode sumir quando o IndexedDB falha');
+  assert.ok(anexo.dados.startsWith('data:'), 'o arquivo precisa voltar para não se perder');
+});
+
+test('anexo que JÁ tem id nunca ganha outro', () => {
+  const anexo = { nome: 'x.png', dados: 'data:image/png;base64,AAAA', _idb: 'idb_existente' };
+  const state = { alvaras: [{ id: 1, anexos: [anexo] }], edicoes_alvaras: {} };
+  rodarPrepararAnexosLazy(state);
+  assert.equal(anexo._idb, 'idb_existente');
+});
+
+test('duas passadas seguidas não geram ids diferentes para o mesmo anexo', async () => {
+  const anexo = { nome: 'EDMAR.png', dados: 'data:image/png;base64,AAAA' };
+  const state = { alvaras: [{ id: 1, anexos: [anexo] }], edicoes_alvaras: {} };
+  rodarPrepararAnexosLazy(state, { idbFalha: true });
+  const primeiro = anexo._idb;
+  await new Promise((r) => setTimeout(r, 10));
+  rodarPrepararAnexosLazy(state, { idbFalha: true });   // simula o boot seguinte
+  assert.equal(anexo._idb, primeiro, 'era exatamente assim que 3.570 cópias de EDMAR.png apareciam');
+});

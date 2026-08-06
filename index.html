@@ -206,15 +206,33 @@ function _prepararAnexosLazy(){
     (state.alvaras||[]).forEach(scan);
     if(state.edicoes_alvaras) Object.keys(state.edicoes_alvaras).forEach(function(k){ scan(state.edicoes_alvaras[k]); });
     if(!pend.length) return false;
+    // [05/08/2026] O ID PASSA A GRUDAR NA HORA. Aqui nascia a enxurrada de anexos.
+    //
+    // Antes, `a._idb = id` so era atribuido DENTRO do callback do IndexedDB, depois
+    // da ida e volta assincrona. Se a gravacao falhasse, ou se o estado fosse
+    // trocado antes do callback rodar — e o sync substitui state.alvaras inteiro a
+    // cada 10 minutos —, o id nao grudava. No boot seguinte o mesmo anexo era visto
+    // como "sem id", ganhava um id NOVO, e o envio automatico subia mais uma copia
+    // para a nuvem.
+    //
+    // Medido em 05/08/2026: 13.232 anexos na nuvem, 13.101 sem dono. EDMAR.png
+    // sozinho tinha 3.570 copias. E a prova de que nao era gente clicando esta nos
+    // proprios ids: milhares deles compartilham o MESMO carimbo de milissegundo
+    // (idb_1783518949541_...), porque este laco processa tudo numa passada so.
+    //
+    // Agora o id e atribuido antes de qualquer espera. Se o IndexedDB falhar,
+    // devolvemos o base64 para nao perder o arquivo, mas MANTEMOS o id — assim a
+    // proxima passada reaproveita o mesmo, em vez de inventar outro.
     pend.forEach(function(a){
       var b64=a.dados;
       var id=a._idb || ('idb_'+Date.now()+'_'+Math.random().toString(36).slice(2,8));
+      a._idb=id;
       a.dados=''; a._local=true;
       try{
         _idbPut(id, b64).then(function(){ return _idbGet(id); }).then(function(v){
-          if(v && v.length===b64.length){ a._idb=id; } else if(!a._idb){ a.dados=b64; }
-        }).catch(function(){ if(!a._idb) a.dados=b64; });
-      }catch(e){ if(!a._idb) a.dados=b64; }
+          if(!(v && v.length===b64.length)){ a.dados=b64; }   // guarda o arquivo; o id fica
+        }).catch(function(){ a.dados=b64; });
+      }catch(e){ a.dados=b64; }
     });
     return true;
   }catch(e){ return false; }
