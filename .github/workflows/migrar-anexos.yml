@@ -1,0 +1,78 @@
+name: Anexos — medir, listar orfaos, migrar
+
+# Tira os anexos de dentro do Firestore e leva para o Storage do Supabase.
+#
+# TRES MODOS, e o padrao e o inofensivo:
+#   medir   — so conta e mede. Nao escreve, nao apaga.
+#   orfaos  — lista os anexos que nenhum alvara referencia. Nao apaga.
+#   migrar  — copia, CONFERE que chegou com o tamanho certo, e so entao apaga.
+#
+# NAO GUARDA A CHAVE-MESTRA DO SUPABASE. Ela da acesso total ao banco compartilhado
+# com o Trilha (alunos, feed, financeiro); guarda-la nos segredos deste repositorio
+# ampliaria a exposicao dela. O script se autentica como um usuario autorizado e
+# pede autorizacao a MESMA Edge Function que o app usa — o caminho testado e o
+# caminho real.
+
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: 'medir | orfaos | migrar'
+        required: true
+        default: 'medir'
+        type: choice
+        options: [medir, orfaos, migrar]
+      limite:
+        description: 'quantos anexos migrar nesta rodada (0 = todos)'
+        required: false
+        default: '200'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrar-anexos
+  cancel-in-progress: false
+
+jobs:
+  executar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Preparar credencial do Firebase
+        env:
+          SA_A: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AZUOS_PARALEGAL }}
+          SA_B: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_C: ${{ secrets.FIREBASE_SERVICE_ACC0UNT }}
+        run: |
+          V="$SA_A"; [ -z "$V" ] && V="$SA_B"; [ -z "$V" ] && V="$SA_C"
+          [ -z "$V" ] && { echo "ERRO: sem credencial."; exit 1; }
+          printf '%s' "$V" > "$HOME/sa.json"
+          node -e "console.log('Conta:', JSON.parse(require('fs').readFileSync(process.env.HOME+'/sa.json','utf8')).client_email)"
+
+      - name: Instalar dependencias
+        run: |
+          mkdir -p /tmp/mig && cd /tmp/mig
+          npm init -y >/dev/null 2>&1
+          npm i firebase-admin@12 --no-audit --no-fund --loglevel=error
+
+      - name: Executar
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/sa.json
+          MODO: ${{ inputs.modo }}
+          LIMITE: ${{ inputs.limite }}
+          # As duas chaves abaixo sao PUBLICAS por natureza e estao aqui de
+          # proposito, em vez de viverem como segredo. A do Firebase ja esta no
+          # index.html e a anon do Supabase tambem — as duas vao para o navegador
+          # de quem abre o site. Guarda-las como 'secret' daria a impressao de que
+          # sao sigilosas e alguem trataria a chave de SERVICO com o mesmo
+          # descuido. Quem decide o acesso e o Firebase Auth, nao estas chaves.
+          WEB_API_KEY: AIzaSyAetNviUEud17HVdmUyfY_FaMVaK4WwWA8
+          SB_ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqd3R2bnR0bHl3YW1pYnV3eXFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MDIzODIsImV4cCI6MjA5NjI3ODM4Mn0.TV7KAcLTk302-aXc6G8fW3ZluA2OZbSc6ccRF1pgCPQ
+        run: |
+          cp scripts/ci/migrar-anexos.mjs /tmp/mig/
+          cd /tmp/mig && node migrar-anexos.mjs
